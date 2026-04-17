@@ -19,6 +19,8 @@ _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "edit": ("karna.tools.edit", "EditTool"),
     "grep": ("karna.tools.grep", "GrepTool"),
     "glob": ("karna.tools.glob", "GlobTool"),
+    "web_search": ("karna.tools.web_search", "WebSearchTool"),
+    "web_fetch": ("karna.tools.web_fetch", "WebFetchTool"),
 }
 
 # Public alias — maps tool name → (module, class) for introspection.
