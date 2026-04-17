@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from karna.compaction.prompts import COMPACT_SYSTEM_PROMPT, SUMMARY_PROMPT
 from karna.models import Conversation, Message
+from karna.security import scrub_secrets
 
 if TYPE_CHECKING:
     from karna.providers.base import BaseProvider
@@ -29,6 +30,16 @@ _PRESERVE_TAIL = 5
 
 # Max consecutive failures before the circuit breaker trips
 _MAX_CONSECUTIVE_FAILURES = 3
+
+
+class CompactionError(RuntimeError):
+    """Raised when conversation compaction fails.
+
+    The agent loop should surface this as a user-visible error so the
+    user knows context is overflowing and can start a new conversation
+    or compact manually.  Swallowing these failures silently leaves the
+    user trapped in an infinite context-overflow loop.
+    """
 
 
 def _estimate_tokens(messages: list[Message]) -> int:
@@ -189,8 +200,22 @@ class Compactor:
                     "failures -- skipping future attempts this session",
                     self.max_failures,
                 )
-            # Return conversation unchanged on failure
-            return conversation
+                # Refuse further auto-compaction: require a manual /compact.
+                raise CompactionError(
+                    f"Context compaction failed: {exc}. "
+                    f"Auto-compaction disabled after "
+                    f"{self.max_failures} consecutive failures. "
+                    f"Please start a new conversation or compact manually "
+                    f"with /compact."
+                ) from exc
+            # Raise so the agent loop can surface a user-visible error event
+            # instead of silently returning the unchanged conversation (which
+            # would leave the user trapped in a context-overflow loop).
+            raise CompactionError(
+                f"Context compaction failed: {exc}. "
+                f"Please start a new conversation or compact manually "
+                f"with /compact."
+            ) from exc
 
         # Build compacted conversation
         summary_msg = Message(
@@ -214,5 +239,8 @@ class Compactor:
         - Open questions/tasks remaining
         - Important context for continuing the conversation
         """
-        formatted = _format_messages_for_summary(messages_to_summarize)
+        # MEDIUM-2 fix: scrub API keys / tokens from the summary prompt
+        # before sending to the LLM.  Compaction is a natural leak point
+        # because earlier tool results may echo secrets into the context.
+        formatted = scrub_secrets(_format_messages_for_summary(messages_to_summarize))
         return SUMMARY_PROMPT.format(messages=formatted)

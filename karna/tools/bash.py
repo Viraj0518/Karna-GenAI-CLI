@@ -10,6 +10,14 @@ Features:
 - Working directory tracking
 - Output truncation for large results
 - Dangerous-command detection via security guards
+
+Security default (CRITICAL-1 fix):
+``safe_mode`` now defaults to ``True``. When ``check_dangerous_command``
+flags a command, BashTool BLOCKS execution and returns an explanatory
+message. Callers must explicitly opt in by constructing
+``BashTool(safe_mode=False)`` to allow dangerous commands to run with
+only a warning. This is a deliberate behaviour flip from earlier
+versions which defaulted to execute-with-warning.
 """
 
 from __future__ import annotations
@@ -72,7 +80,7 @@ class BashTool(BaseTool):
         "required": ["command"],
     }
 
-    def __init__(self, *, safe_mode: bool = False) -> None:
+    def __init__(self, *, safe_mode: bool = True) -> None:
         super().__init__()
         self._cwd: str = os.getcwd()
         self._safe_mode = safe_mode
@@ -86,10 +94,11 @@ class BashTool(BaseTool):
         if warning:
             if self._safe_mode:
                 return (
-                    f"[BLOCKED] {warning}. "
-                    "Command was NOT executed (safe-mode is enabled). "
-                    "Disable safe-mode in config to allow dangerous commands."
+                    f"[BLOCKED by safe_mode] {warning}\n\n"
+                    "To override, set safe_mode=False explicitly "
+                    "in config or tool kwargs."
                 )
+            # else: warn and continue (explicit opt-in)
 
         try:
             proc = await asyncio.create_subprocess_shell(

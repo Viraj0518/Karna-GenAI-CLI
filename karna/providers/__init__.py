@@ -18,6 +18,9 @@ _PROVIDER_PATHS: dict[str, tuple[str, str]] = {
     "azure": ("karna.providers.azure", "AzureOpenAIProvider"),
     "anthropic": ("karna.providers.anthropic", "AnthropicProvider"),
     "local": ("karna.providers.local", "LocalProvider"),
+    "vertex": ("karna.providers.vertex", "VertexProvider"),
+    "bedrock": ("karna.providers.bedrock", "BedrockProvider"),
+    "failover": ("karna.providers.failover", "FailoverProvider"),
 }
 
 # Convenience re-export so callers can do ``from karna.providers import PROVIDERS``

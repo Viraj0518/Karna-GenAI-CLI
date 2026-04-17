@@ -11,13 +11,14 @@ Security:
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import sys
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -30,6 +31,15 @@ logger = logging.getLogger(__name__)
 
 KARNA_DIR = Path.home() / ".karna"
 CONFIG_PATH = KARNA_DIR / "config.toml"
+
+
+class ConfigError(RuntimeError):
+    """Raised when the Karna config file cannot be loaded/parsed.
+
+    Surfaces a clear, actionable error to the user (file path + parse
+    error) rather than silently returning defaults or crashing with a
+    raw tomllib traceback.
+    """
 
 
 class KarnaConfig(BaseModel):
@@ -61,12 +71,42 @@ def load_config() -> KarnaConfig:
     """Load config from disk, returning defaults if the file doesn't exist.
 
     Also runs permission checks and emits warnings if anything is too open.
+
+    Raises
+    ------
+    ConfigError
+        If the config file exists but cannot be parsed as TOML or fails
+        schema validation.  A missing file is NOT an error — we
+        transparently create one with defaults.
     """
     _ensure_dir()
     if CONFIG_PATH.exists():
-        raw = CONFIG_PATH.read_bytes()
-        data = tomllib.loads(raw.decode())
-        cfg = KarnaConfig(**data)
+        try:
+            raw = CONFIG_PATH.read_bytes()
+            data = tomllib.loads(raw.decode())
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigError(
+                f"Failed to parse {CONFIG_PATH}: {exc}\n"
+                f"Fix the file or run 'nellie config reset' to restore defaults."
+            ) from exc
+        except OSError as exc:
+            # File vanished between exists() and read_bytes() — treat as missing.
+            if exc.errno == errno.ENOENT:
+                cfg = KarnaConfig()
+                save_config(cfg)
+                _check_permissions()
+                return cfg
+            raise ConfigError(
+                f"Failed to read {CONFIG_PATH}: {exc}"
+            ) from exc
+
+        try:
+            cfg = KarnaConfig(**data)
+        except ValidationError as exc:
+            raise ConfigError(
+                f"Invalid config in {CONFIG_PATH}: {exc}\n"
+                f"Fix the file or run 'nellie config reset' to restore defaults."
+            ) from exc
     else:
         cfg = KarnaConfig()
         save_config(cfg)

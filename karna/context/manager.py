@@ -34,6 +34,7 @@ class ContextManager:
         config: KarnaConfig,
         max_context_tokens: int = 128_000,
         cwd: Path | None = None,
+        system_budget_ratio: float = 0.5,
     ) -> None:
         self.config = config
         self.max_tokens = max_context_tokens
@@ -41,6 +42,10 @@ class ContextManager:
         self.project_ctx = ProjectContext()
         self.git_ctx = GitContext()
         self.env_ctx = EnvironmentContext()
+        # Fraction of the total context window that the system message
+        # (prompt + injected sections) is allowed to consume.  The rest is
+        # reserved for conversation history + the assistant's reply.
+        self.system_budget_ratio = system_budget_ratio
 
         # Lazily populated caches (populated on first build_messages call).
         self._project_context: str | None = None
@@ -64,9 +69,17 @@ class ContextManager:
         4. Recent messages with full tool results (keep last N)
         5. Older messages summarized or dropped (FIFO)
         6. Never drop the user's last message
+
+        The system message is capped at :attr:`system_budget_ratio` of the
+        total budget (default 50%).  If the injected context sections would
+        push the system message past that cap, lower-priority sections are
+        dropped and the drop is logged at INFO level so the user knows
+        which context was sacrificed.
         """
-        # -- 1. System prompt ----------------------------------------- #
-        system_parts: list[str] = [system_prompt]
+        # Build the injected sections in priority order (lowest priority
+        # number = most important, kept first).  This mirrors the prompt
+        # engine so we have one canonical ordering.
+        sections: list[tuple[str, str, int]] = []
 
         # -- 2. Project context (cached after first load) -------------- #
         if not self._project_context_loaded:
@@ -74,27 +87,37 @@ class ContextManager:
             self._project_context_loaded = True
 
         if self._project_context:
-            system_parts.append(
-                f"\n<project-context>\n{self._project_context}\n</project-context>"
-            )
+            sections.append((
+                "project-context",
+                f"<project-context>\n{self._project_context}\n</project-context>",
+                2,
+            ))
 
         # -- 3. Git + environment ------------------------------------- #
         git_ctx_str = await self.git_ctx.get_context(self.cwd)
         if git_ctx_str:
-            system_parts.append(
-                f"\n<git-context>\n{git_ctx_str}\n</git-context>"
-            )
+            sections.append((
+                "git-context",
+                f"<git-context>\n{git_ctx_str}\n</git-context>",
+                3,
+            ))
 
         env_ctx_str = self.env_ctx.get_context(self.cwd)
-        system_parts.append(
-            f"\n<environment>\n{env_ctx_str}\n</environment>"
+        sections.append((
+            "environment",
+            f"<environment>\n{env_ctx_str}\n</environment>",
+            1,  # environment is cheap + always useful, so keep ahead of others
+        ))
+
+        # -- 1. System prompt + fit injected sections ----------------- #
+        system_budget = int(self.max_tokens * self.system_budget_ratio)
+        system_message_content = self._fit_system_sections(
+            system_prompt,
+            sections,
+            system_budget,
         )
 
-        # Assemble the full system message.
-        system_message = Message(
-            role="system",
-            content="\n".join(system_parts),
-        )
+        system_message = Message(role="system", content=system_message_content)
 
         # -- 4-6. Fit conversation into budget ------------------------ #
         system_tokens = self.estimate_tokens(system_message.content)
@@ -104,6 +127,56 @@ class ContextManager:
         fitted = self.truncate_to_fit(conv_messages, remaining_budget)
 
         return [system_message] + fitted
+
+    # ------------------------------------------------------------------ #
+    #  System-message fitting
+    # ------------------------------------------------------------------ #
+
+    def _fit_system_sections(
+        self,
+        system_prompt: str,
+        sections: list[tuple[str, str, int]],
+        budget: int,
+    ) -> str:
+        """Assemble the system message, respecting *budget* (tokens).
+
+        The raw ``system_prompt`` is always kept (it carries identity, tool
+        docs, behavioural rules — dropping those breaks the agent).  Injected
+        sections are added in priority order; any section that would push
+        the total past the budget is dropped and logged at INFO level.
+        """
+        used = self.estimate_tokens(system_prompt)
+        if used >= budget:
+            # System prompt alone already exceeds the cap.  We can't fix
+            # this here, but log it so upstream sees the overflow.
+            logger.info(
+                "Context: system prompt alone (%d tok) exceeds system budget "
+                "(%d tok); dropping all injected context sections.",
+                used,
+                budget,
+            )
+            return system_prompt
+
+        parts: list[str] = [system_prompt]
+        # Keep highest-priority (lowest number) sections first.
+        sorted_sections = sorted(sections, key=lambda s: s[2])
+
+        for name, content, _priority in sorted_sections:
+            cost = self.estimate_tokens(content)
+            if used + cost > budget:
+                logger.info(
+                    "Context: dropping %s section (%d tok) — would exceed "
+                    "system budget (%d/%d tok used).",
+                    name,
+                    cost,
+                    used,
+                    budget,
+                )
+                continue
+            parts.append("\n" + content)
+            used += cost
+
+        return "\n".join(parts)
 
     # ------------------------------------------------------------------ #
     #  Token estimation

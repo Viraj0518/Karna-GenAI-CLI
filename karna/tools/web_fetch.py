@@ -17,7 +17,7 @@ import ipaddress
 import re
 import socket
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -37,10 +37,104 @@ _ALLOWED_CONTENT_TYPES = {"text/html", "text/plain", "application/json"}
 # ======================================================================= #
 
 
+def _is_private_ip(ip: str) -> bool:
+    """Return True if *ip* is private, loopback, link-local, reserved, multicast, or unparseable.
+
+    Uses the stdlib ``ipaddress`` module, which correctly normalises
+    octal/hex/decimal-packed encodings (e.g. ``0177.0.0.1`` ->
+    ``127.0.0.1``) and handles IPv6 equivalents. On parse failure we
+    fail closed (return True) so bogus input is blocked rather than
+    allowed through.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return True  # Unparseable = block (fail closed)
+
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
+def _resolve_and_pin(url: str) -> tuple[str, str]:
+    """Resolve the URL's host once and return a URL rewritten to connect to that IP.
+
+    This mitigates DNS rebinding: the guard resolves the host, verifies
+    the IP is public, then pins the downstream httpx connection to the
+    exact IP that was checked. A second DNS lookup by httpx cannot
+    substitute a private IP.
+
+    Returns
+    -------
+    (pinned_url, original_host)
+        ``pinned_url`` has the IP in its netloc and is what httpx should
+        fetch. ``original_host`` is the original hostname — the caller
+        must send it as the ``Host`` header so TLS SNI / vhost routing
+        still work.
+
+    Raises
+    ------
+    ValueError
+        If the URL has no host, fails to resolve, or resolves to a
+        private / loopback / link-local / reserved IP.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL has no host")
+
+    # Single DNS resolution. Use AF_UNSPEC so IPv6-only hosts still work;
+    # we validate whichever family we got back.
+    try:
+        addr_info = socket.getaddrinfo(host, None)
+    except (socket.gaierror, OSError) as exc:
+        raise ValueError(f"DNS resolution failed for {host}: {exc}") from exc
+
+    if not addr_info:
+        raise ValueError(f"No DNS records for {host}")
+
+    # Validate EVERY returned address — if any one is private, block.
+    # Then pin to the first public address.
+    pinned_ip: str | None = None
+    for info in addr_info:
+        ip_str = info[4][0]
+        # Strip IPv6 scope ids (fe80::1%eth0) before ipaddress parses.
+        if "%" in ip_str:
+            ip_str = ip_str.split("%", 1)[0]
+        if _is_private_ip(ip_str):
+            raise ValueError(
+                f"Host {host} resolves to non-public address {ip_str} — blocked"
+            )
+        if pinned_ip is None:
+            pinned_ip = ip_str
+
+    assert pinned_ip is not None
+
+    # Rebuild the netloc with the pinned IP. For IPv6, bracket the address.
+    try:
+        addr_obj = ipaddress.ip_address(pinned_ip)
+        ip_netloc = f"[{pinned_ip}]" if addr_obj.version == 6 else pinned_ip
+    except ValueError:
+        ip_netloc = pinned_ip
+
+    port_suffix = f":{parsed.port}" if parsed.port else ""
+    pinned = urlunparse(parsed._replace(netloc=f"{ip_netloc}{port_suffix}"))
+    return pinned, host
+
+
 def is_safe_url(url: str) -> bool:
     """Reject URLs pointing to private/internal networks.
 
     Returns True if the URL is safe to fetch, False otherwise.
+
+    Note: this is a pre-check used by callers that want a boolean
+    answer (e.g. ``agents/safety.py``). The fetch path additionally
+    uses ``_resolve_and_pin`` at connect time to defeat DNS rebinding.
     """
     parsed = urlparse(url)
 
@@ -52,16 +146,21 @@ def is_safe_url(url: str) -> bool:
     if not hostname:
         return False
 
-    # Resolve hostname to IP and check
+    # Resolve hostname to IP and check every returned address.
     try:
         infos = socket.getaddrinfo(hostname, None)
-        for info in infos:
-            ip_str = info[4][0]
-            addr = ipaddress.ip_address(ip_str)
-            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
-                return False
     except (socket.gaierror, ValueError, OSError):
         return False
+
+    if not infos:
+        return False
+
+    for info in infos:
+        ip_str = info[4][0]
+        if "%" in ip_str:
+            ip_str = ip_str.split("%", 1)[0]
+        if _is_private_ip(ip_str):
+            return False
 
     return True
 
@@ -283,11 +382,20 @@ class WebFetchTool(BaseTool):
         if not url.strip():
             return "[error] Empty URL."
 
-        # SSRF guard
-        if not is_safe_url(url):
-            return "[error] URL blocked: points to a private/internal network address or uses a disallowed scheme."
-
         parsed = urlparse(url)
+
+        # Scheme check — cheap rejection before DNS.
+        if parsed.scheme not in ("http", "https"):
+            return "[error] URL blocked: only http:// and https:// are supported."
+
+        # SSRF guard: resolve DNS once, validate the IP, and pin the
+        # connection to that IP. This defeats DNS rebinding attacks
+        # where the attacker's resolver returns a public IP for the
+        # pre-fetch check and a private IP for the actual fetch.
+        try:
+            pinned_url, original_host = _resolve_and_pin(url)
+        except ValueError as exc:
+            return f"[error] URL blocked: {exc}"
 
         # robots.txt check
         try:
@@ -298,18 +406,31 @@ class WebFetchTool(BaseTool):
         except Exception:
             pass  # On robots.txt failure, proceed (be permissive)
 
-        # Fetch the page
+        # Fetch the page against the pinned IP, preserving the original
+        # Host header so virtual-host routing still works. For HTTPS we
+        # also pass the ``sni_hostname`` request extension so TLS SNI
+        # and certificate-hostname verification use the original name
+        # rather than the raw IP.
+        port_for_host_header = f":{parsed.port}" if parsed.port else ""
+        host_header = f"{original_host}{port_for_host_header}"
+        request_extensions: dict[str, Any] = {}
+        if parsed.scheme == "https":
+            request_extensions["sni_hostname"] = original_host
         try:
             async with httpx.AsyncClient(
                 headers={
                     "User-Agent": _USER_AGENT,
                     "Accept": "text/html, text/plain, application/json",
+                    "Host": host_header,
                 },
                 timeout=_DEFAULT_TIMEOUT,
                 follow_redirects=True,
                 max_redirects=5,
             ) as client:
-                resp = await client.get(url)
+                resp = await client.get(
+                    pinned_url,
+                    extensions=request_extensions or None,
+                )
                 resp.raise_for_status()
         except httpx.TimeoutException:
             return f"[error] Request timed out after {_DEFAULT_TIMEOUT}s"

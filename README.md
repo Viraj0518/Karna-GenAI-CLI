@@ -37,7 +37,7 @@ nellie
 
 ## Why Nellie?
 
-- **Any model** — OpenRouter (200+ models including free), Anthropic, OpenAI, Azure, local/Ollama
+- **Any model** — OpenRouter (200+ models), Anthropic, OpenAI, Azure OpenAI, Google Vertex AI, AWS Bedrock, local/Ollama, multi-credential failover
 - **15 tools** — bash, read, write, edit, grep, glob, git, web search, web fetch, clipboard, image, notebook, monitor, task, MCP
 - **Parallel tool execution** — independent reads/greps run concurrently; writes are serialized for safety
 - **Zero telemetry** — nothing phones home, ever

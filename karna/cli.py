@@ -98,9 +98,48 @@ def repl() -> None:
 @auth_app.command("login")
 def auth_login(
     provider: str = typer.Argument(..., help="Provider name (e.g. openrouter, openai, anthropic)"),
+    api_key: str = typer.Option(
+        None,
+        "--key",
+        "-k",
+        help="API key (will prompt if not provided).",
+    ),
 ) -> None:
-    """Authenticate with a model provider."""
-    rprint(f"[yellow]auth login for [bold]{provider}[/bold] — not yet implemented.[/yellow]")
+    """Store credentials for a model provider."""
+    from karna.auth.credentials import save_credential
+
+    if not api_key:
+        api_key = typer.prompt(f"API key for {provider}", hide_input=True)
+    path = save_credential(provider, {"api_key": api_key})
+    rprint(f"[green]Saved {provider} credential to {path}[/green]")
+
+
+@auth_app.command("list")
+def auth_list() -> None:
+    """List providers that have stored credentials."""
+    from karna.auth.credentials import list_credentials
+
+    providers = list_credentials()
+    if not providers:
+        rprint("[bright_black]No credentials stored.[/bright_black]")
+        return
+    for p in providers:
+        rprint(f"  {p}")
+
+
+@auth_app.command("logout")
+def auth_logout(
+    provider: str = typer.Argument(..., help="Provider name to remove credentials for"),
+) -> None:
+    """Delete stored credentials for a provider."""
+    from karna.auth.credentials import CREDENTIALS_DIR
+
+    path = CREDENTIALS_DIR / f"{provider}.token.json"
+    if not path.exists():
+        rprint(f"[red]No credentials found for {provider}[/red]")
+        raise typer.Exit(code=1)
+    path.unlink()
+    rprint(f"[green]Removed {provider} credential ({path})[/green]")
 
 
 # --------------------------------------------------------------------------- #
@@ -116,7 +155,13 @@ def model_root(
     if ctx.invoked_subcommand is not None:
         return
     cfg = load_config()
-    rprint(f"[bold]Active model:[/bold] {cfg.active_provider}/{cfg.active_model}")
+    provider = cfg.active_provider
+    model = cfg.active_model
+    # Strip redundant provider prefix if the stored model already starts with it.
+    prefix = f"{provider}/"
+    if model.startswith(prefix):
+        model = model[len(prefix):]
+    rprint(f"[bold]Active model:[/bold] {provider}/{model}")
 
 
 @model_app.command("set")
@@ -132,6 +177,21 @@ def model_set(
         raise typer.Exit(code=1)
 
     provider, model = model_spec.split(":", 1)
+    provider = provider.strip().lower()
+    model = model.strip()
+
+    # Validate against the provider registry (prefix-only; no network calls).
+    from karna.providers import PROVIDERS
+
+    if provider not in PROVIDERS:
+        available = ", ".join(sorted(PROVIDERS))
+        rprint(f"[red]Unknown provider '{provider}'. Available: {available}[/red]")
+        raise typer.Exit(code=1)
+
+    if not model:
+        rprint("[red]Model name cannot be empty.[/red]")
+        raise typer.Exit(code=1)
+
     cfg = load_config()
     cfg.active_provider = provider
     cfg.active_model = model
@@ -512,7 +572,7 @@ def init(
     project_dir.mkdir(exist_ok=True)
     (project_dir / ".gitignore").write_text("*\n")
 
-    rprint("\n[green]\u2713 Project initialized. Run `nellie` to start.[/green]")
+    rprint("\n[green][OK] Project initialized. Run `nellie` to start.[/green]")
 
 
 # --------------------------------------------------------------------------- #

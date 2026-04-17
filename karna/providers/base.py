@@ -15,6 +15,29 @@ Security invariants:
 - Request/response bodies are NEVER logged (contain user conversations)
 - Only model name, token count, latency, and cost are logged
 
+Two retry layers -- WHY THEY COEXIST
+------------------------------------
+
+Karna has two separate retry surfaces:
+
+1. **Transport-level retry** -- ``BaseProvider._request_with_retry`` in
+   this file. Wraps a single ``httpx`` request. Retries on 429 + 5xx
+   + timeouts, parses the ``Retry-After`` header, surfaces failures
+   as raised exceptions. This is the right layer for provider
+   implementations (``openai.py``, ``anthropic.py``, ...) that make a
+   single HTTP call per provider method invocation.
+
+2. **Agent-loop-level retry** -- ``_call_provider_with_retry`` in
+   ``karna/agents/loop.py``. Wraps a full ``provider.stream`` call.
+   Retries on the same transient classes but also emits a
+   ``StreamEvent`` of type ``"error"`` so the UI can show a
+   "retrying..." notice mid-stream. This is the right layer for
+   streaming providers that may fail part-way through.
+
+Both layers share the same jittered-exponential-backoff math via
+``karna.providers._retry.jittered_backoff`` so the timing semantics
+stay in lock-step.
+
 Portions adapted from hermes-agent retry_utils.py (MIT).
 See NOTICES.md for attribution.
 """
@@ -35,16 +58,20 @@ import httpx
 
 from karna.auth.pool import AllKeysExhaustedError, CredentialPool
 from karna.models import Message, ModelInfo, StreamEvent, Usage, estimate_cost
+from karna.providers._retry import (
+    DEFAULT_BASE_DELAY,
+    DEFAULT_JITTER_RATIO,
+    DEFAULT_MAX_DELAY,
+    jittered_backoff as _shared_jittered_backoff,
+)
 
 logger = logging.getLogger(__name__)
 
 CREDENTIALS_DIR = Path.home() / ".karna" / "credentials"
 
-# Retry defaults (ported from hermes-agent retry_utils.py)
+# Retry defaults (ported from hermes-agent retry_utils.py; canonical
+# values live in ``karna.providers._retry``).
 DEFAULT_MAX_RETRIES = 3
-DEFAULT_BASE_DELAY = 2.0
-DEFAULT_MAX_DELAY = 60.0
-DEFAULT_JITTER_RATIO = 0.5
 
 # HTTP status codes that trigger a retry
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -59,23 +86,15 @@ def _jittered_backoff(
 ) -> float:
     """Compute a jittered exponential backoff delay.
 
-    Ported from hermes-agent retry_utils.py (MIT).
-    Decorrelates concurrent retries to avoid thundering-herd spikes.
+    Thin wrapper around :func:`karna.providers._retry.jittered_backoff`
+    kept for backwards-compat import paths.
     """
-    exponent = max(0, attempt - 1)
-    if exponent >= 63 or base_delay <= 0:
-        delay = max_delay
-    else:
-        delay = min(base_delay * (2**exponent), max_delay)
-
-    try:
-        task_id = id(asyncio.current_task()) if asyncio.get_event_loop().is_running() else 0
-    except RuntimeError:
-        task_id = 0
-    seed = (time.time_ns() ^ (task_id * 0x9E3779B9)) & 0xFFFFFFFF
-    rng = random.Random(seed)
-    jitter = rng.uniform(0, jitter_ratio * delay)
-    return delay + jitter
+    return _shared_jittered_backoff(
+        attempt,
+        base_delay=base_delay,
+        max_delay=max_delay,
+        jitter_ratio=jitter_ratio,
+    )
 
 
 def _parse_retry_after(response: httpx.Response) -> float | None:

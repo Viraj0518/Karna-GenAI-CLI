@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 _REQUEST_TIMEOUT = 30  # seconds per JSON-RPC call
 
 
+class MCPClientError(RuntimeError):
+    """Raised for MCP client-side failures (dead reader, crashed server)."""
+
+
 # ----------------------------------------------------------------------- #
 #  MCP Server Connection
 # ----------------------------------------------------------------------- #
@@ -57,6 +61,12 @@ class MCPServerConnection:
         self._request_id = 0
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._reader_task: asyncio.Task[None] | None = None
+        # CRITICAL fix: when the reader loop crashes (malformed JSON,
+        # dead subprocess) every subsequent call() would hang for
+        # _REQUEST_TIMEOUT seconds before failing.  Track liveness
+        # explicitly so we fail fast.
+        self._dead: bool = False
+        self._dead_reason: str = ""
 
     # ------------------------------------------------------------------ #
     #  Lifecycle
@@ -126,6 +136,10 @@ class MCPServerConnection:
 
     async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Send a JSON-RPC request and wait for the response."""
+        if self._dead:
+            raise MCPClientError(
+                f"MCP server {self.name} is dead: {self._dead_reason}"
+            )
         self._request_id += 1
         req_id = self._request_id
 
@@ -173,15 +187,24 @@ class MCPServerConnection:
         await self._send(msg)
 
     async def _read_loop(self) -> None:
-        """Background task: read JSON-RPC messages from stdout and dispatch."""
+        """Background task: read JSON-RPC messages from stdout and dispatch.
+
+        On ANY exception (including EOF/dead process), mark the
+        connection dead and fail all pending futures fast.  Without
+        this, every pending ``call()`` would hang for the full
+        ``_REQUEST_TIMEOUT`` window (30 s) before raising.
+        """
         if not self.process or not self.process.stdout:
+            self._mark_dead("reader started with no stdout")
             return
 
+        exc_reason: str | None = None
         try:
             while True:
                 line = await self.process.stdout.readline()
                 if not line:
-                    break  # EOF
+                    exc_reason = "EOF on stdout (server exited)"
+                    break
 
                 line_str = line.decode().strip()
                 if not line_str:
@@ -206,9 +229,40 @@ class MCPServerConnection:
                     logger.debug("MCP %s: unmatched message id=%s", self.name, msg_id)
 
         except asyncio.CancelledError:
+            # Clean shutdown — don't mark dead or fail pending futures
+            # (stop() is coordinating the teardown).
             return
         except Exception as exc:
+            exc_reason = f"reader crashed: {exc}"
             logger.error("MCP %s reader crashed: %s", self.name, exc)
+
+        # Reader loop has ended (EOF or exception).  Mark dead and
+        # fail every pending future so callers get a fast error
+        # instead of timing out one by one.
+        self._mark_dead(exc_reason or "reader loop ended")
+
+    def _mark_dead(self, reason: str) -> None:
+        """Mark the connection dead, fail pending futures, close pipes."""
+        if self._dead:
+            return
+        self._dead = True
+        self._dead_reason = reason
+
+        pending = self._pending
+        self._pending = {}
+        for fut in pending.values():
+            if not fut.done():
+                fut.set_exception(MCPClientError(reason))
+
+        # Best-effort pipe cleanup.  Swallow errors: if the process
+        # is already gone these will raise ProcessLookupError etc.
+        proc = self.process
+        if proc is not None:
+            try:
+                if proc.stdin and not proc.stdin.is_closing():
+                    proc.stdin.close()
+            except Exception:
+                pass
 
 
 # ----------------------------------------------------------------------- #
@@ -259,12 +313,26 @@ class MCPClientTool(BaseTool):
         self._load_configured_servers()
 
     def _load_configured_servers(self) -> None:
-        """Load MCP server configs from ~/.karna/config.toml."""
+        """Load MCP server configs from ~/.karna/config.toml.
+
+        A malformed TOML file is surfaced (logged + printed) rather than
+        silently producing "no servers configured", which previously
+        made broken configs look identical to no config at all.
+        """
         if not CONFIG_PATH.exists():
             return
 
-        raw = CONFIG_PATH.read_bytes()
-        data = tomllib.loads(raw.decode())
+        try:
+            raw = CONFIG_PATH.read_bytes()
+            data = tomllib.loads(raw.decode())
+        except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as exc:
+            logger.error("MCP config parse failed for %s: %s", CONFIG_PATH, exc)
+            print(
+                f"[mcp] WARN: failed to load {CONFIG_PATH}: {exc}",
+                file=sys.stderr,
+            )
+            return
+
         mcp_section = data.get("mcp", {})
         servers = mcp_section.get("servers", {})
 

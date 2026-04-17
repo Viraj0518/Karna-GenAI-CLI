@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Sequence
 
 from karna.memory.types import MEMORY_TYPES, MemoryEntry, MemoryType, parse_memory_type
+from karna.security.guards import scrub_secrets
 
 # --------------------------------------------------------------------------- #
 #  Frontmatter parser (lightweight, no PyYAML dependency)
@@ -257,13 +258,19 @@ class MemoryManager:
             fp = self.memory_dir / f"{slug}_{counter}.md"
             counter += 1
 
+        # Scrub any API keys / tokens from the body and description before
+        # the memory is persisted to disk — memories live for weeks and may
+        # be read back into prompts, so any secret here would leak.
+        safe_description = scrub_secrets(description)
+        safe_content = scrub_secrets(content)
+
         fm = {
             "name": name,
-            "description": description,
+            "description": safe_description,
             "type": type,
         }
-        fp.write_text(_render_frontmatter(fm, content), encoding="utf-8")
-        self._add_index_entry(name, fp.name, description)
+        fp.write_text(_render_frontmatter(fm, safe_content), encoding="utf-8")
+        self._add_index_entry(name, fp.name, safe_description)
         return fp
 
     # ------------------------------------------------------------------ #
@@ -280,7 +287,9 @@ class MemoryManager:
 
         text = file_path.read_text(encoding="utf-8")
         fm, _old_body = _parse_frontmatter(text)
-        file_path.write_text(_render_frontmatter(fm, content), encoding="utf-8")
+        # Scrub secrets before writing — same policy as save_memory().
+        safe_content = scrub_secrets(content)
+        file_path.write_text(_render_frontmatter(fm, safe_content), encoding="utf-8")
         # Touch to update mtime
         os.utime(file_path)
 
