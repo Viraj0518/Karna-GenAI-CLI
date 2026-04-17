@@ -23,10 +23,8 @@ from karna.tui.themes import (
     BRAND_BLUE,
     COST_INFO,
     ERROR,
-    TOOL_CALL,
     TOOL_RESULT,
 )
-
 
 # --------------------------------------------------------------------------- #
 #  Event protocol — provider layer yields these to the REPL
@@ -182,7 +180,7 @@ class OutputRenderer:
             self.console.print(
                 Panel(
                     Text(preview, style=TOOL_RESULT),
-                    title=f"[dim green]tool result[/dim green]",
+                    title="[dim green]tool result[/dim green]",
                     border_style="dim green",
                     expand=False,
                 )

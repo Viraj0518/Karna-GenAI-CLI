@@ -29,7 +29,7 @@ def print_banner(
         f"[bold #87CEEB]karna[/bold #87CEEB] [dim]v{__version__}[/dim]",
         f"[bright_black]model:[/bright_black]  [white]{model_label}[/white]",
         f"[bright_black]tools:[/bright_black]  [white]{tool_count} loaded[/white]",
-        f"[bright_black]/help for commands[/bright_black]",
+        "[bright_black]/help for commands[/bright_black]",
     ]
 
     panel = Panel(

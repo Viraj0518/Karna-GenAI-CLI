@@ -12,7 +12,6 @@ from karna.tui.banner import print_banner
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
 from karna.tui.slash import COMMANDS, SessionCost, handle_slash_command
 
-
 # --------------------------------------------------------------------------- #
 #  Banner
 # --------------------------------------------------------------------------- #

@@ -17,7 +17,6 @@ from rich.table import Table
 from karna.config import KarnaConfig, save_config
 from karna.models import Conversation
 
-
 # --------------------------------------------------------------------------- #
 #  Session-level cost tracking (populated by output.py)
 # --------------------------------------------------------------------------- #
