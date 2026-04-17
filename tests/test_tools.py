@@ -381,7 +381,7 @@ class TestGlobTool:
 
 class TestRegistry:
     def test_get_tool_known(self):
-        for name in ("bash", "read", "write", "edit", "grep", "glob", "web_search", "web_fetch"):
+        for name in ("bash", "read", "write", "edit", "grep", "glob", "web_search", "web_fetch", "clipboard", "image"):
             tool = get_tool(name)
             assert tool.name == name
 
@@ -392,4 +392,4 @@ class TestRegistry:
     def test_get_all_tools(self):
         tools = get_all_tools()
         names = {t.name for t in tools}
-        assert names == {"bash", "read", "write", "edit", "grep", "glob", "web_search", "web_fetch"}
+        assert names == {"bash", "read", "write", "edit", "grep", "glob", "web_search", "web_fetch", "clipboard", "image"}

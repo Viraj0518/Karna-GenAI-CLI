@@ -21,7 +21,10 @@ _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "glob": ("karna.tools.glob", "GlobTool"),
     "web_search": ("karna.tools.web_search", "WebSearchTool"),
     "web_fetch": ("karna.tools.web_fetch", "WebFetchTool"),
+    "clipboard": ("karna.tools.clipboard", "ClipboardTool"),
+    "image": ("karna.tools.image", "ImageTool"),
 }
+# MCP tools are registered dynamically at runtime via MCPClientTool
 
 # Public alias — maps tool name → (module, class) for introspection.
 TOOLS: dict[str, tuple[str, str]] = dict(_TOOL_PATHS)
