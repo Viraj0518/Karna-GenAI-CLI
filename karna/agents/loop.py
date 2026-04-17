@@ -37,6 +37,7 @@ import httpx
 
 from karna.agents.safety import pre_tool_check
 from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResult
+from karna.permissions.manager import PermissionLevel, PermissionManager
 from karna.providers.base import BaseProvider
 from karna.tools import get_tool
 from karna.tools.base import BaseTool
@@ -59,13 +60,41 @@ async def _execute_tool(
     arguments: dict[str, Any],
     *,
     timeout: float = _DEFAULT_TOOL_TIMEOUT,
+    permission_manager: PermissionManager | None = None,
+    console: Any = None,
 ) -> ToolResult:
     """Run a single tool and return a ``ToolResult``.
 
     Catches all exceptions so the agent loop never crashes from tool
     errors — granular error types are preserved so the model can
     reason about what went wrong and adapt its approach.
+
+    When *permission_manager* is provided, the 3-tier permission check
+    runs before the safety check:
+    - DENY  -> immediately blocked
+    - ASK   -> user prompted via *console*
+    - ALLOW -> auto-approved
     """
+    # ---- Permission check (3-tier) -----------------------------------
+    if permission_manager is not None:
+        level = permission_manager.check(tool.name, arguments)
+        if level == PermissionLevel.DENY:
+            return ToolResult(
+                tool_call_id="",
+                content=f"Permission denied: {tool.name} is blocked by your permission config.",
+                is_error=True,
+            )
+        if level == PermissionLevel.ASK:
+            approved = await permission_manager.request_approval(
+                tool.name, arguments, console,
+            )
+            if not approved:
+                return ToolResult(
+                    tool_call_id="",
+                    content=f"User declined: {tool.name} call was not approved.",
+                    is_error=True,
+                )
+
     # Pre-execution safety check
     proceed, warning = await pre_tool_check(tool, arguments)
     if not proceed:
@@ -97,6 +126,100 @@ async def _execute_tool(
         msg = f"Tool '{tool.name}' failed: {type(exc).__name__}: {exc}"
         logger.exception("Tool %s raised: %s", tool.name, exc)
         return ToolResult(tool_call_id="", content=msg, is_error=True)
+
+
+# ----------------------------------------------------------------------- #
+#  Parallel / sequential tool dispatch
+# ----------------------------------------------------------------------- #
+
+async def _execute_tool_calls(
+    tool_calls: list[ToolCall],
+    tool_map: dict[str, BaseTool],
+) -> list[ToolResult]:
+    """Execute a batch of tool calls, running independent ones in parallel.
+
+    Strategy:
+    1. Resolve each ``ToolCall`` to its ``BaseTool`` instance and handle
+       immediate errors (malformed JSON, unknown tool) without scheduling.
+    2. Partition resolved calls into *parallel* (``tool.sequential is False``)
+       and *sequential* (``tool.sequential is True``) groups.
+    3. Fire all parallel calls concurrently via ``asyncio.gather``.
+    4. Run sequential calls one-at-a-time in order.
+    5. Return results in the original tool-call order so that the
+       conversation history is deterministic.
+
+    Errors in one parallel call never affect others — each coroutine
+    catches its own exceptions via ``_execute_tool``.
+    """
+    # Pre-resolve every call so we know which are parallel / sequential
+    resolved: list[tuple[ToolCall, BaseTool | None, ToolResult | None]] = []
+    for tc in tool_calls:
+        # Malformed JSON that couldn't be parsed during streaming
+        if "__parse_error__" in tc.arguments:
+            raw_preview = tc.arguments["__parse_error__"]
+            immediate = ToolResult(
+                tool_call_id=tc.id,
+                content=f"Invalid tool arguments (malformed JSON): {raw_preview}",
+                is_error=True,
+            )
+            resolved.append((tc, None, immediate))
+            continue
+
+        tool = tool_map.get(tc.name)
+        if tool is None:
+            immediate = ToolResult(
+                tool_call_id=tc.id,
+                content=f"[error] Unknown tool: {tc.name}",
+                is_error=True,
+            )
+            resolved.append((tc, None, immediate))
+        else:
+            resolved.append((tc, tool, None))
+
+    # Build index-keyed futures for the final ordered output
+    results: dict[int, ToolResult] = {}
+
+    # Immediately fill in pre-resolved errors
+    for idx, (tc, tool, immediate) in enumerate(resolved):
+        if immediate is not None:
+            results[idx] = immediate
+
+    # Partition remaining calls
+    parallel_indices: list[int] = []
+    sequential_indices: list[int] = []
+    for idx, (tc, tool, immediate) in enumerate(resolved):
+        if immediate is not None:
+            continue
+        assert tool is not None
+        if tool.sequential:
+            sequential_indices.append(idx)
+        else:
+            parallel_indices.append(idx)
+
+    # --- Parallel batch (asyncio.gather) ---
+    if parallel_indices:
+        async def _run_parallel(idx: int) -> tuple[int, ToolResult]:
+            tc, tool, _ = resolved[idx]
+            assert tool is not None
+            result = await _execute_tool(tool, tc.arguments)
+            return idx, result.model_copy(update={"tool_call_id": tc.id})
+
+        gathered = await asyncio.gather(
+            *[_run_parallel(i) for i in parallel_indices],
+            return_exceptions=False,  # _execute_tool already catches everything
+        )
+        for idx, result in gathered:
+            results[idx] = result
+
+    # --- Sequential calls (one-at-a-time, in order) ---
+    for idx in sequential_indices:
+        tc, tool, _ = resolved[idx]
+        assert tool is not None
+        result = await _execute_tool(tool, tc.arguments)
+        results[idx] = result.model_copy(update={"tool_call_id": tc.id})
+
+    # Return in original order
+    return [results[i] for i in range(len(tool_calls))]
 
 
 # ----------------------------------------------------------------------- #
@@ -433,31 +556,8 @@ async def agent_loop(
             )
         )
 
-        # Execute each tool call
-        tool_results: list[ToolResult] = []
-        for tc in pending_tool_calls:
-            # Handle malformed JSON that couldn't be parsed
-            if "__parse_error__" in tc.arguments:
-                raw_preview = tc.arguments["__parse_error__"]
-                result = ToolResult(
-                    tool_call_id=tc.id,
-                    content=f"Invalid tool arguments (malformed JSON): {raw_preview}",
-                    is_error=True,
-                )
-                tool_results.append(result)
-                continue
-
-            tool = tool_map.get(tc.name)
-            if tool is None:
-                result = ToolResult(
-                    tool_call_id=tc.id,
-                    content=f"[error] Unknown tool: {tc.name}",
-                    is_error=True,
-                )
-            else:
-                result = await _execute_tool(tool, tc.arguments)
-                result = result.model_copy(update={"tool_call_id": tc.id})
-            tool_results.append(result)
+        # Execute tool calls — parallel when safe, sequential otherwise
+        tool_results = await _execute_tool_calls(pending_tool_calls, tool_map)
 
         # Append tool result message
         conversation.messages.append(
@@ -588,20 +688,8 @@ async def agent_loop_sync(
         # Append assistant message with tool calls
         conversation.messages.append(response)
 
-        # Execute each tool call
-        tool_results: list[ToolResult] = []
-        for tc in response.tool_calls:
-            tool = tool_map.get(tc.name)
-            if tool is None:
-                result = ToolResult(
-                    tool_call_id=tc.id,
-                    content=f"[error] Unknown tool: {tc.name}",
-                    is_error=True,
-                )
-            else:
-                result = await _execute_tool(tool, tc.arguments)
-                result = result.model_copy(update={"tool_call_id": tc.id})
-            tool_results.append(result)
+        # Execute tool calls — parallel when safe, sequential otherwise
+        tool_results = await _execute_tool_calls(response.tool_calls, tool_map)
 
         # Append tool result message
         conversation.messages.append(

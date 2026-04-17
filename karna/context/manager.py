@@ -21,6 +21,7 @@ from karna.context.environment import EnvironmentContext
 from karna.context.git import GitContext
 from karna.context.project import ProjectContext
 from karna.models import Conversation, Message
+from karna.tokens import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +111,8 @@ class ContextManager:
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
-        """Fast token estimation: ~4 chars per token for English."""
-        return len(text) // 4
+        """Token count via tiktoken when available, else len//4 fallback."""
+        return count_tokens(text)
 
     # ------------------------------------------------------------------ #
     #  Truncation

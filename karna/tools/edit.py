@@ -34,6 +34,7 @@ class EditTool(BaseTool):
     """
 
     name = "edit"
+    sequential = True  # File edits must not run concurrently
     description = (
         "Replace an exact string in a file with new content. "
         "old_string must be unique unless replace_all is true."

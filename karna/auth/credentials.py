@@ -69,6 +69,20 @@ def load_credential(provider: str) -> dict[str, Any]:
     return data
 
 
+def load_credential_pool(provider: str) -> "CredentialPool":
+    """Load credentials for *provider* and wrap them in a ``CredentialPool``.
+
+    Handles both single-key (``{"api_key": "..."}`) and multi-key
+    (``{"keys": [...], "strategy": "..."}}``) formats transparently.
+
+    Returns an empty pool if no credential file exists.
+    """
+    from karna.auth.pool import CredentialPool
+
+    data = load_credential(provider)
+    return CredentialPool.from_credential_data(provider, data)
+
+
 def list_credentials() -> list[str]:
     """Return a list of provider names that have saved credentials."""
     _ensure_dir()

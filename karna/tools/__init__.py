@@ -23,6 +23,7 @@ _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "web_fetch": ("karna.tools.web_fetch", "WebFetchTool"),
     "clipboard": ("karna.tools.clipboard", "ClipboardTool"),
     "image": ("karna.tools.image", "ImageTool"),
+    "git": ("karna.tools.git_ops", "GitTool"),
 }
 # MCP tools are registered dynamically at runtime via MCPClientTool
 

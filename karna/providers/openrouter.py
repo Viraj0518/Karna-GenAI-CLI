@@ -25,6 +25,7 @@ import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
 from karna.providers.base import BaseProvider
+from karna.providers.caching import PromptCache
 
 # Model aliases: short names -> full OpenRouter model IDs
 MODEL_ALIASES: dict[str, str] = {

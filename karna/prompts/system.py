@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from karna.prompts.tool_descriptions import generate_tool_docs
+from karna.tokens import count_tokens
 
 if TYPE_CHECKING:
     from karna.config import KarnaConfig
@@ -163,13 +164,8 @@ def _format_context_sections(sections: list[tuple[str, str, int]]) -> str:
 # ------------------------------------------------------------------ #
 
 def _estimate_tokens(text: str) -> int:
-    """Rough token estimate: ~4 characters per token.
-
-    This is intentionally conservative (overestimates token count)
-    so we stay within budget.  For precise counts, the caller can
-    use a proper tokenizer.
-    """
-    return len(text) // 3
+    """Token count via tiktoken when available, else len//4 fallback."""
+    return count_tokens(text)
 
 
 def _trim_to_budget(

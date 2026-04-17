@@ -33,6 +33,7 @@ class WriteTool(BaseTool):
     """
 
     name = "write"
+    sequential = True  # File writes must not run concurrently
     description = (
         "Write content to a file. Creates parent directories if needed. "
         "Overwrites existing files."

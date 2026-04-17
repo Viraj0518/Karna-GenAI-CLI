@@ -19,11 +19,17 @@ class BaseTool(ABC):
     Subclasses must set ``name``, ``description``, and ``parameters``
     (a JSON Schema dict describing the tool's input), then implement
     the async ``execute`` method.
+
+    Tools with ``sequential = True`` must never run concurrently with
+    other tool calls — they are executed one-at-a-time even when the
+    model requests multiple tools in a single turn.  File-mutating
+    tools (bash, write, edit) should set this flag.
     """
 
     name: str = ""
     description: str = ""
     parameters: dict[str, Any] = {}  # JSON Schema
+    sequential: bool = False  # If True, never run in parallel with other calls
 
     # ------------------------------------------------------------------ #
     #  Core interface

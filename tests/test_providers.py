@@ -107,7 +107,8 @@ def test_resolve_model_unknown_prefix_treated_as_default() -> None:
 
 
 def test_openrouter_constructs_with_env_key() -> None:
-    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
+         patch("karna.providers.openrouter.OpenRouterProvider._load_credential", return_value={}):
         p = get_provider("openrouter", model="openrouter/auto")
     assert p.name == "openrouter"
     assert p._api_key == "test-key"

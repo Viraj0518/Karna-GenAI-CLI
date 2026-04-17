@@ -24,6 +24,7 @@ import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
 from karna.providers.base import BaseProvider
+from karna.providers.caching import PromptCache
 
 # Anthropic API version
 ANTHROPIC_VERSION = "2023-06-01"
@@ -70,6 +71,7 @@ class AnthropicProvider(BaseProvider):
     ) -> None:
         super().__init__(max_retries=max_retries, timeout=timeout)
         self.model = model
+        self._cache = PromptCache()
         cred = self._load_credential()
         self._api_key = cred.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
 
@@ -186,13 +188,31 @@ class AnthropicProvider(BaseProvider):
 
     @staticmethod
     def _extract_usage(data: dict[str, Any], model: str) -> Usage:
-        """Extract usage from an Anthropic response."""
+        """Extract usage from an Anthropic response.
+
+        Adjusts cost estimate for cached tokens:
+        - cache_read tokens are billed at 10% of the normal input rate
+        - cache_creation tokens are billed at 125% of the normal input rate
+        - base input_tokens excludes cached tokens (already counted separately)
+        """
         raw = data.get("usage", {})
         input_tokens = raw.get("input_tokens", 0)
         output_tokens = raw.get("output_tokens", 0)
         cache_read = raw.get("cache_read_input_tokens", 0)
         cache_write = raw.get("cache_creation_input_tokens", 0)
+
+        # Base cost for non-cached input + output
         cost = estimate_cost("anthropic", model, input_tokens, output_tokens)
+
+        # Adjust for cached tokens if we have pricing data
+        if cost is not None and (cache_read or cache_write):
+            # Get per-token input cost from the base estimate
+            base_input_cost = estimate_cost("anthropic", model, 1_000_000, 0)
+            if base_input_cost is not None and base_input_cost > 0:
+                per_token = base_input_cost / 1_000_000
+                # cache reads at 10%, cache writes at 125%
+                cost += cache_read * per_token * 0.1
+                cost += cache_write * per_token * 1.25
 
         return Usage(
             input_tokens=input_tokens,
@@ -222,9 +242,12 @@ class AnthropicProvider(BaseProvider):
             "max_tokens": max_tokens or _get_max_output_tokens(self.model),
         }
         if system_prompt:
-            payload["system"] = system_prompt
+            # Use structured system with cache_control for prompt caching
+            payload["system"] = PromptCache.prepare_anthropic_system(system_prompt)
         if tools:
-            payload["tools"] = self._serialize_tools(tools)
+            serialized = self._serialize_tools(tools)
+            # Mark last tool with cache_control for prompt caching
+            payload["tools"] = PromptCache.mark_anthropic_tools(serialized)
         if temperature is not None:
             payload["temperature"] = temperature
 
@@ -241,6 +264,7 @@ class AnthropicProvider(BaseProvider):
         text, tool_calls = self._parse_response(data)
         usage = self._extract_usage(data, self.model)
         self._track_usage(usage)
+        self._cache.record_usage(usage.cache_read_tokens, usage.cache_write_tokens)
 
         return Message(
             role="assistant",
@@ -273,9 +297,12 @@ class AnthropicProvider(BaseProvider):
             "stream": True,
         }
         if system_prompt:
-            payload["system"] = system_prompt
+            # Use structured system with cache_control for prompt caching
+            payload["system"] = PromptCache.prepare_anthropic_system(system_prompt)
         if tools:
-            payload["tools"] = self._serialize_tools(tools)
+            serialized = self._serialize_tools(tools)
+            # Mark last tool with cache_control for prompt caching
+            payload["tools"] = PromptCache.mark_anthropic_tools(serialized)
         if temperature is not None:
             payload["temperature"] = temperature
 
@@ -368,18 +395,10 @@ class AnthropicProvider(BaseProvider):
 
                     event_type = None
 
-        # Emit final usage
-        input_tokens = usage_data.get("input_tokens", 0)
-        output_tokens = usage_data.get("output_tokens", 0)
-        cost = estimate_cost("anthropic", self.model, input_tokens, output_tokens)
-        usage = Usage(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=usage_data.get("cache_read_input_tokens", 0),
-            cache_write_tokens=usage_data.get("cache_creation_input_tokens", 0),
-            cost_usd=cost,
-        )
+        # Emit final usage — use _extract_usage for cache-adjusted cost
+        usage = self._extract_usage({"usage": usage_data}, self.model)
         self._track_usage(usage)
+        self._cache.record_usage(usage.cache_read_tokens, usage.cache_write_tokens)
         yield StreamEvent(type="done", usage=usage)
 
     async def list_models(self) -> list[ModelInfo]:

@@ -41,7 +41,7 @@ def test_banner_shows_tool_count() -> None:
 
 def test_slash_commands_registered() -> None:
     """All expected commands should be present in the COMMANDS table."""
-    expected = {"help", "model", "clear", "history", "cost", "exit", "quit", "compact", "tools", "system"}
+    expected = {"help", "model", "clear", "history", "cost", "exit", "quit", "compact", "tools", "system", "resume", "paste", "copy", "sessions"}
     assert expected == set(COMMANDS.keys())
 
 

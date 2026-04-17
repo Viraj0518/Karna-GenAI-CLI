@@ -52,6 +52,7 @@ class BashTool(BaseTool):
     """
 
     name = "bash"
+    sequential = True  # Shell commands must not run concurrently
     description = (
         "Execute a bash command and return stdout/stderr. "
         "The working directory persists between calls."

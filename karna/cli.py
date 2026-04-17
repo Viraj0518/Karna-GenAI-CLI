@@ -11,6 +11,7 @@ Commands
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import typer
 from rich import print as rprint
@@ -465,6 +466,53 @@ def mcp_test(
         await client.shutdown()
 
     asyncio.run(_run())
+
+
+# --------------------------------------------------------------------------- #
+#  Init command
+# --------------------------------------------------------------------------- #
+
+AI_CONFIG_FILES = ["CLAUDE.md", ".cursorrules", ".github/copilot-instructions.md"]
+
+
+@app.command()
+def init(
+    provider: str = typer.Option(None, help="Default provider"),
+    model: str = typer.Option(None, help="Default model"),
+) -> None:
+    """Initialize Karna for this project.
+
+    Creates KARNA.md with project-specific instructions.
+    Detects existing configs (CLAUDE.md, .cursorrules) and imports.
+    """
+    from karna.init import detect_project_type, generate_karna_md_for_path
+
+    cwd = Path.cwd()
+
+    # Check for existing AI configs
+    existing = [name for name in AI_CONFIG_FILES if (cwd / name).exists()]
+    if existing:
+        rprint(f"[bright_black]Found existing AI config: {', '.join(existing)}[/bright_black]")
+        rprint("[bright_black]Karna will read these automatically. Creating KARNA.md for additional instructions.[/bright_black]")
+
+    # Detect project type
+    project_type = detect_project_type(cwd)
+
+    # Generate & write KARNA.md
+    karna_md = cwd / "KARNA.md"
+    if karna_md.exists():
+        rprint("[yellow]KARNA.md already exists. Skipping.[/yellow]")
+    else:
+        template = generate_karna_md_for_path(cwd, project_type, provider, model)
+        karna_md.write_text(template)
+        rprint(f"[green]Created KARNA.md ({len(template)} bytes)[/green]")
+
+    # Create .karna/ project dir
+    project_dir = cwd / ".karna"
+    project_dir.mkdir(exist_ok=True)
+    (project_dir / ".gitignore").write_text("*\n")
+
+    rprint("\n[green]\u2713 Project initialized. Run `nellie` to start.[/green]")
 
 
 # --------------------------------------------------------------------------- #

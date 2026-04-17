@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from karna.auth.pool import AllKeysExhaustedError, CredentialPool
 from karna.models import Message, ModelInfo, StreamEvent, Usage, estimate_cost
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ class BaseProvider(ABC):
         timeout: float = 120.0,
     ) -> None:
         self._api_key: str | None = None
+        self.credential_pool: CredentialPool | None = None
         self.max_retries = max_retries
         self.timeout = timeout
         # Cumulative usage across calls for this provider instance
