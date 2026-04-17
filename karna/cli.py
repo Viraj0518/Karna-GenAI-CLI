@@ -1,4 +1,4 @@
-"""Karna CLI — entry point exposed as ``nellie``.
+"""Nellie CLI — entry point exposed as ``nellie``.
 
 Commands
 --------
@@ -26,7 +26,7 @@ from karna.config import load_config, save_config
 
 app = typer.Typer(
     name="nellie",
-    help="Karna — personal-use AI agent harness.",
+    help="Nellie — Karna's internal AI agent harness.",
     no_args_is_help=False,
     invoke_without_command=True,
 )
@@ -73,7 +73,7 @@ def root(
         is_eager=True,
     ),
 ) -> None:
-    """Karna — personal-use AI agent harness. CLI binary: nellie."""
+    """Nellie — Karna's internal AI agent harness. CLI binary: nellie."""
     if ctx.invoked_subcommand is None:
         # No subcommand → launch the interactive REPL
         from karna.tui import run_repl
@@ -145,9 +145,9 @@ def model_set(
 
 @config_app.command("show")
 def config_show() -> None:
-    """Dump the current Karna configuration."""
+    """Dump the current Nellie configuration."""
     cfg = load_config()
-    table = Table(title="Karna Configuration")
+    table = Table(title="Nellie Configuration")
     table.add_column("Key", style="cyan")
     table.add_column("Value", style="green")
     for key, value in cfg.model_dump().items():
@@ -480,7 +480,7 @@ def init(
     provider: str = typer.Option(None, help="Default provider"),
     model: str = typer.Option(None, help="Default model"),
 ) -> None:
-    """Initialize Karna for this project.
+    """Initialize Nellie for this project.
 
     Creates KARNA.md with project-specific instructions.
     Detects existing configs (CLAUDE.md, .cursorrules) and imports.
@@ -493,7 +493,7 @@ def init(
     existing = [name for name in AI_CONFIG_FILES if (cwd / name).exists()]
     if existing:
         rprint(f"[bright_black]Found existing AI config: {', '.join(existing)}[/bright_black]")
-        rprint("[bright_black]Karna will read these automatically. Creating KARNA.md for additional instructions.[/bright_black]")
+        rprint("[bright_black]Nellie will read these automatically. Creating KARNA.md for additional instructions.[/bright_black]")
 
     # Detect project type
     project_type = detect_project_type(cwd)

@@ -38,7 +38,7 @@ class KarnaConfig(BaseModel):
     active_model: str = Field(default="openrouter/auto", description="Currently active model identifier (<provider>/<model>)")
     active_provider: str = Field(default="openrouter", description="Provider name for the active model")
     system_prompt: str = Field(
-        default="You are Karna, a helpful AI assistant.",
+        default="You are Nellie, Karna's AI assistant.",
         description="Default system prompt sent with every conversation",
     )
     max_tokens: int = Field(default=4096, ge=1, description="Max tokens for completion")

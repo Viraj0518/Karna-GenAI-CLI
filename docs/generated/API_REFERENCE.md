@@ -1,8 +1,10 @@
-# Karna API Reference
+# Nellie API Reference -- Karna Engineering
 
-> **Karna** — Personal-use AI agent harness. CLI binary: `nellie`.
+> **Nellie** — Karna's internal AI agent harness. CLI binary: `nellie`.
+>
+> Auto-generated documentation -- verify against source
 
-This document covers the complete API surface of Karna version 0.1.0.
+This document covers the complete API surface of Nellie version 0.1.0.
 
 ---
 
@@ -213,10 +215,10 @@ Commands for managing Model Context Protocol (MCP) servers. Full subcommand list
 ### 2.1 Configuration Schema
 
 ```toml
-[Karna]
+[Nellie]
 active_model = "openrouter/auto"
 active_provider = "openrouter"
-system_prompt = "You are Karna, a helpful AI assistant."
+system_prompt = "You are Nellie, Karna's AI assistant."
 max_tokens = 4096
 temperature = 0.7
 safe_mode = false
@@ -228,7 +230,7 @@ safe_mode = false
 |-------|------|---------|-------------|-------------|
 | `active_model` | string | `"openrouter/auto"` | — | Currently active model identifier in `<provider>/<model>` format |
 | `active_provider` | string | `"openrouter"` | — | Provider name for the active model |
-| `system_prompt` | string | `"You are Karna, a helpful AI assistant."` | — | Default system prompt sent with every conversation |
+| `system_prompt` | string | `"You are Nellie, Karna's AI assistant."` | — | Default system prompt sent with every conversation |
 | `max_tokens` | integer | `4096` | `ge=1` | Maximum tokens for completion |
 | `temperature` | float | `0.7` | `0.0 <= x <= 2.0` | Sampling temperature |
 | `safe_mode` | boolean | `false` | — | When `true`, block dangerous bash commands instead of warning |

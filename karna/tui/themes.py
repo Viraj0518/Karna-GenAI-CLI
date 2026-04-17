@@ -1,6 +1,6 @@
-"""Color theme for the Karna TUI.
+"""Color theme for the Nellie TUI.
 
-Dark-background aesthetic matching the Kaeva brand palette.
+Dark-background aesthetic matching the Karna brand palette.
 All colors are defined here so the rest of the TUI can stay
 presentation-agnostic.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 from rich.style import Style
 from rich.theme import Theme
 
-# ── Kaeva brand accent ──────────────────────────────────────────────────
+# ── Karna brand accent ──────────────────────────────────────────────────
 BRAND_BLUE = "#3C73BD"
 
 # ── Semantic palette ────────────────────────────────────────────────────

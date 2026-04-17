@@ -1,18 +1,19 @@
 ```markdown
-# Karna
+# Nellie
 
-**Personal-use AI agent harness. CLI binary: `nellie`.**
+> **Auto-generated documentation -- verify against source**
+
+**Karna's internal AI agent harness. CLI binary: `nellie`.**
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/karna/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Karna is a local-first, multi-provider AI agent framework designed for personal
-productivity. It connects to LLM providers (OpenRouter, OpenAI, Anthropic,
-Azure, local endpoints) and gives the model access to tools (bash, file
-read/edit, grep, glob, web search, and more) so it can act as a capable coding
-and research assistant.
+Nellie is Karna's internal, local-first, multi-provider AI agent framework
+for engineering teams. It connects to LLM providers (OpenRouter, OpenAI,
+Anthropic, Azure, local endpoints) and gives the model access to tools (bash,
+file read/edit, grep, glob, web search, and more) so it can act as a capable
+coding and research assistant.
 
-Everything runs locally. Your conversations never leave your machine by
+Everything runs locally. Conversations never leave the machine by
 default, and credentials are stored with restrictive file permissions.
 
 ---
@@ -57,7 +58,7 @@ cd Karna-GenAI-CLI
 pip install -e ".[dev]"
 ```
 
-This installs Karna with development dependencies (pytest, ruff, pre-commit).
+This installs Nellie with development dependencies (pytest, ruff, pre-commit).
 
 ### Optional Extras
 
@@ -119,7 +120,7 @@ nellie config show
 
 ## ⚙️ Configuration
 
-Karna stores configuration in `~/.karna/config.toml`. On first run, it creates
+Nellie stores configuration in `~/.karna/config.toml`. On first run, it creates
 the directory structure with secure permissions:
 
 ```
@@ -135,7 +136,7 @@ the directory structure with secure permissions:
 |---------|------|---------|-------------|
 | `active_model` | string | `openrouter/auto` | Active model identifier (`provider/model`) |
 | `active_provider` | string | `openrouter` | Default provider name |
-| `system_prompt` | string | `You are Karna, a helpful AI assistant.` | Default system prompt |
+| `system_prompt` | string | `You are Nellie, Karna's AI assistant.` | Default system prompt |
 | `max_tokens` | int | `4096` | Maximum tokens per completion |
 | `temperature` | float | `0.7` | Sampling temperature (0.0–2.0) |
 | `safe_mode` | bool | `false` | Block dangerous bash commands instead of warning |
@@ -146,7 +147,7 @@ the directory structure with secure permissions:
 [app]
 active_model = "openrouter/anthropic/claude-sonnet-4-20250514"
 active_provider = "openrouter"
-system_prompt = "You are Karna, a helpful AI assistant focused on code quality."
+system_prompt = "You are Nellie, Karna's AI assistant focused on code quality."
 max_tokens = 8192
 temperature = 0.7
 safe_mode = false
@@ -229,7 +230,7 @@ nellie mcp remove <server>      # Remove an MCP server
 
 ## 🔌 Provider Support
 
-Karna supports multiple LLM providers out of the box:
+Nellie supports multiple LLM providers out of the box:
 
 | Provider | ID | Features | Notes |
 |----------|----|----------|-------|
@@ -269,7 +270,7 @@ Short aliases for common models are supported when using OpenRouter:
 
 ## 🛠 Tool List
 
-Karna ships with a set of built-in tools. Each tool is exposed to the LLM
+Nellie ships with a set of built-in tools. Each tool is exposed to the LLM
 with auto-generated documentation.
 
 | Tool | Description | Key Functions |
@@ -288,14 +289,14 @@ with auto-generated documentation.
 
 ### MCP Tools
 
-Karna supports Model Context Protocol servers. Tools from connected MCP
+Nellie supports Model Context Protocol servers. Tools from connected MCP
 servers are dynamically registered and available alongside built-in tools.
 
 ---
 
 ## 🔒 Security Model
 
-Karna is designed with security as a first-class concern:
+Nellie is designed with security as a first-class concern:
 
 ### Credential Security
 
@@ -409,16 +410,16 @@ karna/
 
 ---
 
-## 🤝 Contributing
+## Internal Contribution Guidelines
 
-Contributions are welcome! Please follow these guidelines:
+For Karna engineers contributing to Nellie:
 
 ### Getting Started
 
-1. **Fork the repository** and clone locally:
+1. **Clone the repository**:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Karna-GenAI-CLI.git
+git clone https://github.com/Viraj0518/Karna-GenAI-CLI.git
 cd Karna-GenAI-CLI
 pip install -e ".[dev]"
 ```

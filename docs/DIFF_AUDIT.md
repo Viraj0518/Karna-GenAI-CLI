@@ -1,4 +1,4 @@
-# Diff Audit: Karna/Nellie vs Claude Code vs OpenClaw vs Hermes Agent
+# Diff Audit: Nellie vs Claude Code vs OpenClaw vs Hermes Agent
 
 > Generated 2026-04-17 by gamma from source-level reading of all four codebases.
 
@@ -223,35 +223,35 @@ Ranked by impact (user value x frequency of need):
 
 ---
 
-## Section 3: What Karna Has That Claude Code Doesn't
+## Section 3: What Nellie Has That Claude Code Doesn't
 
-These are our **differentiators** -- features where Karna is ahead or serves a different niche:
+These are our **differentiators** -- features where Nellie is ahead or serves a different niche:
 
 ### 1. Model-Agnostic Architecture
-CC is locked to Anthropic's API. Karna supports **6 providers** out of the box (Anthropic, OpenAI, Azure, OpenRouter, Local, and any OpenAI-compatible endpoint). Users can switch models mid-conversation with `/model`. This is the single biggest differentiator.
+CC is locked to Anthropic's API. Nellie supports **6 providers** out of the box (Anthropic, OpenAI, Azure, OpenRouter, Local, and any OpenAI-compatible endpoint). Users can switch models mid-conversation with `/model`. This is the single biggest differentiator.
 
 ### 2. Azure OpenAI First-Class Support
-CC has zero Azure support. Karna has a full `AzureOpenAIProvider` with deployment-based routing, `api-key` header auth, and Azure-specific endpoint construction. Critical for enterprise users.
+CC has zero Azure support. Nellie has a full `AzureOpenAIProvider` with deployment-based routing, `api-key` header auth, and Azure-specific endpoint construction. Critical for enterprise users.
 
 ### 3. Web Search Built-In (No MCP Required)
-CC requires an MCP server for web search. Karna has `WebSearchTool` with a cascading backend (DuckDuckGo -> Brave -> SearXNG) that works out of the box with zero configuration and zero API keys.
+CC requires an MCP server for web search. Nellie has `WebSearchTool` with a cascading backend (DuckDuckGo -> Brave -> SearXNG) that works out of the box with zero configuration and zero API keys.
 
 ### 4. Web Fetch with robots.txt Respect
-Karna's `WebFetchTool` checks `robots.txt` before fetching, which CC does not. This is both more ethical and reduces the chance of IP blocks.
+Nellie's `WebFetchTool` checks `robots.txt` before fetching, which CC does not. This is both more ethical and reduces the chance of IP blocks.
 
 ### 5. Self-Hosted / Privacy-First
-- **Zero telemetry**: Karna sends nothing to any developer service. CC has analytics (`logEvent` calls throughout).
+- **Zero telemetry**: Nellie sends nothing to any developer service. CC has analytics (`logEvent` calls throughout).
 - **Local credential storage**: All credentials in `~/.karna/credentials/` with 0600 permissions. CC uses Anthropic's auth flow.
 - **No account required**: Bring your own API key. CC requires an Anthropic account.
 
-### 6. Open Source (MIT)
-CC is proprietary (Anthropic copyright, source-available but not OSS). Karna is MIT-licensed.
+### 6. Proprietary Internal Tool
+CC is proprietary (Anthropic copyright, source-available but not OSS). Nellie is an internal Karna tool.
 
 ### 7. Clipboard Tool Built-In
-CC has no native clipboard support (requires MCP). Karna has a cross-platform `ClipboardTool` (macOS pbcopy/pbpaste, Linux xclip/wl-copy, WSL) with `/paste` and `/copy` slash commands.
+CC has no native clipboard support (requires MCP). Nellie has a cross-platform `ClipboardTool` (macOS pbcopy/pbpaste, Linux xclip/wl-copy, WSL) with `/paste` and `/copy` slash commands.
 
 ### 8. Cost-Aware Routing (Planned)
-CC has no concept of budget limits or cost-aware model selection. Karna's architecture (multi-provider + pricing table in `sessions/cost.py`) enables routing queries to cheaper models when budget is tight -- a planned feature with the infrastructure already in place.
+CC has no concept of budget limits or cost-aware model selection. Nellie's architecture (multi-provider + pricing table in `sessions/cost.py`) enables routing queries to cheaper models when budget is tight -- a planned feature with the infrastructure already in place.
 
 ### 9. Python-Native
 Written in Python, installable via `pip`, extensible via Python modules. CC is TypeScript/Node.js. For the Python ecosystem (data science, ML, DevOps), a Python agent is a natural fit.
@@ -322,7 +322,7 @@ Written in Python, installable via `pip`, extensible via Python modules. CC is T
 
 ## Section 5: What OpenClaw Has That We Should Steal
 
-OpenClaw is architecturally very different from Karna -- it's a gateway-based system with native iOS/Android apps, not a CLI agent. Relevant patterns:
+OpenClaw is architecturally very different from Nellie -- it's a gateway-based system with native iOS/Android apps, not a CLI agent. Relevant patterns:
 
 ### 1. ACP (Agent Client Protocol) Bridge (P2 -- 20 hrs)
 `docs.acp.md` + `src/` ACP implementation:

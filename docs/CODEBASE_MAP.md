@@ -1,4 +1,4 @@
-# Karna Codebase Map
+# Nellie Codebase Map -- Karna Engineering
 
 > One-liner per `.py` file. Updated 2026-04-17.
 
@@ -153,7 +153,7 @@ karna/tui/output.py                    — OutputRenderer: Rich-based streaming 
 karna/tui/input.py                     — Multiline input: prompt_toolkit preferred, plain input() fallback, backslash continuation
 karna/tui/slash.py                     — 14 slash commands: help, model, clear, history, cost, exit, compact, tools, system, sessions, resume, paste, copy
 karna/tui/banner.py                    — Startup banner: version, model, tool count in Rich panel with brand colours
-karna/tui/themes.py                    — Colour theme: Kaeva brand palette (#3C73BD blue, #87CEEB sky-blue), Rich Theme object
+karna/tui/themes.py                    — Colour theme: Karna brand palette (#3C73BD blue, #87CEEB sky-blue), Rich Theme object
 ```
 
 ## Stubs (Not Yet Implemented)

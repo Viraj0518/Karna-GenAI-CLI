@@ -1,6 +1,6 @@
 """Git operations tool with safety guards.
 
-Provides structured git operations for the Karna agent with built-in
+Provides structured git operations for the Nellie agent with built-in
 safety checks: blocks force-push, blocks reset --hard, warns on dirty
 tree checkouts, and never auto-pushes.
 """
@@ -14,7 +14,7 @@ from typing import Any
 from karna.tools.base import BaseTool
 
 _TIMEOUT = 30  # seconds — git ops should be fast
-_CO_AUTHOR = "Co-Authored-By: Karna <noreply@kaeva.app>"
+_CO_AUTHOR = "Co-Authored-By: Nellie <noreply@karna.dev>"
 
 
 async def _run(cmd: str, cwd: str) -> tuple[int, str]:
@@ -30,10 +30,10 @@ async def _run(cmd: str, cwd: str) -> tuple[int, str]:
             "GIT_TERMINAL_PROMPT": "0",
             # Ensure git identity is always available (fallback for machines
             # without global git config — e.g., CI, containers, cloud VMs).
-            "GIT_AUTHOR_NAME": os.environ.get("GIT_AUTHOR_NAME", os.environ.get("USER", "Karna")),
-            "GIT_COMMITTER_NAME": os.environ.get("GIT_COMMITTER_NAME", os.environ.get("USER", "Karna")),
-            "GIT_AUTHOR_EMAIL": os.environ.get("GIT_AUTHOR_EMAIL", "karna@local"),
-            "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL", "karna@local"),
+            "GIT_AUTHOR_NAME": os.environ.get("GIT_AUTHOR_NAME", os.environ.get("USER", "Nellie")),
+            "GIT_COMMITTER_NAME": os.environ.get("GIT_COMMITTER_NAME", os.environ.get("USER", "Nellie")),
+            "GIT_AUTHOR_EMAIL": os.environ.get("GIT_AUTHOR_EMAIL", "nellie@karna.dev"),
+            "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL", "nellie@karna.dev"),
         },
     )
     try:

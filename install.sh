@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Karna/Nellie — one-command installer
+# Nellie installer — Karna Engineering
 # Usage: curl -fsSL https://raw.githubusercontent.com/Viraj0518/Karna-GenAI-CLI/main/install.sh | bash
 set -euo pipefail
 
@@ -8,7 +8,7 @@ PACKAGE="karna"
 BINARY="nellie"
 
 echo "╭─────────────────────────────────╮"
-echo "│  Installing Karna ($BINARY)     │"
+echo "│  Installing Nellie ($BINARY)    │"
 echo "╰─────────────────────────────────╯"
 
 # Check Python 3.10+

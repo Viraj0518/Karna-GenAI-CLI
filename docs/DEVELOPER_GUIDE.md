@@ -1,6 +1,6 @@
-# Karna Developer Guide
+# Nellie Developer Guide -- Karna Engineering
 
-> Karna (CLI binary: `nellie`) is a personal-use, privacy-first AI agent harness.
+> Nellie (CLI binary: `nellie`) is Karna's internal AI agent harness.
 > It sends zero telemetry. The only network traffic is provider API calls,
 > web search/fetch (user-initiated), and MCP connections (user-configured).
 
@@ -115,7 +115,7 @@ Typer CLI entry point exposed as the `nellie` console script (see `pyproject.tom
 
 ### karna/agents/loop.py
 
-The heart of Karna. Implements the iterative tool-call cycle.
+The heart of Nellie. Implements the iterative tool-call cycle.
 
 **Key functions:**
 - `agent_loop()` -- async generator yielding `StreamEvent` objects. Streaming variant.
@@ -303,7 +303,7 @@ Configuration management via `~/.karna/config.toml`.
 |---|---|---|
 | `active_model` | `openrouter/auto` | Currently active model |
 | `active_provider` | `openrouter` | Provider name |
-| `system_prompt` | `You are Karna...` | Default system prompt |
+| `system_prompt` | `You are Nellie...` | Default system prompt |
 | `max_tokens` | 4096 | Max tokens for completion |
 | `temperature` | 0.7 | Sampling temperature |
 | `safe_mode` | false | Block (vs warn) dangerous commands |
@@ -639,7 +639,7 @@ Startup banner -- version, active model, tool count, quick-help hint in a Rich p
 
 #### karna/tui/themes.py
 
-Color theme constants (Kaeva brand palette: `#3C73BD` blue, `#87CEEB` sky-blue) and Rich `Theme` object.
+Color theme constants (Karna brand palette: `#3C73BD` blue, `#87CEEB` sky-blue) and Rich `Theme` object.
 
 ### karna/init.py
 
@@ -661,7 +661,7 @@ Project initialization for `nellie init`.
 
 ---
 
-## Extension Guide
+## Extension Guide -- For Karna Engineers Adding Capabilities
 
 ### Adding a New Tool
 

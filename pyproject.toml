@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "karna"
 version = "0.1.0"
-description = "Karna — personal-use AI agent harness. CLI binary: nellie."
+description = "Nellie — Karna's internal AI agent harness. CLI binary: nellie."
 authors = [{name = "Viraj Sharma", email = "virajsharma8547@gmail.com"}]
 license = "MIT"
 readme = "README.md"

@@ -84,7 +84,7 @@ class OpenRouterProvider(BaseProvider):
         headers: dict[str, str] = {
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/Viraj0518/Karna-GenAI-CLI",
-            "X-Title": "Karna",
+            "X-Title": "Nellie",
         }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"

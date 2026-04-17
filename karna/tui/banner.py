@@ -1,7 +1,7 @@
 """Startup banner printed when the REPL launches.
 
 Displays version, active model, loaded tools, and a quick-help hint
-inside a Rich panel with Kaeva-branded colours.
+inside a Rich panel with Karna-branded colours.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ def print_banner(
     tool_count = len(tool_names)
 
     lines = [
-        f"[bold #87CEEB]karna[/bold #87CEEB] [dim]v{__version__}[/dim]",
+        f"[bold #87CEEB]nellie[/bold #87CEEB] [dim]v{__version__}[/dim]",
         f"[bright_black]model:[/bright_black]  [white]{model_label}[/white]",
         f"[bright_black]tools:[/bright_black]  [white]{tool_count} loaded[/white]",
         "[bright_black]/help for commands[/bright_black]",

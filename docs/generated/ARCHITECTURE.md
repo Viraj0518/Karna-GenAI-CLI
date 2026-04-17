@@ -1,10 +1,12 @@
-# Karna Architecture
+# Nellie Architecture -- Karna Engineering
 
-Karna (CLI: `nellie`) is a local-first, multi-provider AI agent framework designed for personal productivity. It connects to LLM providers and gives models access to tools so they can act as capable coding and research assistants.
+> Auto-generated documentation -- verify against source
+
+Nellie (CLI: `nellie`) is Karna's internal, local-first, multi-provider AI agent framework for engineering teams. It connects to LLM providers and gives models access to tools so they can act as capable coding and research assistants.
 
 ## System Overview
 
-Karna operates as an interactive agent loop: it receives user input, sends it to an LLM provider, and when the model requests tool execution, Karna runs those tools locally and feeds the results back. This cycle repeats until the model produces a final response.
+Nellie operates as an interactive agent loop: it receives user input, sends it to an LLM provider, and when the model requests tool execution, Nellie runs those tools locally and feeds the results back. This cycle repeats until the model produces a final response.
 
 **Core design principles:**
 
@@ -247,7 +249,7 @@ The agent loop (`karna/agents/loop.py`) is the core execution engine.
 
 ```
 1. Build system prompt from:
-   - Identity (Karna persona)
+   - Identity (Nellie persona)
    - Available tools (auto-generated from tool registry)
    - Behavioral guidelines
    - Context (git status, current directory, etc.)

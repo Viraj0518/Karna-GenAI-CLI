@@ -22,7 +22,7 @@ import httpx
 
 from karna.tools.base import BaseTool
 
-_USER_AGENT = "Karna/0.1.0 (personal AI assistant)"
+_USER_AGENT = "Nellie/0.1.0 (Karna AI assistant)"
 _DEFAULT_TIMEOUT = 15  # seconds
 _MAX_RESULTS_DEFAULT = 10
 
