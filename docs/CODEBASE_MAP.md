@@ -156,14 +156,19 @@ karna/tui/banner.py                    — Startup banner: version, model, tool 
 karna/tui/themes.py                    — Colour theme: Karna brand palette (#3C73BD blue, #87CEEB sky-blue), Rich Theme object
 ```
 
-## Stubs (Not Yet Implemented)
+## Plugin System
 
 ```
-karna/backends/__init__.py             — Phase 3 stub: backend abstraction layer
-karna/gateway/__init__.py              — Phase 4 stub: API gateway
-karna/server/__init__.py               — Phase 4 stub: server mode
-karna/plugins/__init__.py              — Phase 4 stub: plugin system
+karna/plugins/__init__.py              — Public exports: KarnaContext, Plugin, PluginLoader, PluginManifestError
+karna/plugins/loader.py                — Minimal plugin loader: discover ~/.karna/plugins/*, parse plugin.toml, import entry callable, activate with KarnaContext
 ```
+
+## Removed Stubs
+
+The previously listed `karna/backends/`, `karna/gateway/`, and `karna/server/`
+stub packages have been deleted. Nellie is CLI + TUI only today; HTTP gateway,
+remote daemon/server mode, and a backend connection-pooling abstraction are
+tracked as future work in the root `README.md` Roadmap section.
 
 ## Prompt Templates
 

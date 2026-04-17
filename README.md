@@ -6,9 +6,10 @@
 
 Nellie is a local-first, multi-provider AI agent framework built by Karna
 for internal engineering use. It connects to LLM providers (OpenRouter,
-OpenAI, Anthropic, Azure, local endpoints) and gives the model access to
-tools (bash, file read/edit, grep, glob, web search, git operations) so it
-can act as a capable coding and research assistant.
+OpenAI, Anthropic, Azure, Vertex AI, AWS Bedrock, local endpoints) and gives
+the model access to tools (bash, file read/edit, grep, glob, web search,
+git operations, MCP servers) so it can act as a capable coding and research
+assistant. Works on Linux, macOS, and Windows.
 
 ## Quick Start
 
@@ -26,14 +27,30 @@ cd Karna-GenAI-CLI
 pip install -e ".[dev]"
 ```
 
+**Supported terminals:**
+- Linux: any terminal (GNOME Terminal, kitty, alacritty, tmux, etc.)
+- macOS: Terminal.app, iTerm2
+- Windows: native `cmd.exe`, PowerShell, or Windows Terminal
+- WSL: any Linux terminal
+- **Not supported:** Git Bash / MSYS2 / Cygwin — prompt-toolkit can't attach to their console. Use one of the above.
+
 ### Configure
 
 ```bash
-# Set your API key (OpenRouter is the default provider)
-export OPENROUTER_API_KEY="sk-or-v1-..."
+# Option A: env var (simplest)
+export OPENROUTER_API_KEY="sk-or-v1-..."     # or ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
+
+# Option B: store encrypted credential (persists across sessions)
+nellie auth login openrouter                  # prompts for API key
+nellie auth login anthropic --key sk-ant-...  # or pass inline
+nellie auth list                              # show configured providers
+nellie auth logout openrouter                 # remove
 
 # Set active model
 nellie model set openrouter:meta-llama/llama-3.3-70b-instruct
+nellie model set anthropic:claude-sonnet-4-5
+nellie model set vertex:gemini-2.5-pro
+nellie model set bedrock:anthropic.claude-sonnet-4
 
 # View config
 nellie config show
@@ -68,7 +85,7 @@ nellie config show
 
 | Category | Details |
 |----------|---------|
-| **Multi-Provider** | OpenRouter, OpenAI, Anthropic, Azure OpenAI, local/Ollama endpoints |
+| **Multi-Provider** | OpenRouter, OpenAI, Anthropic, Azure OpenAI, Google Vertex AI, AWS Bedrock, local/Ollama endpoints, multi-credential failover |
 | **Tool-Using Agent** | Iterative tool-call loop with bash, file I/O, grep, glob, web search/fetch, clipboard, git operations |
 | **MCP Support** | Connect to Model Context Protocol servers for extended capabilities |
 | **Local Sessions** | SQLite-backed session history stored in `~/.karna/sessions/` |
@@ -97,10 +114,17 @@ karna/
   skills/         -- Skill system
   hooks/          -- Lifecycle hooks
   compaction/     -- Context compaction
-  gateway/        -- API gateway (planned)
-  plugins/        -- Plugin system (planned)
-  server/         -- Server mode (planned)
+  plugins/        -- Third-party plugin loader (discover/load/activate)
 ```
+
+## Roadmap
+
+Nellie today is CLI + TUI only. The following are **not** implemented and
+are tracked as future work:
+
+- HTTP/API gateway for remote agent access
+- Long-lived daemon / server mode with multi-client sessions
+- Pluggable backend abstraction for provider connection pooling
 
 ## License
 

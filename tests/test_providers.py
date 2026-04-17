@@ -58,7 +58,12 @@ def test_registry_unknown_raises() -> None:
 
 
 def test_providers_dict_has_all() -> None:
-    assert set(PROVIDERS.keys()) == {"openrouter", "openai", "azure", "anthropic", "local"}
+    # Core providers must remain registered. New optional providers may also
+    # be present; assert inclusion rather than equality so adding providers
+    # doesn't break this test.
+    assert {"openrouter", "openai", "azure", "anthropic", "local"}.issubset(
+        set(PROVIDERS.keys())
+    )
 
 
 # --------------------------------------------------------------------------- #

@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 CREDENTIALS_DIR = Path.home() / ".karna" / "credentials"
 
 
+class CredentialNotFoundError(FileNotFoundError):
+    """Raised when a provider's credentials cannot be found.
+
+    Carries an actionable message ("run: nellie auth login <provider>")
+    so the user is not left staring at an obscure 401 further downstream.
+    """
+
+
 def _ensure_dir() -> None:
     """Create the credentials directory if it doesn't exist.
 
@@ -58,12 +66,20 @@ def save_credential(provider: str, data: dict[str, Any]) -> Path:
 def load_credential(provider: str) -> dict[str, Any]:
     """Read and return the credential dict for *provider*.
 
-    Returns an empty dict if no credential file exists.
+    Raises :class:`CredentialNotFoundError` with an actionable message if
+    the credential file does not exist.  Previously this returned an
+    empty dict, which downstream code silently turned into an empty API
+    key string and then an obscure 401 response from the provider.
+
     Credential values are never logged in full -- only the first 8 chars.
     """
     path = CREDENTIALS_DIR / f"{provider}.token.json"
     if not path.exists():
-        return {}
+        raise CredentialNotFoundError(
+            f"No credentials for '{provider}'. "
+            f"Run: nellie auth login {provider}\n"
+            f"Or set {provider.upper()}_API_KEY env var."
+        )
     data = json.loads(path.read_text())
     _log_credential_event("loaded", provider, data)
     return data
@@ -75,11 +91,15 @@ def load_credential_pool(provider: str) -> "CredentialPool":
     Handles both single-key (``{"api_key": "..."}`) and multi-key
     (``{"keys": [...], "strategy": "..."}}``) formats transparently.
 
-    Returns an empty pool if no credential file exists.
+    Returns an empty pool if no credential file exists — callers that
+    need a hard failure should use :func:`load_credential` directly.
     """
     from karna.auth.pool import CredentialPool
 
-    data = load_credential(provider)
+    try:
+        data = load_credential(provider)
+    except CredentialNotFoundError:
+        data = {}
     return CredentialPool.from_credential_data(provider, data)
 
 

@@ -1,4 +1,10 @@
-"""Project initialisation helpers for ``nellie init``."""
+"""Project initialisation helpers for the ``nellie init`` CLI command.
+
+Note: this module is named ``init.py`` (not ``__init__.py``) on purpose.
+The Python package initialiser lives in ``karna/__init__.py``; this file
+backs the *user-facing* ``nellie init`` subcommand, which scaffolds a
+``KARNA.md`` for a project. Keep the two distinct.
+"""
 
 from __future__ import annotations
 

@@ -6,12 +6,19 @@ paths, and requests to private network addresses.
 
 Ported from cc-src BashTool security patterns with attribution
 to the Anthropic Claude Code codebase.
+
+CANONICAL SOURCE OF TRUTH: ``_SENSITIVE_PATHS`` (defined below) is the
+single source of truth for sensitive-path detection across Karna.
+``karna/security/guards.py`` should defer to this list — if you need to
+add a new sensitive path, add it here.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -61,21 +68,39 @@ def check_dangerous_command(command: str) -> str | None:
 #  Sensitive path detection
 # ----------------------------------------------------------------------- #
 
+# CANONICAL sensitive-path list. Other modules (e.g. ``karna/security/guards.py``)
+# should treat this as the source of truth. If you add a new sensitive path,
+# add it here, not in guards.py.
+#
+# Entries may be absolute (``/etc/shadow``) or user-relative (``~/.ssh``).
+# They are matched via ``Path.is_relative_to`` after full resolution +
+# tilde expansion, so a directory entry matches everything inside it.
 _SENSITIVE_PATHS: list[str] = [
+    # System credential / auth files
     "/etc/shadow",
     "/etc/passwd",
     "/etc/sudoers",
-    "/etc/ssh/",
-    "/.ssh/",
-    "/.gnupg/",
-    "/.aws/credentials",
-    "/.aws/config",
+    "/etc/ssh",
+    # User-level credentials & secret stores
+    "~/.ssh",
+    "~/.gnupg",
+    "~/.aws/credentials",
+    "~/.aws/config",
+    "~/.config",
+    "~/.local/share/karna",
+    "~/.karna/credentials",
+    "~/.npm",
+    "~/.pypirc",
+    "~/.netrc",
+    "~/.docker/config.json",
+    # Common dotfiles / creds lying around the filesystem
     "/.env",
     "/credentials.json",
     "/service-account.json",
-    "/.karna/credentials/",
 ]
 
+# Filename suffix / substring patterns that are always sensitive regardless
+# of their parent directory (e.g. a stray id_rsa in /tmp).
 _SENSITIVE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\.pem$"),
     re.compile(r"\.key$"),
@@ -84,17 +109,61 @@ _SENSITIVE_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
+def _resolve_sensitive(entry: str) -> Path | None:
+    """Expand ``~`` and resolve a sensitive-path entry. Returns None if unresolvable."""
+    try:
+        return Path(os.path.expanduser(entry)).resolve()
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
 def is_safe_path(path: str) -> bool:
-    """Return True if *path* does not point to a known sensitive location."""
+    """Return True if *path* does not point to a known sensitive location.
+
+    Uses ``Path.is_relative_to`` against fully-resolved paths so this is
+    robust against ``..`` traversal, Windows backslashes, and relative
+    paths. Also applies regex patterns to the normalised string form
+    (catches stray ``id_rsa`` / ``*.pem`` files anywhere on disk).
+    """
+    if not path:
+        return True
+
+    # Fall-back string form for pattern matching (slash-normalised).
     normalized = path.replace("\\", "/")
 
-    for sensitive in _SENSITIVE_PATHS:
-        if sensitive in normalized:
-            return False
-
+    # Pattern check (suffix-based: .pem, .key, id_rsa, id_ed25519)
     for pattern in _SENSITIVE_PATTERNS:
         if pattern.search(normalized):
             return False
+
+    # Resolve the candidate path for structural comparison.
+    try:
+        candidate = Path(os.path.expanduser(path)).resolve()
+    except (OSError, ValueError, RuntimeError):
+        # If we cannot resolve it, fall back to naive substring check.
+        for entry in _SENSITIVE_PATHS:
+            expanded = os.path.expanduser(entry).replace("\\", "/")
+            if expanded in normalized:
+                return False
+        return True
+
+    for entry in _SENSITIVE_PATHS:
+        resolved_entry = _resolve_sensitive(entry)
+        if resolved_entry is None:
+            continue
+        # Exact match OR candidate is inside the sensitive directory.
+        if candidate == resolved_entry:
+            return False
+        try:
+            if candidate.is_relative_to(resolved_entry):
+                return False
+        except AttributeError:
+            # Python < 3.9 fallback
+            try:
+                candidate.relative_to(resolved_entry)
+                return False
+            except ValueError:
+                pass
 
     return True
 

@@ -15,10 +15,19 @@ matches user input against triggers, and builds the skills section of
 the system prompt within a token budget.
 
 Adapted from hermes-agent SKILL.md patterns and agentskills.io conventions.
+
+Optional dependency
+-------------------
+``pyyaml`` — if installed, frontmatter is parsed with ``yaml.safe_load``,
+which correctly handles block scalars (``description: |``, ``description: >``)
+and other full-spec YAML.  Without it, we fall back to a minimal parser
+that supports the common inline-scalar / simple-list case and emits a
+one-time warning the first time a multi-line block scalar is encountered.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import shutil
@@ -28,7 +37,18 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, Field
 
+# Optional pyyaml — see module docstring.
+try:
+    import yaml as _yaml  # type: ignore[import-not-found]
+    _HAS_YAML = True
+except ImportError:
+    _yaml = None  # type: ignore[assignment]
+    _HAS_YAML = False
+
 logger = logging.getLogger(__name__)
+
+# One-shot flag so we only nag once per process about missing pyyaml.
+_PYYAML_WARNING_EMITTED = False
 
 # --------------------------------------------------------------------------- #
 #  Frontmatter regex — matches ``---\n<yaml>\n---``
@@ -96,17 +116,33 @@ def _parse_yaml_value(raw: str) -> str | list[str] | bool:
     return stripped
 
 
-def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    """Split a markdown file into frontmatter dict and body text.
+_BLOCK_SCALAR_RE = re.compile(r"^\s*\w[\w-]*\s*:\s*[|>][+-]?\s*$", re.MULTILINE)
 
-    Returns ``({}, text)`` if no frontmatter is found.
+
+def _warn_missing_pyyaml_once() -> None:
+    """Emit a one-time warning when we hit YAML we can't parse."""
+    global _PYYAML_WARNING_EMITTED
+    if _PYYAML_WARNING_EMITTED:
+        return
+    _PYYAML_WARNING_EMITTED = True
+    logger.warning(
+        "Skill frontmatter uses a YAML block scalar (|/>), but pyyaml is not "
+        "installed. Multi-line fields may be truncated or dropped. "
+        "Install with: pip install pyyaml"
+    )
+
+
+def _parse_frontmatter_fallback(yaml_block: str) -> dict[str, Any]:
+    """Minimal YAML subset parser for when pyyaml is unavailable.
+
+    Handles inline scalars, simple ``[a, b]`` lists, ``true``/``false``,
+    and quoted strings.  Block scalars (``key: |`` / ``key: >``) are not
+    supported — we detect them and emit a one-time warning.
     """
-    match = _FRONTMATTER_RE.match(text)
-    if not match:
-        return {}, text
-
-    yaml_block = match.group(1)
-    body = text[match.end():]
+    # Detect block scalars so we can warn the user before silently dropping
+    # their content.
+    if _BLOCK_SCALAR_RE.search(yaml_block):
+        _warn_missing_pyyaml_once()
 
     data: dict[str, Any] = {}
     current_key: str | None = None
@@ -147,7 +183,36 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     if current_key and multiline_value:
         data[current_key] = " ".join(multiline_value)
 
-    return data, body
+    return data
+
+
+def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    """Split a markdown file into frontmatter dict and body text.
+
+    Returns ``({}, text)`` if no frontmatter is found.
+
+    Uses ``yaml.safe_load`` when pyyaml is installed (for full block-scalar
+    support); otherwise falls back to a minimal inline-scalar parser.
+    """
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return {}, text
+
+    yaml_block = match.group(1)
+    body = text[match.end():]
+
+    if _HAS_YAML:
+        try:
+            loaded = _yaml.safe_load(yaml_block)  # type: ignore[union-attr]
+        except Exception:  # pragma: no cover — malformed YAML
+            logger.warning("Failed to parse skill frontmatter as YAML", exc_info=True)
+            loaded = None
+        if isinstance(loaded, dict):
+            return loaded, body
+        # Not a mapping — fall through to fallback parser so we at least
+        # try to recover something sensible.
+
+    return _parse_frontmatter_fallback(yaml_block), body
 
 
 def parse_skill_file(path: Path) -> Skill:
@@ -371,10 +436,10 @@ class SkillManager:
     #  Installation / creation
     # ------------------------------------------------------------------ #
 
-    def install_skill(self, source: str) -> Skill:
+    async def install_skill(self, source: str) -> Skill:
         """Install a skill from a URL or local file path.
 
-        - URLs: downloaded via httpx and saved to ``skills_dir``
+        - URLs: downloaded via ``httpx.AsyncClient`` and saved to ``skills_dir``
         - Local paths: copied to ``skills_dir``
 
         Returns the parsed ``Skill`` object.
@@ -386,16 +451,19 @@ class SkillManager:
         source_path = Path(source)
 
         if source.startswith(("http://", "https://")):
-            # Download from URL
-            response = httpx.get(source, follow_redirects=True, timeout=30)
-            response.raise_for_status()
+            # Download from URL using the async client so we never block
+            # the event loop when called from the REPL / agent loop.
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                response = await client.get(source)
+                response.raise_for_status()
+                content = response.text
 
             # Derive filename from URL
             url_path = source.rstrip("/").split("/")[-1]
             if not url_path.endswith(".md"):
                 url_path += ".md"
             dest = self.skills_dir / url_path
-            dest.write_text(response.text, encoding="utf-8")
+            dest.write_text(content, encoding="utf-8")
 
         elif source_path.is_file():
             # Copy local file
@@ -413,6 +481,22 @@ class SkillManager:
         self.skills.append(skill)
 
         return skill
+
+    def install_skill_sync(self, source: str) -> Skill:
+        """Synchronous wrapper around :meth:`install_skill`.
+
+        Safe to call only from synchronous contexts (no running event loop).
+        From async code, prefer ``await install_skill(...)``.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop — safe to spin up a fresh one.
+            return asyncio.run(self.install_skill(source))
+        raise RuntimeError(
+            "install_skill_sync() called from a running event loop; "
+            "use `await install_skill(...)` instead."
+        )
 
     def create_skill(
         self,

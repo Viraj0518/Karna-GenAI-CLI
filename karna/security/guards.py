@@ -18,34 +18,58 @@ from urllib.parse import urlparse
 #  Path traversal guard
 # ------------------------------------------------------------------ #
 
-# Sensitive locations that tools should NEVER touch
+# Sensitive locations that tools should NEVER touch. Superset of the
+# lists previously scattered across ``agents/safety.py`` — kept here as
+# the single source of truth (MEDIUM-4 fix).
 _SENSITIVE_PATHS: list[str] = [
     "/etc/shadow",
     "/etc/passwd",
     "/etc/sudoers",
 ]
 
+# Any resolved path that is *under* one of these roots is rejected.
+# Uses ``Path.is_relative_to`` (not string prefix) so Windows paths with
+# backslashes are handled correctly (MEDIUM-1 fix).
 _SENSITIVE_PREFIXES: list[str] = [
-    os.path.expanduser("~/.ssh"),
-    os.path.expanduser("~/.karna/credentials"),
-    "/dev/",
-    "/proc/",
-    "/sys/",
+    "~/.ssh",
+    "~/.gnupg",
+    "~/.aws",
+    "~/.karna/credentials",
+    "/etc/ssh",
+    "/dev",
+    "/proc",
+    "/sys",
+]
+
+# Basename-level patterns — paths with these suffixes/names are always
+# rejected regardless of location (e.g., id_rsa anywhere on disk).
+_SENSITIVE_NAME_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\.pem$"),
+    re.compile(r"\.key$"),
+    re.compile(r"(^|[\\/])id_rsa(\.|$)"),
+    re.compile(r"(^|[\\/])id_ed25519(\.|$)"),
+    re.compile(r"(^|[\\/])credentials\.json$"),
+    re.compile(r"(^|[\\/])service-account\.json$"),
+    re.compile(r"(^|[\\/])\.env(\.|$)"),
 ]
 
 
 def is_safe_path(
-    path: str,
+    path: str | Path,
     allowed_roots: list[Path] | None = None,
 ) -> bool:
     """Reject paths that escape the working directory or hit sensitive locations.
 
     Blocked:
     - /etc/shadow, /etc/passwd, /etc/sudoers
-    - ~/.ssh/
+    - ~/.ssh/, ~/.gnupg/, ~/.aws/
     - ~/.karna/credentials/ (tools should NEVER read credential files)
     - Any path with .. that escapes cwd
-    - /dev/, /proc/, /sys/
+    - /dev/, /proc/, /sys/, /etc/ssh/
+    - Files named id_rsa, id_ed25519, *.pem, *.key, credentials.json,
+      service-account.json, .env
+
+    Uses ``Path.is_relative_to`` so Windows backslash paths work correctly.
 
     Parameters
     ----------
@@ -56,20 +80,35 @@ def is_safe_path(
         If ``None``, defaults to ``[Path.cwd()]``.
     """
     try:
-        resolved = Path(os.path.expanduser(path)).resolve()
+        resolved = Path(os.path.expanduser(str(path))).resolve()
     except (ValueError, OSError):
         return False
 
-    resolved_str = str(resolved)
-
     # Block exact sensitive paths
     for sp in _SENSITIVE_PATHS:
-        if resolved_str == sp:
-            return False
+        try:
+            if resolved == Path(sp).resolve():
+                return False
+        except (OSError, ValueError):
+            continue
 
-    # Block sensitive prefixes
-    for prefix in _SENSITIVE_PREFIXES:
-        if resolved_str.startswith(prefix):
+    # Block sensitive prefixes using Path.is_relative_to (not string
+    # prefix) so Windows path separators normalise correctly.
+    for sensitive_root in _SENSITIVE_PREFIXES:
+        try:
+            root = Path(os.path.expanduser(sensitive_root)).resolve()
+        except (OSError, ValueError):
+            continue
+        try:
+            if resolved.is_relative_to(root):
+                return False
+        except (OSError, ValueError):
+            continue
+
+    # Block basename patterns (id_rsa, *.pem, etc.) anywhere on disk.
+    resolved_str = str(resolved)
+    for pattern in _SENSITIVE_NAME_PATTERNS:
+        if pattern.search(resolved_str):
             return False
 
     # If allowed_roots provided, enforce containment
@@ -80,9 +119,9 @@ def is_safe_path(
 
     for root in roots:
         try:
-            resolved.relative_to(root.resolve())
-            return True
-        except ValueError:
+            if resolved.is_relative_to(root.resolve()):
+                return True
+        except (OSError, ValueError):
             continue
 
     return False
@@ -97,12 +136,26 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"sk-[a-zA-Z0-9]{20,}"), "<REDACTED_SECRET>"),
     # OpenRouter v1 keys
     (re.compile(r"sk-or-v1-[a-zA-Z0-9]+"), "<REDACTED_SECRET>"),
-    # Anthropic keys
-    (re.compile(r"sk-ant-[a-zA-Z0-9-]+"), "<REDACTED_SECRET>"),
-    # GitHub personal access tokens
+    # Anthropic keys (covers sk-ant-api03-* and generic sk-ant-*)
+    (re.compile(r"sk-ant-[a-zA-Z0-9_\-]+"), "<REDACTED_SECRET>"),
+    # GitHub personal access tokens (classic + fine-grained)
     (re.compile(r"ghp_[a-zA-Z0-9]{36,}"), "<REDACTED_SECRET>"),
+    (re.compile(r"github_pat_[a-zA-Z0-9_]{82}"), "<REDACTED_SECRET>"),
+    # Google API keys (Firebase, Maps, Cloud, GenAI) — 39 chars total
+    (re.compile(r"AIzaSy[a-zA-Z0-9_\-]{33}"), "<REDACTED_SECRET>"),
     # AWS access key IDs
     (re.compile(r"AKIA[0-9A-Z]{16}"), "<REDACTED_SECRET>"),
+    # Azure / generic 32-hex API keys often passed via
+    # "api-key: <hex>" or "Ocp-Apim-Subscription-Key: <hex>" headers.
+    # Match only when preceded by a clear key/header label to avoid
+    # hashing false positives (git SHAs, MD5s, etc.).
+    (
+        re.compile(
+            r"(?i)(api[_-]?key|ocp-apim-subscription-key|x-api-key)"
+            r"\s*[:=]\s*['\"]?[0-9a-f]{32}['\"]?"
+        ),
+        r"\1: <REDACTED_SECRET>",
+    ),
     # PEM private keys
     (re.compile(r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----"), "<REDACTED_SECRET>"),
     # Bearer tokens
@@ -118,9 +171,12 @@ def scrub_secrets(text: str) -> str:
     Patterns matched:
     - sk-[a-zA-Z0-9]{20,}
     - sk-or-v1-[a-zA-Z0-9]+
-    - sk-ant-[a-zA-Z0-9-]+
-    - ghp_[a-zA-Z0-9]{36,}
+    - sk-ant-[a-zA-Z0-9_\\-]+  (Anthropic, covers api03-*)
+    - ghp_[a-zA-Z0-9]{36,}  (GitHub classic PAT)
+    - github_pat_[a-zA-Z0-9_]{82}  (GitHub fine-grained PAT)
+    - AIzaSy[a-zA-Z0-9_\\-]{33}  (Google API keys)
     - AKIA[0-9A-Z]{16}
+    - Azure-style 32-hex keys in ``api-key:`` / ``x-api-key`` headers
     - -----BEGIN (RSA |EC |)PRIVATE KEY-----
     - Bearer [a-zA-Z0-9._-]{20,}
     - hf_[a-zA-Z0-9]{20,}

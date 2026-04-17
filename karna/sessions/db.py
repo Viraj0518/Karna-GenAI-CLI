@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from karna.models import Conversation, Message, ToolCall, ToolResult
+from karna.security.guards import scrub_secrets
 
 # Default database location
 _DEFAULT_DB_DIR = Path.home() / ".karna" / "sessions"
@@ -32,8 +33,20 @@ class SessionDB:
     def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or _DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Tighten permissions on the session directory (POSIX only — Windows
+        # will raise OSError/NotImplementedError and be skipped).
+        try:
+            self.db_path.parent.chmod(0o700)
+        except (OSError, NotImplementedError):
+            pass
         self._conn: sqlite3.Connection | None = None
         self._init_db()
+        # Tighten permissions on the sessions.db file itself once created.
+        if self.db_path.exists():
+            try:
+                self.db_path.chmod(0o600)
+            except (OSError, NotImplementedError):
+                pass
 
     # ------------------------------------------------------------------ #
     #  Connection management
@@ -150,10 +163,11 @@ class SessionDB:
     def end_session(self, session_id: str, summary: str | None = None) -> None:
         """Mark a session as ended."""
         now = datetime.now(timezone.utc).isoformat()
+        scrubbed_summary = scrub_secrets(summary) if summary else summary
         conn = self._get_conn()
         conn.execute(
             "UPDATE sessions SET ended_at = ?, summary = ? WHERE id = ?",
-            (now, summary, session_id),
+            (now, scrubbed_summary, session_id),
         )
         conn.commit()
 
@@ -196,18 +210,36 @@ class SessionDB:
         tokens: int = 0,
         cost_usd: float = 0.0,
     ) -> int:
-        """Persist a message and return its row id."""
+        """Persist a message and return its row id.
+
+        All message content and tool-result payloads are passed through
+        ``scrub_secrets`` before being written to disk. This prevents
+        leaked API keys, bearer tokens, or private-key material from
+        persisting in ``~/.karna/sessions/sessions.db`` forever.
+        """
         now = datetime.now(timezone.utc).isoformat()
-        tool_calls_json = (
-            json.dumps([tc.model_dump() for tc in message.tool_calls])
-            if message.tool_calls
-            else None
-        )
-        tool_results_json = (
-            json.dumps([tr.model_dump() for tr in message.tool_results])
-            if message.tool_results
-            else None
-        )
+
+        # Scrub message content
+        scrubbed_content = scrub_secrets(message.content or "") if message.content else message.content
+
+        # tool_calls are the model's own call arguments — not tool output —
+        # but scrub them too in case the model echoed a secret into its args.
+        tool_calls_json: str | None = None
+        if message.tool_calls:
+            tool_calls_json = scrub_secrets(
+                json.dumps([tc.model_dump() for tc in message.tool_calls])
+            )
+
+        # tool_results are the high-risk surface (.env reads, creds dumps, etc.)
+        tool_results_json: str | None = None
+        if message.tool_results:
+            scrubbed_results = []
+            for tr in message.tool_results:
+                tr_dict = tr.model_dump()
+                tr_dict["content"] = scrub_secrets(tr_dict.get("content") or "")
+                scrubbed_results.append(tr_dict)
+            tool_results_json = json.dumps(scrubbed_results)
+
         conn = self._get_conn()
         cursor = conn.execute(
             """INSERT INTO messages
@@ -217,7 +249,7 @@ class SessionDB:
             (
                 session_id,
                 message.role,
-                message.content,
+                scrubbed_content,
                 tool_calls_json,
                 tool_results_json,
                 tokens,

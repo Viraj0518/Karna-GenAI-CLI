@@ -648,16 +648,22 @@ Project initialization for `nellie init`.
 - `generate_karna_md_for_path()` -- creates KARNA.md with project-specific template (stack, conventions, agent defaults)
 - Reads Python project metadata from pyproject.toml
 
-### Stub Modules (Not Yet Implemented)
+### Extension Point: Plugin Loader
 
-| Module | Phase | Purpose |
+| Module | Status | Purpose |
 |---|---|---|
-| `karna/backends/__init__.py` | Phase 3 | Backend abstraction layer |
-| `karna/hooks/__init__.py` | Phase 3 | Hook system init (dispatcher lives in dispatcher.py) |
-| `karna/compaction/__init__.py` | Phase 3 | Compaction init (compactor lives in compactor.py) |
-| `karna/gateway/__init__.py` | Phase 4 | API gateway |
-| `karna/server/__init__.py` | Phase 4 | Server mode |
-| `karna/plugins/__init__.py` | Phase 4 | Plugin system |
+| `karna/plugins/__init__.py` | Implemented | Public exports for the plugin system |
+| `karna/plugins/loader.py` | Implemented | Discovers `~/.karna/plugins/*/plugin.toml`, loads entry callables, activates them with a `KarnaContext` exposing `add_tool`/`add_skill`/`add_hook`/`add_command`. Wiring into `cli.py` startup is pending (TODO in `loader.py`). |
+
+### Removed Stubs
+
+The following empty stubs were deleted as dead code:
+
+- `karna/backends/` — backend abstraction layer (no consumers, tracked as future work)
+- `karna/gateway/` — HTTP/API gateway (tracked as future work)
+- `karna/server/` — remote daemon/server mode (tracked as future work)
+
+See the `## Roadmap` section of the repo `README.md` for the current future-work list.
 
 ---
 

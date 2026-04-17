@@ -215,13 +215,41 @@ def estimate_cost(
 
 @runtime_checkable
 class Provider(Protocol):
-    """Structural interface every model provider must satisfy."""
+    """Structural interface every model provider must satisfy.
 
-    async def complete(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> Message:
+    The ``complete`` and ``stream`` signatures intentionally mirror
+    ``karna.providers.base.BaseProvider`` exactly so that any concrete
+    provider (OpenRouter, OpenAI, Azure, Anthropic, Local, Vertex,
+    Bedrock, Failover, ...) is a structural subtype of ``Provider``
+    regardless of whether it inherits from ``BaseProvider``.
+
+    Keep these three signatures in lock-step with the ABC in
+    ``base.py``.  If a new kwarg is added to the ABC, mirror it here.
+    """
+
+    name: str
+
+    async def complete(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> Message:
         """Send messages and return an assistant response."""
         ...
 
-    async def stream(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> AsyncIterator[StreamEvent]:
+    async def stream(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> AsyncIterator[StreamEvent]:
         """Stream events from the model as an async iterator."""
         ...
 

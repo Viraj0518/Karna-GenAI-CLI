@@ -1,0 +1,53 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"  # weekly, Mondays 06:00 UTC
+
+jobs:
+  pip-audit:
+    name: pip-audit dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+
+      - name: Run pip-audit
+        run: pip-audit --strict --disable-pip --progress-spinner off
+        continue-on-error: true
+
+  bandit:
+    name: Bandit static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "bandit[toml]"
+
+      - name: Run bandit
+        run: bandit -r karna/ -ll -ii
