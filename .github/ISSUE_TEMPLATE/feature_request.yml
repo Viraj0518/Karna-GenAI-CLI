@@ -1,0 +1,48 @@
+name: Feature Request
+description: Request a new feature for Nellie
+labels: ["enhancement", "copilot"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues labeled `copilot` are auto-picked up by GitHub Copilot agent for implementation.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      placeholder: "I often need to ... but Nellie can't ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      placeholder: "Add a new tool / command / provider that ..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - New tool
+        - New provider
+        - New skill
+        - CLI command
+        - REPL / TUI
+        - Performance
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: "I tried using ... but it doesn't work because ..."

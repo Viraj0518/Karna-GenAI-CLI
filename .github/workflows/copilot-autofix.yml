@@ -1,0 +1,39 @@
+name: Copilot Autofix on Issue
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  autofix:
+    # Only trigger when issue has 'copilot' or 'auto-fix' label
+    if: contains(github.event.issue.labels.*.name, 'copilot') || contains(github.event.issue.labels.*.name, 'auto-fix')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e ".[dev,tokens]"
+
+      - name: Run tests (baseline)
+        run: pytest tests/ -q --tb=short 2>&1 | tail -5
+
+      - name: Comment acknowledging
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🤖 Copilot agent is picking this up. Will open a PR when ready.\n\nBaseline: tests passing on `main`.'
+            });

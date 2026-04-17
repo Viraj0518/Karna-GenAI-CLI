@@ -1,0 +1,74 @@
+name: Bug Report
+description: Report a bug in Nellie
+labels: ["bug", "copilot"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues labeled `copilot` are auto-picked up by GitHub Copilot agent for resolution.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug
+      placeholder: "When I run `nellie model set ...`, it crashes with..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "It should set the model and print confirmation"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `nellie`
+        2. Type `/model openrouter:...`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      render: shell
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - CLI / REPL
+        - Provider (OpenRouter/Anthropic/OpenAI)
+        - Tools (bash/read/write/edit/grep/glob/git)
+        - Sessions / History
+        - Memory
+        - Skills
+        - Hooks / Permissions
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model used
+      placeholder: "openrouter:qwen/qwen3-coder"
+
+  - type: input
+    id: version
+    attributes:
+      label: Nellie version
+      placeholder: "nellie --version"
+    validations:
+      required: true
