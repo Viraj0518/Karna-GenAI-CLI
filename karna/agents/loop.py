@@ -151,10 +151,14 @@ async def _execute_tool_calls(
     Errors in one parallel call never affect others — each coroutine
     catches its own exceptions via ``_execute_tool``.
     """
-    # Pre-resolve every call so we know which are parallel / sequential
+    # --- Phase 1: Resolution ---
+    # Pre-resolve every call to its BaseTool instance.  Calls that fail
+    # resolution (unknown tool, malformed JSON) get an immediate error
+    # result and skip execution entirely.
     resolved: list[tuple[ToolCall, BaseTool | None, ToolResult | None]] = []
     for tc in tool_calls:
-        # Malformed JSON that couldn't be parsed during streaming
+        # Malformed JSON that couldn't be parsed during streaming —
+        # the streaming layer stored the raw text in __parse_error__
         if "__parse_error__" in tc.arguments:
             raw_preview = tc.arguments["__parse_error__"]
             immediate = ToolResult(
@@ -165,6 +169,7 @@ async def _execute_tool_calls(
             resolved.append((tc, None, immediate))
             continue
 
+        # Look up the tool by name in the registry
         tool = tool_map.get(tc.name)
         if tool is None:
             immediate = ToolResult(
@@ -174,34 +179,42 @@ async def _execute_tool_calls(
             )
             resolved.append((tc, None, immediate))
         else:
+            # Successful resolution — will be executed below
             resolved.append((tc, tool, None))
 
-    # Build index-keyed futures for the final ordered output
+    # --- Phase 2: Index-keyed result map ---
+    # We use an index-keyed dict so results can be returned in the
+    # original tool-call order regardless of execution order.
     results: dict[int, ToolResult] = {}
 
-    # Immediately fill in pre-resolved errors
+    # Immediately fill in pre-resolved errors (no execution needed)
     for idx, (tc, tool, immediate) in enumerate(resolved):
         if immediate is not None:
             results[idx] = immediate
 
-    # Partition remaining calls
+    # --- Phase 3: Partition into parallel vs sequential ---
+    # Tools with sequential=True (bash, write, edit) must run one-at-a-time
+    # to prevent race conditions on shared state (filesystem, cwd).
     parallel_indices: list[int] = []
     sequential_indices: list[int] = []
     for idx, (tc, tool, immediate) in enumerate(resolved):
         if immediate is not None:
-            continue
+            continue  # already resolved as error
         assert tool is not None
         if tool.sequential:
             sequential_indices.append(idx)
         else:
             parallel_indices.append(idx)
 
-    # --- Parallel batch (asyncio.gather) ---
+    # --- Phase 4: Execute parallel batch via asyncio.gather ---
+    # Read-only tools (read, grep, glob) are safe to run concurrently.
+    # Each coroutine catches its own exceptions via _execute_tool.
     if parallel_indices:
         async def _run_parallel(idx: int) -> tuple[int, ToolResult]:
             tc, tool, _ = resolved[idx]
             assert tool is not None
             result = await _execute_tool(tool, tc.arguments)
+            # Stamp the tool_call_id onto the result for conversation tracking
             return idx, result.model_copy(update={"tool_call_id": tc.id})
 
         gathered = await asyncio.gather(
@@ -211,14 +224,16 @@ async def _execute_tool_calls(
         for idx, result in gathered:
             results[idx] = result
 
-    # --- Sequential calls (one-at-a-time, in order) ---
+    # --- Phase 5: Execute sequential calls one-at-a-time ---
+    # Order is preserved so side effects (e.g., cd in bash) compose correctly.
     for idx in sequential_indices:
         tc, tool, _ = resolved[idx]
         assert tool is not None
         result = await _execute_tool(tool, tc.arguments)
         results[idx] = result.model_copy(update={"tool_call_id": tc.id})
 
-    # Return in original order
+    # --- Phase 6: Return results in original call order ---
+    # Deterministic ordering ensures reproducible conversation history.
     return [results[i] for i in range(len(tool_calls))]
 
 

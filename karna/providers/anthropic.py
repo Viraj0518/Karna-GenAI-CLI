@@ -306,8 +306,12 @@ class AnthropicProvider(BaseProvider):
         if temperature is not None:
             payload["temperature"] = temperature
 
-        # Track in-flight tool calls
+        # State for tracking in-flight tool calls across SSE events.
+        # Anthropic streams tool arguments incrementally via input_json_delta
+        # events, so we accumulate fragments until content_block_stop.
         current_tool: dict[str, Any] | None = None
+        # Accumulate usage from message_start (input tokens) and
+        # message_delta (output tokens) — merged at end.
         usage_data: dict[str, Any] = {}
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -319,12 +323,17 @@ class AnthropicProvider(BaseProvider):
             ) as resp:
                 resp.raise_for_status()
 
+                # Anthropic SSE format: "event: <type>\ndata: <json>\n\n"
+                # We track event_type across lines since event and data
+                # arrive on separate lines.
                 event_type: str | None = None
                 async for line in resp.aiter_lines():
+                    # Parse the "event:" line to know what the next data line means
                     if line.startswith("event: "):
                         event_type = line.removeprefix("event: ").strip()
                         continue
 
+                    # Skip non-data lines (blank lines, comments)
                     if not line.startswith("data: "):
                         continue
 
@@ -334,13 +343,16 @@ class AnthropicProvider(BaseProvider):
 
                     data = json.loads(raw)
 
+                    # --- message_start: contains input token usage ---
                     if event_type == "message_start":
                         msg = data.get("message", {})
                         usage_data = msg.get("usage", {})
 
+                    # --- content_block_start: new text or tool_use block ---
                     elif event_type == "content_block_start":
                         block = data.get("content_block", {})
                         if block.get("type") == "tool_use":
+                            # Begin accumulating a new tool call
                             current_tool = {
                                 "id": block.get("id", ""),
                                 "name": block.get("name", ""),
@@ -355,13 +367,16 @@ class AnthropicProvider(BaseProvider):
                                 ),
                             )
 
+                    # --- content_block_delta: incremental content ---
                     elif event_type == "content_block_delta":
                         delta = data.get("delta", {})
                         if delta.get("type") == "text_delta":
+                            # Regular text token — stream to caller immediately
                             yield StreamEvent(
                                 type="text", text=delta.get("text", "")
                             )
                         elif delta.get("type") == "input_json_delta":
+                            # Tool argument fragment — accumulate until block stops
                             partial = delta.get("partial_json", "")
                             if current_tool is not None and partial:
                                 current_tool["arguments"] += partial
@@ -369,8 +384,10 @@ class AnthropicProvider(BaseProvider):
                                     type="tool_call_delta", text=partial
                                 )
 
+                    # --- content_block_stop: block complete ---
                     elif event_type == "content_block_stop":
                         if current_tool is not None:
+                            # Parse accumulated JSON arguments into a dict
                             try:
                                 args = (
                                     json.loads(current_tool["arguments"])
@@ -387,15 +404,20 @@ class AnthropicProvider(BaseProvider):
                                     arguments=args,
                                 ),
                             )
+                            # Reset — ready for the next tool call block
                             current_tool = None
 
+                    # --- message_delta: final stop reason + output token usage ---
                     elif event_type == "message_delta":
                         delta_usage = data.get("usage", {})
                         usage_data.update(delta_usage)
 
+                    # Reset event_type so stale values don't affect next data line
                     event_type = None
 
-        # Emit final usage — use _extract_usage for cache-adjusted cost
+        # Emit final usage event with cache-adjusted cost calculation.
+        # _extract_usage handles the Anthropic-specific pricing for
+        # cache reads (10% of input rate) and cache writes (125%).
         usage = self._extract_usage({"usage": usage_data}, self.model)
         self._track_usage(usage)
         self._cache.record_usage(usage.cache_read_tokens, usage.cache_write_tokens)

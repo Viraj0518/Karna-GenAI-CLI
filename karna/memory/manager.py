@@ -332,23 +332,34 @@ class MemoryManager:
         Returns MEMORY.md index + relevant memory bodies (newest first,
         trimmed to fit token budget).
         """
+        # Start with the MEMORY.md index — this is a compact list of
+        # one-line pointers like "- [Title](file.md) -- description"
         index = self.load_index()
         if not index:
             return ""
 
         parts: list[str] = [index.strip()]
+        # Convert token budget to character budget using rough 4 chars/token
         char_budget = max_tokens * _TOKEN_CHARS
         used = len(parts[0])
 
+        # Load all memory files, sorted newest-first so the most
+        # recently updated memories are included first.
         entries = self.load_all()
         for entry in entries:
-            # Build a compact summary line per memory
+            # Build a compact block showing the memory type, name, age, and content.
+            # Example: "### [feedback] Always use ruff (2 days ago)\nContent..."
             age = _memory_age_text(entry.updated_at.timestamp())
             block = f"\n### [{entry.type}] {entry.name} ({age})\n{entry.content}"
+
+            # Append a staleness warning for memories older than 7 days.
+            # This tells the model to verify claims before asserting them.
             staleness = _staleness_warning(entry.updated_at.timestamp())
             if staleness:
                 block += f"\n> {staleness}"
 
+            # Stop adding memories once we exceed the token budget.
+            # The most important (newest) memories are already included.
             if used + len(block) > char_budget:
                 break
             parts.append(block)

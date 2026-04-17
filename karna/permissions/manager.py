@@ -120,17 +120,22 @@ class PermissionManager:
         """Return the permission level for a proposed tool call.
 
         Evaluation order (first match wins):
-            1. Deny patterns — if any deny-pattern matches, return DENY
-            2. Session allows — if tool (or tool+pattern) was previously
+            1. Deny patterns -- if any deny-pattern matches, return DENY
+            2. Session allows -- if tool (or tool+pattern) was previously
                approved with "always", return ALLOW
-            3. Allow patterns — if an allow-pattern matches the args, return ALLOW
+            3. Allow patterns -- if an allow-pattern matches the args, return ALLOW
             4. Per-tool level from config rules
             5. Wildcard ``*`` rule
             6. Fallback: ASK
         """
+        # Serialise arguments into a flat string for regex matching.
+        # For bash, this is just the command string.  For other tools,
+        # it's all string-valued arguments joined with spaces.
         arg_str = _serialise_args(tool_name, arguments)
 
-        # 1. Deny patterns
+        # 1. Deny patterns -- checked first because deny always wins.
+        # These are regex rules that match against the serialised arguments
+        # (e.g., deny bash calls containing "rm -rf /").
         for rule in self.rules:
             if rule.level != PermissionLevel.DENY:
                 continue
@@ -139,11 +144,13 @@ class PermissionManager:
             if rule.regex and rule.regex.search(arg_str):
                 return PermissionLevel.DENY
 
-        # 2. Session allows
+        # 2. Session allows -- user previously said "always" for this tool.
+        # This is a session-scoped grant that persists until the REPL exits.
         if tool_name in self.session_allows:
             return PermissionLevel.ALLOW
 
-        # 3. Allow patterns (argument-specific overrides)
+        # 3. Allow patterns -- argument-specific overrides.
+        # E.g., allow bash calls matching "ls|cat|echo|pwd" without prompting.
         for rule in self.rules:
             if rule.level != PermissionLevel.ALLOW:
                 continue
@@ -152,21 +159,23 @@ class PermissionManager:
             if rule.pattern is not None and rule.regex and rule.regex.search(arg_str):
                 return PermissionLevel.ALLOW
 
-        # 4. Per-tool level (rules without a pattern)
+        # 4. Per-tool level -- rules without a pattern (bare tool name -> level).
+        # E.g., "read" -> ALLOW, "bash" -> ASK from the active profile.
         for rule in self.rules:
             if rule.pattern is not None:
-                continue
+                continue  # skip pattern rules — already handled above
             if rule.tool == tool_name:
                 return rule.level
 
-        # 5. Wildcard rule
+        # 5. Wildcard rule -- the "default" entry in the permission profile.
+        # Applies to any tool not explicitly listed.
         for rule in self.rules:
             if rule.pattern is not None:
                 continue
             if rule.tool == "*":
                 return rule.level
 
-        # 6. Fallback
+        # 6. Fallback -- if no rules matched at all, require user approval.
         return PermissionLevel.ASK
 
     async def request_approval(

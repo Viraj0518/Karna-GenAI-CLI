@@ -155,18 +155,28 @@ def parse_skill_file(path: Path) -> Skill:
 
     Raises ``ValueError`` if the file lacks a ``name`` in frontmatter.
     """
+    # Read the raw markdown file
     text = path.read_text(encoding="utf-8")
+
+    # Split into frontmatter metadata dict and body text.
+    # _parse_frontmatter uses regex to match the ---\n<yaml>\n--- block
+    # and a minimal YAML parser for the key-value pairs inside.
     meta, body = _parse_frontmatter(text)
 
+    # Name is required but falls back to the filename stem if missing
     name = meta.get("name")
     if not name:
-        # Fall back to filename without extension
+        # Fall back to filename without extension (e.g., "my-skill.md" -> "my-skill")
         name = path.stem
 
+    # Triggers may be a list or a single string in frontmatter;
+    # normalise to always be a list.
     triggers = meta.get("triggers", [])
     if isinstance(triggers, str):
         triggers = [triggers]
 
+    # Build the Skill model — body becomes the instructions that get
+    # injected into the system prompt when this skill is activated.
     return Skill(
         name=name,
         description=meta.get("description", ""),
