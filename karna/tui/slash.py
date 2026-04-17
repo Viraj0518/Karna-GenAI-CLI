@@ -14,8 +14,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from typing import TYPE_CHECKING
+
 from karna.config import KarnaConfig, save_config
 from karna.models import Conversation
+
+if TYPE_CHECKING:
+    from karna.sessions.cost import CostTracker
+    from karna.sessions.db import SessionDB
 
 # --------------------------------------------------------------------------- #
 #  Session-level cost tracking (populated by output.py)
@@ -62,6 +68,10 @@ def _build_commands() -> dict[str, SlashCommand]:
         SlashCommand("compact", "/compact", "Trigger conversation compaction (stub)"),
         SlashCommand("tools", "/tools", "List available tools"),
         SlashCommand("system", "/system <prompt>", "Set the system prompt"),
+        SlashCommand("sessions", "/sessions", "Show last 5 sessions from history"),
+        SlashCommand("resume", "/resume <id>", "Resume a previous session"),
+        SlashCommand("paste", "/paste", "Read clipboard and insert as user message"),
+        SlashCommand("copy", "/copy", "Copy last assistant response to clipboard"),
     ]
     return {c.name: c for c in cmds}
 
@@ -123,17 +133,31 @@ def _cmd_history(console: Console, conversation: Conversation, **_kw) -> None:
         console.print(f"[bold {role_style}]{label}:[/bold {role_style}] {content_preview}")
 
 
-def _cmd_cost(console: Console, session_cost: SessionCost, **_kw) -> None:
-    console.print(
-        Panel(
-            f"[bright_black]Prompt tokens:[/]  {session_cost.prompt_tokens:,}\n"
-            f"[bright_black]Output tokens:[/] {session_cost.completion_tokens:,}\n"
-            f"[bright_black]Total cost:[/]    ${session_cost.total_usd:.4f}",
-            title="[bold #87CEEB]Session Cost[/]",
-            border_style="#3C73BD",
-            expand=False,
+def _cmd_cost(console: Console, session_cost: SessionCost, cost_tracker: "CostTracker | None" = None, **_kw) -> None:
+    # Prefer the persistent CostTracker if available
+    if cost_tracker is not None:
+        summary = cost_tracker.get_session_summary()
+        console.print(
+            Panel(
+                f"[bright_black]Input tokens:[/]  {summary['input_tokens']:,}\n"
+                f"[bright_black]Output tokens:[/] {summary['output_tokens']:,}\n"
+                f"[bright_black]Session cost:[/]  ${summary['cost_usd']:.4f}",
+                title="[bold #87CEEB]Session Cost[/]",
+                border_style="#3C73BD",
+                expand=False,
+            )
         )
-    )
+    else:
+        console.print(
+            Panel(
+                f"[bright_black]Prompt tokens:[/]  {session_cost.prompt_tokens:,}\n"
+                f"[bright_black]Output tokens:[/] {session_cost.completion_tokens:,}\n"
+                f"[bright_black]Total cost:[/]    ${session_cost.total_usd:.4f}",
+                title="[bold #87CEEB]Session Cost[/]",
+                border_style="#3C73BD",
+                expand=False,
+            )
+        )
 
 
 def _cmd_exit(**_kw) -> None:
@@ -165,6 +189,111 @@ def _cmd_system(console: Console, config: KarnaConfig, args: str, **_kw) -> None
     console.print("[green]System prompt updated.[/green]")
 
 
+def _cmd_sessions(console: Console, session_db: "SessionDB | None" = None, **_kw) -> None:
+    if session_db is None:
+        console.print("[bright_black]Session database not available.[/bright_black]")
+        return
+    sessions = session_db.list_sessions(limit=5)
+    if not sessions:
+        console.print("[bright_black]No sessions found.[/bright_black]")
+        return
+    table = Table(show_header=True, header_style="bold #87CEEB", border_style="#3C73BD", expand=False)
+    table.add_column("ID", style="cyan")
+    table.add_column("Started", style="green")
+    table.add_column("Model", style="white")
+    table.add_column("Cost", justify="right", style="yellow")
+    for s in sessions:
+        started = s["started_at"][:19].replace("T", " ")
+        cost = f"${s['total_cost_usd']:.4f}"
+        table.add_row(s["id"], started, s.get("model", ""), cost)
+    console.print(table)
+
+
+def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
+    """Read clipboard and return content to be injected as user message."""
+    import asyncio
+    from karna.tools.clipboard import ClipboardTool
+
+    tool = ClipboardTool()
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # We're in a sync context called from an async REPL — use run_coroutine_threadsafe
+            import concurrent.futures
+            future = asyncio.run_coroutine_threadsafe(tool.execute(action="read"), loop)
+            result = future.result(timeout=10)
+        else:
+            result = asyncio.run(tool.execute(action="read"))
+    except Exception as exc:
+        console.print(f"[red]Failed to read clipboard: {exc}[/red]")
+        return None
+
+    if result.startswith("[error]") or result == "(clipboard is empty)":
+        console.print(f"[bright_black]{result}[/bright_black]")
+        return None
+
+    # Show a preview of what was pasted
+    preview = result[:100]
+    if len(result) > 100:
+        preview += "..."
+    console.print(f"[bright_black]Pasted from clipboard ({len(result)} chars): {preview}[/bright_black]")
+
+    # Return the clipboard content — the REPL should inject this as a user message.
+    # We store it on the conversation as a signal.
+    return result
+
+
+def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
+    """Copy the last assistant response to clipboard."""
+    import asyncio
+    from karna.tools.clipboard import ClipboardTool
+
+    # Find the last assistant message
+    last_assistant = None
+    for msg in reversed(conversation.messages):
+        if msg.role == "assistant" and msg.content:
+            last_assistant = msg.content
+            break
+
+    if last_assistant is None:
+        console.print("[bright_black]No assistant response to copy.[/bright_black]")
+        return
+
+    tool = ClipboardTool()
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            future = asyncio.run_coroutine_threadsafe(
+                tool.execute(action="write", content=last_assistant), loop
+            )
+            result = future.result(timeout=10)
+        else:
+            result = asyncio.run(tool.execute(action="write", content=last_assistant))
+    except Exception as exc:
+        console.print(f"[red]Failed to copy to clipboard: {exc}[/red]")
+        return
+
+    console.print(f"[green]{result}[/green]")
+
+
+def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = None, **_kw) -> None:
+    if session_db is None:
+        console.print("[bright_black]Session database not available.[/bright_black]")
+        return
+    sid = args.strip() if args else None
+    if not sid:
+        sid = session_db.get_latest_session_id()
+    if not sid:
+        console.print("[bright_black]No sessions to resume.[/bright_black]")
+        return
+    conv = session_db.resume_session(sid)
+    if conv is None:
+        console.print(f"[red]Session not found: {sid}[/red]")
+        return
+    console.print(f"[yellow]Use [bold]nellie resume {sid}[/bold] to resume a session with full context.[/yellow]")
+
+
 # --------------------------------------------------------------------------- #
 #  Dispatcher
 # --------------------------------------------------------------------------- #
@@ -180,6 +309,10 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "compact": _cmd_compact,
     "tools": _cmd_tools,
     "system": _cmd_system,
+    "sessions": _cmd_sessions,
+    "resume": _cmd_resume,
+    "paste": _cmd_paste,
+    "copy": _cmd_copy,
 }
 
 
@@ -190,10 +323,15 @@ def handle_slash_command(
     conversation: Conversation,
     session_cost: SessionCost | None = None,
     tool_names: list[str] | None = None,
-) -> None:
+    session_db: "SessionDB | None" = None,
+    cost_tracker: "CostTracker | None" = None,
+) -> str | None:
     """Parse and dispatch a slash command.
 
     *raw_input* is the full user string including the leading ``/``.
+
+    Returns a string if the command produces text to inject as a user
+    message (e.g. ``/paste``), otherwise ``None``.
     """
     stripped = raw_input.strip().lstrip("/")
     parts = stripped.split(None, 1)
@@ -203,13 +341,16 @@ def handle_slash_command(
     handler = _HANDLERS.get(cmd_name)
     if handler is None:
         console.print(f"[red]Unknown command: /{cmd_name}[/red]  (type [bold]/help[/bold] to list commands)")
-        return
+        return None
 
-    handler(
+    result = handler(
         console=console,
         config=config,
         conversation=conversation,
         session_cost=session_cost or SessionCost(),
         tool_names=tool_names or [],
         args=args,
+        session_db=session_db,
+        cost_tracker=cost_tracker,
     )
+    return result

@@ -6,10 +6,14 @@ tool use, slash commands, multiline input, and Rich-rendered output.
 
 from __future__ import annotations
 
+import os
+
 from rich.console import Console
 
 from karna.config import KarnaConfig
 from karna.models import Conversation, Message
+from karna.sessions.db import SessionDB
+from karna.sessions.cost import CostTracker
 from karna.tools import TOOLS
 from karna.tui.banner import print_banner
 from karna.tui.input import get_multiline_input
@@ -50,7 +54,11 @@ async def _agent_loop(
     return events
 
 
-async def run_repl(config: KarnaConfig) -> None:
+async def run_repl(
+    config: KarnaConfig,
+    resume_conversation: Conversation | None = None,
+    resume_session_id: str | None = None,
+) -> None:
     """Main REPL — streaming conversation with tool use.
 
     This is the primary interactive loop invoked by ``nellie`` with no
@@ -64,7 +72,39 @@ async def run_repl(config: KarnaConfig) -> None:
     """
     console = Console(theme=KARNA_THEME)
     tool_names = _load_tool_names()
-    conversation = Conversation(model=config.active_model, provider=config.active_provider)
+
+    # Session persistence
+    session_db = SessionDB()
+    if resume_conversation is not None and resume_session_id is not None:
+        conversation = resume_conversation
+        session_id = resume_session_id
+    else:
+        conversation = Conversation(model=config.active_model, provider=config.active_provider)
+        cwd = os.getcwd()
+        git_branch: str | None = None
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode == 0:
+                git_branch = result.stdout.strip()
+        except Exception:
+            pass
+        session_id = session_db.create_session(
+            model=config.active_model,
+            provider=config.active_provider,
+            cwd=cwd,
+            git_branch=git_branch,
+        )
+
+    cost_tracker = CostTracker(
+        db=session_db,
+        session_id=session_id,
+        model=config.active_model,
+        provider=config.active_provider,
+    )
     session_cost = SessionCost()
 
     print_banner(console, config, tool_names)
@@ -97,6 +137,8 @@ async def run_repl(config: KarnaConfig) -> None:
                 conversation,
                 session_cost=session_cost,
                 tool_names=tool_names,
+                session_db=session_db,
+                cost_tracker=cost_tracker,
             )
             # Refresh prompt in case the model was switched
             model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
@@ -106,7 +148,9 @@ async def run_repl(config: KarnaConfig) -> None:
             continue
 
         # ── Regular message ─────────────────────────────────────────────
-        conversation.messages.append(Message(role="user", content=user_input))
+        user_msg = Message(role="user", content=user_input)
+        conversation.messages.append(user_msg)
+        session_db.add_message(session_id, user_msg)
 
         renderer = OutputRenderer(console)
         renderer.show_spinner()
@@ -128,9 +172,27 @@ async def run_repl(config: KarnaConfig) -> None:
         finally:
             renderer.finish()
 
-        # Append assistant reply to conversation
+        # Append assistant reply to conversation and persist
         full_reply = "".join(
             e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str)
         )
         if full_reply:
-            conversation.messages.append(Message(role="assistant", content=full_reply))
+            assistant_msg = Message(role="assistant", content=full_reply)
+            conversation.messages.append(assistant_msg)
+
+            # Compute token count from usage event
+            turn_tokens = 0
+            turn_cost = 0.0
+            for e in events:
+                if e.kind == EventKind.USAGE and isinstance(e.data, dict):
+                    turn_tokens = e.data.get("prompt_tokens", 0) + e.data.get("completion_tokens", 0)
+                    turn_cost = e.data.get("total_usd", 0.0)
+            session_db.add_message(session_id, assistant_msg, tokens=turn_tokens, cost_usd=turn_cost)
+
+            # Display per-turn cost in dim text
+            if turn_tokens or turn_cost:
+                from rich.text import Text as RichText
+                console.print(RichText(
+                    f"  [{turn_tokens:,} tokens, ${turn_cost:.4f}]",
+                    style="bright_black",
+                ))
