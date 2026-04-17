@@ -14,7 +14,11 @@ from karna.config import KarnaConfig
 from karna.models import Conversation, Message
 from karna.sessions.db import SessionDB
 from karna.sessions.cost import CostTracker
-from karna.tools import TOOLS
+from karna.tools import TOOLS, get_all_tools
+from karna.providers import get_provider, resolve_model
+from karna.agents.loop import agent_loop
+from karna.prompts import build_system_prompt
+from karna.context.manager import ContextManager
 from karna.tui.banner import print_banner
 from karna.tui.input import get_multiline_input
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
@@ -30,27 +34,73 @@ def _load_tool_names() -> list[str]:
 async def _agent_loop(
     config: KarnaConfig,
     conversation: Conversation,
-    tools: list[str],
+    tool_names: list[str],
 ) -> list[StreamEvent]:
-    """Run a single turn of the agent loop.
+    """Run a single turn of the agent loop — LIVE provider + tool execution."""
+    import json as _json
 
-    In later phases this will call the actual provider streaming API and
-    handle tool-use cycles.  For now it returns a placeholder response
-    so the REPL can be exercised end-to-end.
-    """
-    # Phase 2B stub — will be wired to real providers in Phase 3
-    events: list[StreamEvent] = [
-        StreamEvent(kind=EventKind.TEXT_DELTA, data="I'm **Karna**, your AI assistant. "),
-        StreamEvent(
-            kind=EventKind.TEXT_DELTA,
-            data=f"Provider `{config.active_provider}` streaming is not yet wired — coming in Phase 3.",
-        ),
-        StreamEvent(
-            kind=EventKind.USAGE,
-            data={"prompt_tokens": 0, "completion_tokens": 0, "total_usd": 0.0},
-        ),
-        StreamEvent(kind=EventKind.DONE),
-    ]
+    events: list[StreamEvent] = []
+
+    try:
+        # Resolve provider
+        provider_name, model_name = resolve_model(
+            f"{config.active_provider}:{config.active_model}"
+            if ":" not in (config.active_model or "")
+            else config.active_model
+        )
+        provider = get_provider(provider_name)
+        provider.model = model_name
+
+        # Build tools
+        tools = get_all_tools()
+
+        # Build system prompt
+        system_prompt = build_system_prompt(config, tools)
+
+        # Run the real agent loop
+        from karna.models import StreamEvent as AgentStreamEvent
+        async for event in agent_loop(
+            provider=provider,
+            conversation=conversation,
+            tools=tools,
+            system_prompt=system_prompt,
+            max_iterations=25,
+        ):
+            # Map agent StreamEvent → TUI StreamEvent
+            if event.type == "text":
+                events.append(StreamEvent(kind=EventKind.TEXT_DELTA, data=event.text or ""))
+            elif event.type == "tool_call_start":
+                tc = event.tool_call
+                events.append(StreamEvent(
+                    kind=EventKind.TOOL_CALL,
+                    data={"name": tc.name if tc else "?", "arguments": tc.arguments if tc else "{}"},
+                ))
+            elif event.type == "tool_call_end":
+                tc = event.tool_call
+                events.append(StreamEvent(
+                    kind=EventKind.TOOL_RESULT,
+                    data={"content": event.text or (tc.arguments if tc else ""), "is_error": False},
+                ))
+            elif event.type == "tool_call_delta":
+                pass  # accumulating, not rendered until tool_call_end
+            elif event.type == "error":
+                events.append(StreamEvent(kind=EventKind.ERROR, data=event.text or "Unknown error"))
+            elif event.type == "done":
+                if event.usage:
+                    events.append(StreamEvent(
+                        kind=EventKind.USAGE,
+                        data={
+                            "prompt_tokens": event.usage.input_tokens,
+                            "completion_tokens": event.usage.output_tokens,
+                            "total_usd": event.usage.cost_usd or 0.0,
+                        },
+                    ))
+                events.append(StreamEvent(kind=EventKind.DONE))
+
+    except Exception as e:
+        events.append(StreamEvent(kind=EventKind.ERROR, data=f"Agent error: {type(e).__name__}: {e}"))
+        events.append(StreamEvent(kind=EventKind.DONE))
+
     return events
 
 
