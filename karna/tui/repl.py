@@ -72,7 +72,7 @@ async def _agent_loop(
             elif event.type == "tool_call_start":
                 tc = event.tool_call
                 events.append(StreamEvent(
-                    kind=EventKind.TOOL_CALL,
+                    kind=EventKind.TOOL_CALL_START,
                     data={"name": tc.name if tc else "?", "arguments": tc.arguments if tc else "{}"},
                 ))
             elif event.type == "tool_call_end":
