@@ -1,7 +1,7 @@
 """Tool registry for Karna.
 
-Maps tool names to their implementation classes and exposes a
-``get_tool()`` lookup helper.
+Maps tool names to their implementation classes and exposes
+``get_tool()`` and ``get_all_tools()`` helpers.
 """
 
 from __future__ import annotations
@@ -15,10 +15,14 @@ if TYPE_CHECKING:
 _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "bash": ("karna.tools.bash", "BashTool"),
     "read": ("karna.tools.read", "ReadTool"),
+    "write": ("karna.tools.write", "WriteTool"),
     "edit": ("karna.tools.edit", "EditTool"),
     "grep": ("karna.tools.grep", "GrepTool"),
     "glob": ("karna.tools.glob", "GlobTool"),
 }
+
+# Public alias — maps tool name → (module, class) for introspection.
+TOOLS: dict[str, tuple[str, str]] = dict(_TOOL_PATHS)
 
 
 def get_tool(name: str) -> "BaseTool":
@@ -28,7 +32,10 @@ def get_tool(name: str) -> "BaseTool":
     """
     key = name.lower()
     if key not in _TOOL_PATHS:
-        raise KeyError(f"Unknown tool: {name!r}. Available: {', '.join(_TOOL_PATHS)}")
+        raise KeyError(
+            f"Unknown tool: {name!r}. "
+            f"Available: {', '.join(sorted(_TOOL_PATHS))}"
+        )
     import importlib
 
     module_path, class_name = _TOOL_PATHS[key]
@@ -37,4 +44,6 @@ def get_tool(name: str) -> "BaseTool":
     return cls()
 
 
-TOOLS: dict[str, tuple[str, str]] = dict(_TOOL_PATHS)
+def get_all_tools() -> list["BaseTool"]:
+    """Instantiate and return one instance of every registered tool."""
+    return [get_tool(name) for name in _TOOL_PATHS]
