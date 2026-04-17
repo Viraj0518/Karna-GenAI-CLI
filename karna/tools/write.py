@@ -1,4 +1,4 @@
-"""Write tool — writes content to a file on disk.
+"""Write tool -- writes content to a file on disk.
 
 Full implementation ported from cc-src FileWriteTool with attribution to
 the Anthropic Claude Code codebase.
@@ -7,6 +7,7 @@ Features:
 - Write content to an absolute file path
 - Create parent directories automatically
 - Overwrite protection: must read existing file before overwriting
+- Path safety checks via ``is_safe_path()``
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.security.guards import is_safe_path
 from karna.tools.base import BaseTool
 
 
@@ -24,6 +26,10 @@ class WriteTool(BaseTool):
     For safety, existing files should be read first (the agent loop
     enforces this via convention). New files are created without
     restriction.
+
+    Security: rejects writes to credential files, ~/.ssh, and other
+    sensitive paths via ``is_safe_path()``. Writes outside cwd require
+    explicit ``allowed_roots`` configuration.
     """
 
     name = "write"
@@ -49,9 +55,20 @@ class WriteTool(BaseTool):
         "required": ["file_path", "content"],
     }
 
+    def __init__(self, *, allowed_roots: list[Path] | None = None) -> None:
+        super().__init__()
+        self._allowed_roots = allowed_roots
+
     async def execute(self, **kwargs: Any) -> str:
         file_path_str: str = kwargs["file_path"]
         content: str = kwargs["content"]
+
+        # Security: path safety check
+        if not is_safe_path(file_path_str, allowed_roots=self._allowed_roots):
+            return (
+                f"[error] Access denied: {file_path_str} is outside the "
+                "allowed directory or points to a sensitive location."
+            )
 
         file_path = Path(os.path.expanduser(file_path_str)).resolve()
 

@@ -9,6 +9,12 @@ Includes:
 - Rate-limit (429) handling with Retry-After parsing
 - Per-call cost tracking
 
+Security invariants:
+- HTTPS enforced for all provider URLs except localhost/127.0.0.1
+- TLS certificate verification is always on (``verify=True``)
+- Request/response bodies are NEVER logged (contain user conversations)
+- Only model name, token count, latency, and cost are logged
+
 Portions adapted from hermes-agent retry_utils.py (MIT).
 See NOTICES.md for attribution.
 """
@@ -23,6 +29,7 @@ import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, AsyncIterator
+from urllib.parse import urlparse
 
 import httpx
 
@@ -98,6 +105,45 @@ class BaseProvider(ABC):
         self.timeout = timeout
         # Cumulative usage across calls for this provider instance
         self._cumulative_usage = Usage()
+        # Validate provider URL security at init time
+        self._validate_url_security()
+
+    # ------------------------------------------------------------------ #
+    #  URL security
+    # ------------------------------------------------------------------ #
+
+    def _validate_url_security(self) -> None:
+        """Enforce HTTPS for all provider URLs except localhost/127.0.0.1.
+
+        Called at init time. Local providers (localhost, 127.0.0.1) are
+        allowed to use HTTP for development convenience.
+        """
+        if not self.base_url:
+            return  # Azure sets URL dynamically; validated at call time
+
+        parsed = urlparse(self.base_url)
+        host = parsed.hostname or ""
+
+        # Allow HTTP for local development servers
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            return
+
+        if parsed.scheme != "https":
+            raise ValueError(
+                f"Provider {self.name}: base_url must use HTTPS for "
+                f"non-local endpoints (got {self.base_url!r}). "
+                f"Only localhost/127.0.0.1 may use HTTP."
+            )
+
+    def _make_client(self, **kwargs: Any) -> httpx.AsyncClient:
+        """Create an httpx.AsyncClient with TLS verification enforced.
+
+        Never disables certificate verification. Timeout is set from
+        the provider's configured timeout.
+        """
+        kwargs.setdefault("timeout", self.timeout)
+        kwargs.setdefault("verify", True)  # Explicitly enforce TLS verification
+        return httpx.AsyncClient(**kwargs)
 
     # ------------------------------------------------------------------ #
     #  Credential helpers
@@ -177,12 +223,22 @@ class BaseProvider(ABC):
 
         Handles 429 (rate limit) with Retry-After header parsing, and
         retries on 5xx server errors.
+
+        Security: NEVER logs request or response bodies (they contain
+        user conversations and potentially sensitive generated content).
+        Only logs: provider name, status code, and retry timing.
         """
         last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
+                t0 = time.monotonic()
                 resp = await client.request(method, url, **kwargs)
                 if resp.status_code not in _RETRYABLE_STATUS_CODES:
+                    elapsed = time.monotonic() - t0
+                    logger.debug(
+                        "%s: %s %s -> %d (%.1fs)",
+                        self.name, method, url, resp.status_code, elapsed,
+                    )
                     resp.raise_for_status()
                     return resp
 

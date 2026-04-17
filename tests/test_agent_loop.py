@@ -226,16 +226,19 @@ class TestAgentLoopStreaming:
     async def test_max_iterations(self):
         """Loop stops after max_iterations even if provider keeps making tool calls."""
         tool = MockTool()
-        tc_msg = Message(
-            role="assistant",
-            content="",
-            tool_calls=[
-                ToolCall(id="tc_inf", name="mock_tool", arguments={"input": "loop"})
-            ],
-        )
+        # Use different arguments each time to avoid triggering loop detection
+        tc_messages = [
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    ToolCall(id=f"tc_{i}", name="mock_tool", arguments={"input": f"iter_{i}"})
+                ],
+            )
+            for i in range(10)
+        ]
 
-        # Provider always returns a tool call
-        provider = MockProvider([tc_msg] * 10)
+        provider = MockProvider(tc_messages)
 
         conv = Conversation(messages=[
             Message(role="user", content="Loop forever"),

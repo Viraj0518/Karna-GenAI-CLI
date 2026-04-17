@@ -95,7 +95,7 @@ class TestBashTool:
 class TestReadTool:
     @pytest.mark.asyncio
     async def test_read_temp_file(self):
-        tool = ReadTool()
+        tool = ReadTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("line one\nline two\nline three\n")
             f.flush()
@@ -111,7 +111,7 @@ class TestReadTool:
 
     @pytest.mark.asyncio
     async def test_read_with_offset_and_limit(self):
-        tool = ReadTool()
+        tool = ReadTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             for i in range(10):
                 f.write(f"line {i}\n")
@@ -129,13 +129,13 @@ class TestReadTool:
 
     @pytest.mark.asyncio
     async def test_read_nonexistent(self):
-        tool = ReadTool()
+        tool = ReadTool(allowed_roots=[Path("/")])
         result = await tool.execute(file_path="/nonexistent/path.txt")
         assert "[error]" in result
 
     @pytest.mark.asyncio
     async def test_binary_detection(self):
-        tool = ReadTool()
+        tool = ReadTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
             f.write(b"\x00\x01\x02binary content")
             f.flush()
@@ -149,7 +149,7 @@ class TestReadTool:
 
     @pytest.mark.asyncio
     async def test_empty_file(self):
-        tool = ReadTool()
+        tool = ReadTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             path = f.name
 
@@ -168,7 +168,7 @@ class TestReadTool:
 class TestWriteTool:
     @pytest.mark.asyncio
     async def test_write_new_file(self):
-        tool = WriteTool()
+        tool = WriteTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "new_file.txt")
             result = await tool.execute(file_path=path, content="hello world")
@@ -177,7 +177,7 @@ class TestWriteTool:
 
     @pytest.mark.asyncio
     async def test_write_creates_parents(self):
-        tool = WriteTool()
+        tool = WriteTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "deep", "nested", "file.txt")
             result = await tool.execute(file_path=path, content="deep content")
@@ -186,7 +186,7 @@ class TestWriteTool:
 
     @pytest.mark.asyncio
     async def test_overwrite_existing(self):
-        tool = WriteTool()
+        tool = WriteTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("original")
             f.flush()
@@ -208,7 +208,7 @@ class TestWriteTool:
 class TestEditTool:
     @pytest.mark.asyncio
     async def test_replace_string(self):
-        tool = EditTool()
+        tool = EditTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("hello world\ngoodbye world\n")
             f.flush()
@@ -229,7 +229,7 @@ class TestEditTool:
 
     @pytest.mark.asyncio
     async def test_uniqueness_check(self):
-        tool = EditTool()
+        tool = EditTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("hello\nhello\nhello\n")
             f.flush()
@@ -247,7 +247,7 @@ class TestEditTool:
 
     @pytest.mark.asyncio
     async def test_replace_all(self):
-        tool = EditTool()
+        tool = EditTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("aaa bbb aaa ccc aaa\n")
             f.flush()
@@ -268,7 +268,7 @@ class TestEditTool:
 
     @pytest.mark.asyncio
     async def test_string_not_found(self):
-        tool = EditTool()
+        tool = EditTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("hello world\n")
             f.flush()
@@ -286,7 +286,7 @@ class TestEditTool:
 
     @pytest.mark.asyncio
     async def test_create_new_file(self):
-        tool = EditTool()
+        tool = EditTool(allowed_roots=[Path(tempfile.gettempdir())])
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "brand_new.txt")
             result = await tool.execute(
@@ -299,7 +299,7 @@ class TestEditTool:
 
     @pytest.mark.asyncio
     async def test_noop_guard(self):
-        tool = EditTool()
+        tool = EditTool(allowed_roots=[Path(tempfile.gettempdir())])
         result = await tool.execute(
             file_path="/tmp/dummy.txt",
             old_string="same",

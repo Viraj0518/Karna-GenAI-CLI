@@ -8,6 +8,15 @@ Implements the iterative tool-call cycle:
     4. Loop back to step 1
     5. If the response has no tool_calls, yield final text and stop
 
+Hardened with:
+- Granular tool-execution error recovery (timeout, permission, file-not-found)
+- Provider API retry with exponential backoff (429, 5xx, connection errors)
+- Malformed tool-call JSON recovery
+- Infinite tool-call loop detection
+- Empty/null model response handling with retry nudge
+- Context overflow auto-truncation
+- Pre-execution safety checks (via ``safety.py``)
+
 Supports both streaming (``stream``) and non-streaming (``complete``)
 providers.  Works with any provider that follows the
 ``BaseProvider`` interface and any tools that follow ``BaseTool``.
@@ -18,16 +27,27 @@ Anthropic Claude Code codebase.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import random
 from typing import Any, AsyncIterator
 
+import httpx
+
+from karna.agents.safety import pre_tool_check
 from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResult
 from karna.providers.base import BaseProvider
 from karna.tools import get_tool
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
+
+# How many identical consecutive tool calls before we break the loop
+_LOOP_DETECTION_THRESHOLD = 3
+
+# Default tool execution timeout (seconds)
+_DEFAULT_TOOL_TIMEOUT = 120
 
 
 # ----------------------------------------------------------------------- #
@@ -37,20 +57,46 @@ logger = logging.getLogger(__name__)
 async def _execute_tool(
     tool: BaseTool,
     arguments: dict[str, Any],
+    *,
+    timeout: float = _DEFAULT_TOOL_TIMEOUT,
 ) -> ToolResult:
     """Run a single tool and return a ``ToolResult``.
 
     Catches all exceptions so the agent loop never crashes from tool
-    errors — failures are returned as error strings the model can
-    reason about.
+    errors — granular error types are preserved so the model can
+    reason about what went wrong and adapt its approach.
     """
-    # We'll set tool_call_id later when we know it
+    # Pre-execution safety check
+    proceed, warning = await pre_tool_check(tool, arguments)
+    if not proceed:
+        return ToolResult(
+            tool_call_id="",
+            content=warning or "Blocked by safety check.",
+            is_error=True,
+        )
+
     try:
-        result_text = await tool.execute(**arguments)
+        result_text = await asyncio.wait_for(
+            tool.execute(**arguments),
+            timeout=timeout,
+        )
         return ToolResult(tool_call_id="", content=result_text, is_error=False)
+    except asyncio.TimeoutError:
+        msg = f"Tool '{tool.name}' timed out after {timeout:.0f}s. The command may still be running."
+        logger.warning(msg)
+        return ToolResult(tool_call_id="", content=msg, is_error=True)
+    except PermissionError as exc:
+        msg = f"Permission denied: {exc}. Try running with appropriate permissions."
+        logger.warning("Tool %s permission error: %s", tool.name, exc)
+        return ToolResult(tool_call_id="", content=msg, is_error=True)
+    except FileNotFoundError as exc:
+        msg = f"File not found: {exc}"
+        logger.warning("Tool %s file not found: %s", tool.name, exc)
+        return ToolResult(tool_call_id="", content=msg, is_error=True)
     except Exception as exc:
+        msg = f"Tool '{tool.name}' failed: {type(exc).__name__}: {exc}"
         logger.exception("Tool %s raised: %s", tool.name, exc)
-        return ToolResult(tool_call_id="", content=f"[error] {exc}", is_error=True)
+        return ToolResult(tool_call_id="", content=msg, is_error=True)
 
 
 # ----------------------------------------------------------------------- #
@@ -69,6 +115,144 @@ def _build_tool_defs(
 
 
 # ----------------------------------------------------------------------- #
+#  Malformed JSON recovery
+# ----------------------------------------------------------------------- #
+
+def _parse_tool_arguments(raw: str) -> dict[str, Any]:
+    """Parse tool call arguments with fallback for common JSON issues.
+
+    Models sometimes emit single-quoted JSON, trailing commas, or other
+    minor deviations.  We attempt a repair before giving up.
+    """
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Attempt common fixes: single quotes -> double quotes
+    if isinstance(raw, str):
+        fixed = raw.replace("'", '"')
+        try:
+            return json.loads(fixed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    raise json.JSONDecodeError("Unfixable JSON", raw if isinstance(raw, str) else "", 0)
+
+
+# ----------------------------------------------------------------------- #
+#  Infinite-loop detection
+# ----------------------------------------------------------------------- #
+
+def _detect_tool_loop(
+    recent_calls: list[ToolCall],
+    threshold: int = _LOOP_DETECTION_THRESHOLD,
+) -> bool:
+    """Return True if the last *threshold* tool calls are identical."""
+    if len(recent_calls) < threshold:
+        return False
+    tail = recent_calls[-threshold:]
+    signatures = [(tc.name, json.dumps(tc.arguments, sort_keys=True)) for tc in tail]
+    return len(set(signatures)) == 1
+
+
+# ----------------------------------------------------------------------- #
+#  Context overflow guard
+# ----------------------------------------------------------------------- #
+
+def _estimate_message_tokens(messages: list[Message]) -> int:
+    """Rough token estimate: ~4 chars per token for English text."""
+    total_chars = sum(len(m.content) for m in messages)
+    # Also count tool results
+    for m in messages:
+        for tr in m.tool_results:
+            total_chars += len(tr.content)
+    return total_chars // 4
+
+
+def _truncate_messages_to_fit(
+    messages: list[Message],
+    target_tokens: int,
+) -> list[Message]:
+    """Drop oldest non-system messages until estimated tokens fit *target_tokens*.
+
+    Always preserves the first message (system prompt / initial user msg)
+    and the most recent messages.
+    """
+    if not messages:
+        return messages
+
+    while _estimate_message_tokens(messages) > target_tokens and len(messages) > 2:
+        # Remove the second message (preserve first, trim from the front)
+        messages.pop(1)
+
+    return messages
+
+
+# ----------------------------------------------------------------------- #
+#  Provider call with retry
+# ----------------------------------------------------------------------- #
+
+async def _call_provider_with_retry(
+    provider: BaseProvider,
+    messages: list[Message],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    system_prompt: str | None = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    max_retries: int = 3,
+) -> AsyncIterator[StreamEvent]:
+    """Stream from the provider with exponential backoff on transient errors.
+
+    Handles 429 (rate limit), 5xx (server errors), and connection errors.
+    Non-retryable errors (4xx except 429) are raised immediately.
+    """
+    for attempt in range(max_retries):
+        try:
+            async for event in provider.stream(
+                messages,
+                tools=tools,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            ):
+                yield event
+            return  # Stream completed successfully
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                wait = (2 ** attempt) + random.random()
+                yield StreamEvent(
+                    type="error",
+                    error=f"Rate limited (429). Retrying in {wait:.0f}s...",
+                )
+                await asyncio.sleep(wait)
+            elif exc.response.status_code >= 500:
+                wait = 2 ** attempt
+                yield StreamEvent(
+                    type="error",
+                    error=f"Server error ({exc.response.status_code}). Retry {attempt + 1}/{max_retries}...",
+                )
+                await asyncio.sleep(wait)
+            else:
+                # 4xx (except 429) — don't retry
+                raise
+        except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+            wait = 2 ** attempt
+            yield StreamEvent(
+                type="error",
+                error=f"Connection error: {exc}. Retry {attempt + 1}/{max_retries}...",
+            )
+            await asyncio.sleep(wait)
+
+    # All retries exhausted
+    yield StreamEvent(
+        type="error",
+        error="Provider unreachable after retries. Check your network and API key.",
+    )
+
+
+# ----------------------------------------------------------------------- #
 #  Streaming agent loop
 # ----------------------------------------------------------------------- #
 
@@ -81,6 +265,8 @@ async def agent_loop(
     max_iterations: int = 25,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    context_window: int | None = None,
+    provider_max_retries: int = 3,
 ) -> AsyncIterator[StreamEvent]:
     """Run the tool-use agent loop (streaming variant).
 
@@ -89,24 +275,54 @@ async def agent_loop(
 
     The loop terminates when the model produces a response with no
     tool calls, or when *max_iterations* is reached.
+
+    Error recovery:
+    - Tool execution failures are captured and sent to the model
+    - Provider transient errors (429, 5xx) trigger retry with backoff
+    - Malformed tool-call JSON is repaired when possible
+    - Repeated identical tool calls are detected and broken
+    - Empty model responses are retried with a nudge message
+    - Context overflow triggers automatic message truncation
     """
     tool_defs = _build_tool_defs(tools)
     tool_map = {t.name: t for t in tools}
 
+    # Track recent tool calls for loop detection
+    recent_tool_calls: list[ToolCall] = []
+    # Track consecutive empty responses for backoff
+    consecutive_empty = 0
+    _MAX_CONSECUTIVE_EMPTY = 3
+
     for iteration in range(max_iterations):
+        # ---- Context overflow check --------------------------------
+        if context_window is not None:
+            estimated = _estimate_message_tokens(conversation.messages)
+            if estimated > int(context_window * 0.95):
+                target = int(context_window * 0.8)
+                conversation.messages = _truncate_messages_to_fit(
+                    conversation.messages, target,
+                )
+                yield StreamEvent(
+                    type="text",
+                    text="[Context trimmed -- older messages removed to fit model window]\n",
+                )
+
         # ---- Collect events from one provider turn --------------------
         pending_tool_calls: list[ToolCall] = []
         assistant_text_parts: list[str] = []
         # Accumulate argument fragments keyed by tool call id
         arg_buffers: dict[str, str] = {}
         done = False
+        provider_error = False
 
-        async for event in provider.stream(
+        async for event in _call_provider_with_retry(
+            provider,
             conversation.messages,
             tools=tool_defs,
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            max_retries=provider_max_retries,
         ):
             yield event
 
@@ -115,46 +331,99 @@ async def agent_loop(
 
             elif event.type == "tool_call_start" and event.tool_call:
                 tc = event.tool_call
-                arg_buffers[tc.id] = json.dumps(tc.arguments) if tc.arguments else ""
+                arg_buffers[tc.id] = json.dumps(tc.arguments) if tc.arguments is not None else ""
 
             elif event.type == "tool_call_delta" and event.tool_call:
                 tc = event.tool_call
                 if tc.id in arg_buffers:
-                    # Delta text arrives in event.text for some providers
                     delta = event.text or ""
                     arg_buffers[tc.id] += delta
 
             elif event.type == "tool_call_end" and event.tool_call:
                 tc = event.tool_call
                 # Merge any accumulated argument fragments
-                if tc.id in arg_buffers and not tc.arguments:
+                if tc.id in arg_buffers and not tc.arguments and arg_buffers[tc.id]:
                     raw = arg_buffers[tc.id]
                     try:
-                        tc = tc.model_copy(update={"arguments": json.loads(raw)})
+                        parsed = _parse_tool_arguments(raw)
+                        tc = tc.model_copy(update={"arguments": parsed})
                     except json.JSONDecodeError:
-                        tc = tc.model_copy(update={"arguments": {}})
+                        # Send malformed JSON error back to model
+                        tc = tc.model_copy(update={"arguments": {"__parse_error__": raw[:200]}})
                 pending_tool_calls.append(tc)
 
             elif event.type == "done":
                 done = True
 
             elif event.type == "error":
-                # Yield the error and stop
+                provider_error = True
+
+        # If provider errored out after retries, stop
+        if provider_error and not assistant_text_parts and not pending_tool_calls:
+            return
+
+        # ---- Empty/null response handling ----------------------------
+        assistant_text = "".join(assistant_text_parts)
+        if not assistant_text and not pending_tool_calls:
+            consecutive_empty += 1
+            if consecutive_empty >= _MAX_CONSECUTIVE_EMPTY:
+                yield StreamEvent(
+                    type="error",
+                    error="Model returned empty responses repeatedly. Stopping.",
+                )
                 return
+            yield StreamEvent(
+                type="text",
+                text="[Model returned empty response. Retrying...]\n",
+            )
+            conversation.messages.append(
+                Message(
+                    role="user",
+                    content="Your response was empty. Please try again.",
+                )
+            )
+            continue  # Re-prompt
+
+        # Got a real response — reset empty counter
+        consecutive_empty = 0
 
         # ---- If no tool calls, conversation is complete ----------------
         if not pending_tool_calls:
-            # Append the final assistant message to conversation
-            assistant_text = "".join(assistant_text_parts)
             if assistant_text:
                 conversation.messages.append(
                     Message(role="assistant", content=assistant_text)
                 )
             return
 
-        # ---- Execute tool calls and build messages --------------------
-        assistant_text = "".join(assistant_text_parts)
+        # ---- Infinite loop detection ---------------------------------
+        recent_tool_calls.extend(pending_tool_calls)
+        if _detect_tool_loop(recent_tool_calls):
+            yield StreamEvent(
+                type="text",
+                text="[Detected repeated tool call loop. Breaking.]\n",
+            )
+            conversation.messages.append(
+                Message(
+                    role="assistant",
+                    content=assistant_text,
+                    tool_calls=pending_tool_calls,
+                )
+            )
+            conversation.messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        "You appear to be in a loop calling the same tool "
+                        "repeatedly with identical arguments. Please try a "
+                        "different approach or ask for help."
+                    ),
+                )
+            )
+            # Clear recent calls and continue — model will see the nudge
+            recent_tool_calls.clear()
+            continue
 
+        # ---- Execute tool calls and build messages --------------------
         # Append assistant message with tool calls
         conversation.messages.append(
             Message(
@@ -167,6 +436,17 @@ async def agent_loop(
         # Execute each tool call
         tool_results: list[ToolResult] = []
         for tc in pending_tool_calls:
+            # Handle malformed JSON that couldn't be parsed
+            if "__parse_error__" in tc.arguments:
+                raw_preview = tc.arguments["__parse_error__"]
+                result = ToolResult(
+                    tool_call_id=tc.id,
+                    content=f"Invalid tool arguments (malformed JSON): {raw_preview}",
+                    is_error=True,
+                )
+                tool_results.append(result)
+                continue
+
             tool = tool_map.get(tc.name)
             if tool is None:
                 result = ToolResult(
@@ -210,28 +490,100 @@ async def agent_loop_sync(
     max_iterations: int = 25,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    context_window: int | None = None,
 ) -> Message:
     """Run the tool-use agent loop (non-streaming variant).
 
     Returns the final assistant ``Message`` after all tool calls have
-    been resolved.
+    been resolved.  Includes the same error recovery as the streaming
+    variant: granular tool errors, malformed JSON recovery, loop
+    detection, empty-response retry, and context overflow truncation.
     """
     tool_defs = _build_tool_defs(tools)
     tool_map = {t.name: t for t in tools}
 
+    recent_tool_calls: list[ToolCall] = []
+    consecutive_empty = 0
+    _MAX_CONSECUTIVE_EMPTY = 3
+
     for iteration in range(max_iterations):
-        response = await provider.complete(
-            conversation.messages,
-            tools=tool_defs,
-            system_prompt=system_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
+        # ---- Context overflow check --------------------------------
+        if context_window is not None:
+            estimated = _estimate_message_tokens(conversation.messages)
+            if estimated > int(context_window * 0.95):
+                target = int(context_window * 0.8)
+                conversation.messages = _truncate_messages_to_fit(
+                    conversation.messages, target,
+                )
+
+        # ---- Call provider with retry on transient errors -----------
+        response: Message | None = None
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await provider.complete(
+                    conversation.messages,
+                    tools=tool_defs,
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                break
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                if exc.response.status_code == 429 or exc.response.status_code >= 500:
+                    await asyncio.sleep(2 ** attempt + random.random())
+                else:
+                    raise
+            except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+                last_exc = exc
+                await asyncio.sleep(2 ** attempt)
+
+        if response is None:
+            return Message(
+                role="assistant",
+                content=f"[error] Provider unreachable after retries: {last_exc}",
+            )
+
+        # ---- Empty response handling --------------------------------
+        if not response.content and not response.tool_calls:
+            consecutive_empty += 1
+            if consecutive_empty >= _MAX_CONSECUTIVE_EMPTY:
+                return Message(
+                    role="assistant",
+                    content="[error] Model returned empty responses repeatedly.",
+                )
+            conversation.messages.append(
+                Message(
+                    role="user",
+                    content="Your response was empty. Please try again.",
+                )
+            )
+            continue
+
+        consecutive_empty = 0
 
         # No tool calls — we're done
         if not response.tool_calls:
             conversation.messages.append(response)
             return response
+
+        # ---- Infinite loop detection --------------------------------
+        recent_tool_calls.extend(response.tool_calls)
+        if _detect_tool_loop(recent_tool_calls):
+            conversation.messages.append(response)
+            conversation.messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        "You appear to be in a loop calling the same tool "
+                        "repeatedly with identical arguments. Please try a "
+                        "different approach or ask for help."
+                    ),
+                )
+            )
+            recent_tool_calls.clear()
+            continue
 
         # Append assistant message with tool calls
         conversation.messages.append(response)

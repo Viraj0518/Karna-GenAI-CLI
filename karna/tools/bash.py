@@ -1,4 +1,4 @@
-"""Bash tool — executes shell commands via asyncio subprocess.
+"""Bash tool -- executes shell commands via asyncio subprocess.
 
 Full implementation ported from cc-src BashTool with attribution to
 the Anthropic Claude Code codebase.
@@ -9,45 +9,20 @@ Features:
 - Configurable timeout (default 120 s)
 - Working directory tracking
 - Output truncation for large results
-- Basic dangerous-command validation
+- Dangerous-command detection via security guards
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
-import re
 from typing import Any
 
+from karna.security.guards import check_dangerous_command
 from karna.tools.base import BaseTool
 
 _DEFAULT_TIMEOUT = 120  # seconds
 _MAX_OUTPUT_CHARS = 100_000  # truncate beyond this
-
-
-# ----------------------------------------------------------------------- #
-#  Dangerous-command patterns (ported from cc-src bashSecurity.ts)
-# ----------------------------------------------------------------------- #
-
-_DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\brm\s+(-[rR]f?|--recursive)\s+/\s*$"), "recursive delete of root filesystem"),
-    (re.compile(r"\brm\s+(-[rR]f?|--recursive)\s+/\s"), "recursive delete of root filesystem"),
-    (re.compile(r"\bdd\b.*\bof=/dev/[sh]d"), "direct write to block device"),
-    (re.compile(r"\bmkfs\b"), "filesystem format command"),
-    (re.compile(r"\b:(){ :\|:& };:"), "fork bomb"),
-    (re.compile(r">\s*/dev/[sh]d"), "redirect to block device"),
-    (re.compile(r"\bchmod\s+-R\s+777\s+/\s*$"), "recursive 777 chmod of root"),
-    (re.compile(r"\bcurl\b.*\|\s*bash"), "piping remote script to shell"),
-    (re.compile(r"\bwget\b.*\|\s*bash"), "piping remote script to shell"),
-]
-
-
-def _check_dangerous(command: str) -> str | None:
-    """Return a warning string if *command* matches a dangerous pattern."""
-    for pattern, reason in _DANGEROUS_PATTERNS:
-        if pattern.search(command):
-            return f"[warning] Dangerous command detected ({reason}). Command was still executed."
-    return None
 
 
 def _truncate_output(text: str, limit: int = _MAX_OUTPUT_CHARS) -> str:
@@ -68,6 +43,12 @@ class BashTool(BaseTool):
 
     Tracks a persistent working directory across invocations so that
     ``cd`` in one call is honoured in subsequent calls.
+
+    Security:
+    - Checks ``check_dangerous_command()`` before execution.
+    - If dangerous and ``safe_mode`` is enabled, BLOCKS execution.
+    - If dangerous and ``safe_mode`` is disabled, returns a warning
+      but still executes.
     """
 
     name = "bash"
@@ -90,16 +71,24 @@ class BashTool(BaseTool):
         "required": ["command"],
     }
 
-    def __init__(self) -> None:
+    def __init__(self, *, safe_mode: bool = False) -> None:
         super().__init__()
         self._cwd: str = os.getcwd()
+        self._safe_mode = safe_mode
 
     async def execute(self, **kwargs: Any) -> str:  # noqa: C901
         command: str = kwargs["command"]
         timeout: int = kwargs.get("timeout", _DEFAULT_TIMEOUT)
 
-        # Security check (warn but still execute)
-        warning = _check_dangerous(command)
+        # Security check
+        warning = check_dangerous_command(command)
+        if warning:
+            if self._safe_mode:
+                return (
+                    f"[BLOCKED] {warning}. "
+                    "Command was NOT executed (safe-mode is enabled). "
+                    "Disable safe-mode in config to allow dangerous commands."
+                )
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -124,7 +113,6 @@ class BashTool(BaseTool):
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
             # Update working directory if the command contained cd
-            # We parse the cwd from a subshell echo after the real command
             if "cd " in command or "cd\t" in command:
                 cwd_proc = await asyncio.create_subprocess_shell(
                     f"cd {self._cwd} && {command} && pwd",
@@ -144,7 +132,7 @@ class BashTool(BaseTool):
             # Build output
             parts: list[str] = []
             if warning:
-                parts.append(warning)
+                parts.append(f"[warning] {warning}. Command was still executed.")
             if stdout.strip():
                 parts.append(stdout.rstrip())
             if stderr.strip():

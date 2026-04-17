@@ -1,4 +1,4 @@
-"""Edit tool — performs exact string replacements in files.
+"""Edit tool -- performs exact string replacements in files.
 
 Full implementation ported from cc-src FileEditTool with attribution to
 the Anthropic Claude Code codebase.
@@ -9,6 +9,7 @@ Features:
 - Uniqueness check (old_string must be unique unless replace_all)
 - New-file creation when old_string is empty and file doesn't exist
 - Preserves file encoding
+- Path safety checks via ``is_safe_path()``
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.security.guards import is_safe_path
 from karna.tools.base import BaseTool
 
 
@@ -26,6 +28,9 @@ class EditTool(BaseTool):
     The tool finds ``old_string`` in the file and replaces it with
     ``new_string``.  If ``replace_all`` is *True*, every occurrence is
     replaced; otherwise the string must be unique.
+
+    Security: rejects edits to credential files, ~/.ssh, and other
+    sensitive paths via ``is_safe_path()``.
     """
 
     name = "edit"
@@ -58,11 +63,22 @@ class EditTool(BaseTool):
         "required": ["file_path", "old_string", "new_string"],
     }
 
+    def __init__(self, *, allowed_roots: list[Path] | None = None) -> None:
+        super().__init__()
+        self._allowed_roots = allowed_roots
+
     async def execute(self, **kwargs: Any) -> str:
         file_path_str: str = kwargs["file_path"]
         old_string: str = kwargs["old_string"]
         new_string: str = kwargs["new_string"]
         replace_all: bool = kwargs.get("replace_all", False)
+
+        # Security: path safety check
+        if not is_safe_path(file_path_str, allowed_roots=self._allowed_roots):
+            return (
+                f"[error] Access denied: {file_path_str} is outside the "
+                "allowed directory or points to a sensitive location."
+            )
 
         file_path = Path(os.path.expanduser(file_path_str)).resolve()
 
@@ -98,10 +114,10 @@ class EditTool(BaseTool):
         if old_string == "":
             if content.strip():
                 return (
-                    "[error] Cannot create new file — file already exists "
+                    "[error] Cannot create new file -- file already exists "
                     "and has content."
                 )
-            # Empty file — treat as full replacement
+            # Empty file -- treat as full replacement
             try:
                 file_path.write_text(new_string, encoding="utf-8")
                 return f"The file {file_path} has been updated successfully."

@@ -5,5 +5,6 @@ iterative tool-call cycle that makes Karna a tool-using agent.
 """
 
 from karna.agents.loop import agent_loop, agent_loop_sync
+from karna.agents.safety import pre_tool_check
 
-__all__ = ["agent_loop", "agent_loop_sync"]
+__all__ = ["agent_loop", "agent_loop_sync", "pre_tool_check"]

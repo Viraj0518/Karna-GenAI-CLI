@@ -1,4 +1,4 @@
-"""Read tool — reads file contents from disk with line numbers.
+"""Read tool -- reads file contents from disk with line numbers.
 
 Full implementation ported from cc-src FileReadTool with attribution to
 the Anthropic Claude Code codebase.
@@ -9,6 +9,7 @@ Features:
 - Binary file detection
 - Image file detection (placeholder)
 - Default max 2000 lines
+- Path safety checks via ``is_safe_path()``
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.security.guards import is_safe_path
 from karna.tools.base import BaseTool
 
 _DEFAULT_MAX_LINES = 2000
@@ -63,7 +65,11 @@ def _is_image(path: Path) -> bool:
 
 class ReadTool(BaseTool):
     """Read a file from the local filesystem and return its contents
-    with line numbers (``cat -n`` style)."""
+    with line numbers (``cat -n`` style).
+
+    Security: rejects reads of credential files, ~/.ssh, and other
+    sensitive paths via ``is_safe_path()``.
+    """
 
     name = "read"
     description = (
@@ -96,10 +102,21 @@ class ReadTool(BaseTool):
         "required": ["file_path"],
     }
 
+    def __init__(self, *, allowed_roots: list[Path] | None = None) -> None:
+        super().__init__()
+        self._allowed_roots = allowed_roots
+
     async def execute(self, **kwargs: Any) -> str:
         file_path_str: str = kwargs["file_path"]
         offset: int = kwargs.get("offset", 1)
         limit: int = kwargs.get("limit", _DEFAULT_MAX_LINES)
+
+        # Security: path safety check
+        if not is_safe_path(file_path_str, allowed_roots=self._allowed_roots):
+            return (
+                f"[error] Access denied: {file_path_str} is outside the "
+                "allowed directory or points to a sensitive location."
+            )
 
         # Expand ~ and resolve
         file_path = Path(os.path.expanduser(file_path_str)).resolve()
@@ -114,14 +131,14 @@ class ReadTool(BaseTool):
             size = file_path.stat().st_size
             return (
                 f"[image file: {file_path.suffix.lstrip('.')} format, "
-                f"{size} bytes — visual content not displayed]"
+                f"{size} bytes -- visual content not displayed]"
             )
 
         # Binary detection
         if _is_binary(file_path):
             return (
                 f"[binary file: {file_path.suffix.lstrip('.')} format "
-                f"— cannot display]"
+                f"-- cannot display]"
             )
 
         try:
