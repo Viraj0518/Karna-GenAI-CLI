@@ -1,3 +1,5 @@
 ## Usage Restriction License
 
-This project may only be used by the owner and by organizations explicitly authorized by the owner.
+Copyright © 2026 Viraj.
+
+This project may only be used by the owner (Viraj) and by organizations explicitly authorized in writing by Viraj.
