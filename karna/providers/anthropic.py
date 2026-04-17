@@ -1,29 +1,210 @@
-"""Anthropic provider — stub for Phase 2.
+"""Anthropic provider -- native Messages API client.
 
-Will target ``https://api.anthropic.com/v1/messages`` with the
+Targets ``https://api.anthropic.com/v1/messages`` with the
 ``x-api-key`` + ``anthropic-version`` header pattern.
+
+Supports:
+- Non-streaming and streaming completions
+- Tool use via Anthropic's native format (not OpenAI-compatible)
+- System prompt as top-level parameter (not in messages)
+- SSE streaming with message_start, content_block_delta, message_delta
+- Cost tracking per call
+
+Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+See NOTICES.md for attribution.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, AsyncIterator
 
-from karna.models import Message, ModelInfo, StreamEvent
+import httpx
+
+from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
 from karna.providers.base import BaseProvider
+
+# Anthropic API version
+ANTHROPIC_VERSION = "2023-06-01"
+
+# Default max output tokens per model family (ported from hermes-agent)
+_OUTPUT_LIMITS: dict[str, int] = {
+    "claude-opus-4": 128_000,
+    "claude-sonnet-4": 64_000,
+    "claude-3-5-sonnet": 8_192,
+    "claude-3-5-haiku": 8_192,
+    "claude-3-opus": 4_096,
+    "claude-3-haiku": 4_096,
+}
+_DEFAULT_OUTPUT_LIMIT = 16_384
+
+
+def _get_max_output_tokens(model: str) -> int:
+    """Determine the max output tokens for an Anthropic model.
+
+    Uses longest-prefix matching against the output limits table.
+    """
+    model_lower = model.lower().replace(".", "-")
+    best_key = ""
+    best_val = _DEFAULT_OUTPUT_LIMIT
+    for key, val in _OUTPUT_LIMITS.items():
+        if key in model_lower and len(key) > len(best_key):
+            best_key = key
+            best_val = val
+    return best_val
 
 
 class AnthropicProvider(BaseProvider):
-    """Anthropic Messages API provider (Phase 2)."""
+    """Anthropic Messages API provider."""
 
     name = "anthropic"
     base_url = "https://api.anthropic.com/v1"
 
-    def __init__(self, model: str = "claude-sonnet-4-20250514") -> None:
-        super().__init__()
+    def __init__(
+        self,
+        model: str = "claude-sonnet-4-20250514",
+        *,
+        max_retries: int = 3,
+        timeout: float = 120.0,
+    ) -> None:
+        super().__init__(max_retries=max_retries, timeout=timeout)
         self.model = model
         cred = self._load_credential()
         self._api_key = cred.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
+
+    # ------------------------------------------------------------------ #
+    #  Headers
+    # ------------------------------------------------------------------ #
+
+    def _headers(self) -> dict[str, str]:
+        key = self._require_api_key()
+        return {
+            "Content-Type": "application/json",
+            "x-api-key": key,
+            "anthropic-version": ANTHROPIC_VERSION,
+        }
+
+    # ------------------------------------------------------------------ #
+    #  Message serialization (Anthropic native format)
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
+        """Convert Message objects to Anthropic's message format.
+
+        Anthropic requires strict role alternation (user/assistant).
+        System messages are handled separately as a top-level param.
+        Tool results go into user messages with tool_result blocks.
+        """
+        result: list[dict[str, Any]] = []
+
+        for m in messages:
+            if m.role == "system":
+                continue
+
+            if m.role == "assistant":
+                content: list[dict[str, Any]] = []
+                if m.content:
+                    content.append({"type": "text", "text": m.content})
+                for tc in m.tool_calls:
+                    content.append({
+                        "type": "tool_use",
+                        "id": tc.id,
+                        "name": tc.name,
+                        "input": tc.arguments,
+                    })
+                result.append({
+                    "role": "assistant",
+                    "content": content or [{"type": "text", "text": ""}],
+                })
+                continue
+
+            if m.tool_results:
+                blocks = [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tr.tool_call_id,
+                        "content": tr.content or "(no output)",
+                        **({"is_error": True} if tr.is_error else {}),
+                    }
+                    for tr in m.tool_results
+                ]
+                if (
+                    result
+                    and result[-1]["role"] == "user"
+                    and isinstance(result[-1]["content"], list)
+                ):
+                    result[-1]["content"].extend(blocks)
+                else:
+                    result.append({"role": "user", "content": blocks})
+                continue
+
+            # Regular user message
+            result.append({"role": "user", "content": m.content or "(empty)"})
+
+        return result
+
+    @staticmethod
+    def _serialize_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert OpenAI-format tool definitions to Anthropic format."""
+        anthropic_tools: list[dict[str, Any]] = []
+        for t in tools:
+            fn = t.get("function", {})
+            anthropic_tools.append({
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "input_schema": fn.get(
+                    "parameters", {"type": "object", "properties": {}}
+                ),
+            })
+        return anthropic_tools
+
+    # ------------------------------------------------------------------ #
+    #  Response parsing
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _parse_response(data: dict[str, Any]) -> tuple[str, list[ToolCall]]:
+        """Parse content and tool calls from an Anthropic response."""
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                tool_calls.append(
+                    ToolCall(
+                        id=block["id"],
+                        name=block["name"],
+                        arguments=block.get("input", {}),
+                    )
+                )
+
+        return "\n".join(text_parts), tool_calls
+
+    @staticmethod
+    def _extract_usage(data: dict[str, Any], model: str) -> Usage:
+        """Extract usage from an Anthropic response."""
+        raw = data.get("usage", {})
+        input_tokens = raw.get("input_tokens", 0)
+        output_tokens = raw.get("output_tokens", 0)
+        cache_read = raw.get("cache_read_input_tokens", 0)
+        cache_write = raw.get("cache_creation_input_tokens", 0)
+        cost = estimate_cost("anthropic", model, input_tokens, output_tokens)
+
+        return Usage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+            cost_usd=cost,
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Interface
+    # ------------------------------------------------------------------ #
 
     async def complete(
         self,
@@ -34,7 +215,38 @@ class AnthropicProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> Message:
-        raise NotImplementedError("Phase 2")
+        """Non-streaming Messages API call."""
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": self._serialize_messages(messages),
+            "max_tokens": max_tokens or _get_max_output_tokens(self.model),
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+        if tools:
+            payload["tools"] = self._serialize_tools(tools)
+        if temperature is not None:
+            payload["temperature"] = temperature
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await self._request_with_retry(
+                client,
+                "POST",
+                f"{self.base_url}/messages",
+                headers=self._headers(),
+                json=payload,
+            )
+            data = resp.json()
+
+        text, tool_calls = self._parse_response(data)
+        usage = self._extract_usage(data, self.model)
+        self._track_usage(usage)
+
+        return Message(
+            role="assistant",
+            content=text,
+            tool_calls=tool_calls,
+        )
 
     async def stream(
         self,
@@ -45,8 +257,152 @@ class AnthropicProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        raise NotImplementedError("Phase 2")
-        yield StreamEvent(type="done")  # pragma: no cover
+        """Streaming Messages API -- yields StreamEvent objects.
+
+        Parses Anthropic's SSE events:
+        - message_start: message metadata
+        - content_block_start: new text/tool_use block
+        - content_block_delta: incremental content
+        - content_block_stop: block complete
+        - message_delta: final stop reason + usage
+        """
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": self._serialize_messages(messages),
+            "max_tokens": max_tokens or _get_max_output_tokens(self.model),
+            "stream": True,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+        if tools:
+            payload["tools"] = self._serialize_tools(tools)
+        if temperature is not None:
+            payload["temperature"] = temperature
+
+        # Track in-flight tool calls
+        current_tool: dict[str, Any] | None = None
+        usage_data: dict[str, Any] = {}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/messages",
+                headers=self._headers(),
+                json=payload,
+            ) as resp:
+                resp.raise_for_status()
+
+                event_type: str | None = None
+                async for line in resp.aiter_lines():
+                    if line.startswith("event: "):
+                        event_type = line.removeprefix("event: ").strip()
+                        continue
+
+                    if not line.startswith("data: "):
+                        continue
+
+                    raw = line.removeprefix("data: ").strip()
+                    if not raw:
+                        continue
+
+                    data = json.loads(raw)
+
+                    if event_type == "message_start":
+                        msg = data.get("message", {})
+                        usage_data = msg.get("usage", {})
+
+                    elif event_type == "content_block_start":
+                        block = data.get("content_block", {})
+                        if block.get("type") == "tool_use":
+                            current_tool = {
+                                "id": block.get("id", ""),
+                                "name": block.get("name", ""),
+                                "arguments": "",
+                            }
+                            yield StreamEvent(
+                                type="tool_call_start",
+                                tool_call=ToolCall(
+                                    id=current_tool["id"],
+                                    name=current_tool["name"],
+                                    arguments={},
+                                ),
+                            )
+
+                    elif event_type == "content_block_delta":
+                        delta = data.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            yield StreamEvent(
+                                type="text", text=delta.get("text", "")
+                            )
+                        elif delta.get("type") == "input_json_delta":
+                            partial = delta.get("partial_json", "")
+                            if current_tool is not None and partial:
+                                current_tool["arguments"] += partial
+                                yield StreamEvent(
+                                    type="tool_call_delta", text=partial
+                                )
+
+                    elif event_type == "content_block_stop":
+                        if current_tool is not None:
+                            try:
+                                args = (
+                                    json.loads(current_tool["arguments"])
+                                    if current_tool["arguments"]
+                                    else {}
+                                )
+                            except json.JSONDecodeError:
+                                args = {}
+                            yield StreamEvent(
+                                type="tool_call_end",
+                                tool_call=ToolCall(
+                                    id=current_tool["id"],
+                                    name=current_tool["name"],
+                                    arguments=args,
+                                ),
+                            )
+                            current_tool = None
+
+                    elif event_type == "message_delta":
+                        delta_usage = data.get("usage", {})
+                        usage_data.update(delta_usage)
+
+                    event_type = None
+
+        # Emit final usage
+        input_tokens = usage_data.get("input_tokens", 0)
+        output_tokens = usage_data.get("output_tokens", 0)
+        cost = estimate_cost("anthropic", self.model, input_tokens, output_tokens)
+        usage = Usage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=usage_data.get("cache_read_input_tokens", 0),
+            cache_write_tokens=usage_data.get("cache_creation_input_tokens", 0),
+            cost_usd=cost,
+        )
+        self._track_usage(usage)
+        yield StreamEvent(type="done", usage=usage)
 
     async def list_models(self) -> list[ModelInfo]:
-        raise NotImplementedError("Phase 2")
+        """List available models via the Anthropic /v1/models endpoint."""
+        key = self._require_api_key()
+        headers = {
+            "x-api-key": key,
+            "anthropic-version": ANTHROPIC_VERSION,
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{self.base_url}/models?limit=1000",
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        return [
+            ModelInfo(
+                id=m["id"],
+                name=m.get("display_name", m["id"]),
+                provider="anthropic",
+                context_window=m.get("max_input_tokens"),
+            )
+            for m in data.get("data", [])
+        ]

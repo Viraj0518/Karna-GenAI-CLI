@@ -60,7 +60,11 @@ def _jittered_backoff(
     else:
         delay = min(base_delay * (2**exponent), max_delay)
 
-    seed = (time.time_ns() ^ (id(asyncio.current_task()) * 0x9E3779B9)) & 0xFFFFFFFF
+    try:
+        task_id = id(asyncio.current_task()) if asyncio.get_event_loop().is_running() else 0
+    except RuntimeError:
+        task_id = 0
+    seed = (time.time_ns() ^ (task_id * 0x9E3779B9)) & 0xFFFFFFFF
     rng = random.Random(seed)
     jitter = rng.uniform(0, jitter_ratio * delay)
     return delay + jitter
