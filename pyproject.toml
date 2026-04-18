@@ -7,7 +7,8 @@ name = "karna"
 version = "0.1.0"
 description = "Nellie — Karna's internal AI agent harness. CLI binary: nellie."
 authors = [{name = "Viraj Sharma", email = "virajsharma8547@gmail.com"}]
-license = "MIT"
+license = { file = "LICENSE.md" }
+license-files = ["LICENSE.md", "NOTICES.md"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
