@@ -100,18 +100,18 @@ _GLYPHS: Dict[str, tuple[str, str]] = {
     "tool_task":    ("\uf0ae",  "T"),    # list-check
     "tool_monitor": ("\uf200",  "M"),    # chart
 
-    # Roles
-    "user":         ("\uf007",  ">"),    # person
-    "assistant":    ("\uf544",  "*"),    # robot / star
-    "thinking":     ("\uf0eb",  "."),    # lightbulb
-    "sparkle":      ("\uf890",  "*"),    # sparkle
+    # Roles — ASCII fallbacks use widely-supported Unicode block chars
+    "user":         ("\uf007",  "\u25B8"),   # person → ▸ (black right-pointing small triangle)
+    "assistant":    ("\uf544",  "\u25C6"),   # robot → ◆ (black diamond, brand mark)
+    "thinking":     ("\uf0eb",  "\u25CB"),   # lightbulb → ○ (white circle)
+    "sparkle":      ("\uf890",  "\u2726"),   # sparkle → ✦ (widely supported star)
 
     # Status
-    "success":      ("\uf00c",  "ok"),   # check
-    "error":        ("\uf00d",  "!!"),   # x
-    "warning":      ("\uf071",  "!"),    # triangle
-    "pending":      ("\uf251",  "..."),  # hourglass
-    "running":      ("\uf46a",  ">"),    # play
+    "success":      ("\uf00c",  "\u2713"),   # check → ✓
+    "error":        ("\uf00d",  "\u2717"),   # x → ✗
+    "warning":      ("\uf071",  "\u26A0"),   # triangle → ⚠
+    "pending":      ("\uf251",  "\u2026"),   # hourglass → …
+    "running":      ("\uf46a",  "\u25B6"),   # play → ▶
 
     # Affordances
     "chevron_right":("\uf054",  ">"),

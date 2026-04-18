@@ -98,11 +98,12 @@ def test_ascii_fallback_resolves_every_glyph() -> None:
     for name in ascii_set.names:
         value = getattr(ascii_set, name)
         assert value, f"icon {name!r} has empty ASCII fallback"
-        # ASCII should be printable, single-byte-per-char (no nerd-font
-        # private-use area code points in the 0xE000-0xF8FF range).
+        # Fallback must not be in the Nerd Font private-use area
+        # (0xE000-0xF8FF) — that range only renders with a Nerd Font.
+        # Basic Unicode (◆ ✓ ▸ etc) is OK on modern terminals.
         for ch in value:
-            assert ord(ch) < 0x7F or ch in ("\u2022", "\u2026"), (
-                f"ASCII icon {name!r} contains non-ASCII: {value!r}"
+            assert not (0xE000 <= ord(ch) <= 0xF8FF), (
+                f"icon {name!r} fallback contains PUA (Nerd Font) glyph: {value!r}"
             )
 
 
