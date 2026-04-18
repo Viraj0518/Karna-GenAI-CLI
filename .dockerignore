@@ -1,0 +1,49 @@
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# Virtual envs
+.venv*/
+venv/
+env/
+
+# Tests, research, docs (not needed at runtime; README/LICENSE.md explicitly kept)
+tests/
+research/
+docs/
+*.md
+!README.md
+!LICENSE.md
+!NOTICES.md
+
+# Python caches / build artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+
+# CI / workspace tooling
+.github/
+.pre-commit-config.yaml
+.vscode/
+.idea/
+
+# Node (in case web/ ever ships JS)
+node_modules/
+
+# Logs / local state
+*.log
+.env
+.env.*
+!.env.example
+
+# Docker itself (avoid recursive copies)
+Dockerfile
+.dockerignore
