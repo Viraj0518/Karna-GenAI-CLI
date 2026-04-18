@@ -1,106 +1,233 @@
-"""Auto-compact conversation when context hits threshold.
+"""Auto-compact conversations when they exceed a token budget.
 
-Strategy (ported from cc-src autoCompact.ts + hermes-agent trajectory_compressor.py):
+Strategy
+--------
+1. Estimate the token usage of the full conversation via
+   ``karna.tokens.count_tokens``.
+2. If usage is under 80% of the configured budget, return the
+   conversation unchanged — compaction is load-bearing only when the
+   window is actually tight.
+3. Otherwise split the transcript into three zones:
+       [ head | middle | tail ]
+   The head holds the anchor context (system prompt + first user
+   turn), the tail holds the most recent back-and-forth so the model
+   retains short-term coherence, and the middle is what we summarise.
+4. Format the middle zone as plain text, run it through
+   ``scrub_secrets`` (so any API key that leaked into a tool result
+   doesn't get shipped off-server), and ask the LLM for a structured
+   summary bounded by ``summary_budget`` tokens.
+5. Replace the middle with a single system message:
+       "[Compacted summary of N earlier turns]: ..."
+6. Retries: three attempts with a short backoff. On exhaustion raise
+   ``CompactionError`` — silently returning the unchanged conversation
+   would let the agent loop spin forever against a context-overflow.
 
-1. Trigger when estimated tokens > threshold percentage of context window
-2. Take oldest N messages (keeping system prompt + last 5 messages)
-3. Send to the same provider with the summarization prompt
-4. Replace oldest messages with a single summary message
-5. Circuit breaker: if 3 consecutive compaction failures, stop trying
+Secret scrubbing happens **before** the provider call, not after, so
+leaked credentials never leave the host.
 
-See NOTICES.md for attribution.
+Portions adapted from cc-src ``autoCompact.ts`` and hermes-agent
+``trajectory_compressor.py``. See NOTICES.md.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
 from karna.compaction.prompts import COMPACT_SYSTEM_PROMPT, SUMMARY_PROMPT
 from karna.models import Conversation, Message
 from karna.security import scrub_secrets
+from karna.tokens import count_tokens
 
 if TYPE_CHECKING:
     from karna.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
 
-# Number of recent messages to always preserve (never summarized)
-_PRESERVE_TAIL = 5
-
-# Max consecutive failures before the circuit breaker trips
-_MAX_CONSECUTIVE_FAILURES = 3
+_MAX_ATTEMPTS = 3
+_COMPACT_TRIGGER_FRACTION = 0.80
 
 
 class CompactionError(RuntimeError):
-    """Raised when conversation compaction fails.
+    """Raised when compaction exhausts its retry budget.
 
-    The agent loop should surface this as a user-visible error so the
-    user knows context is overflowing and can start a new conversation
-    or compact manually.  Swallowing these failures silently leaves the
-    user trapped in an infinite context-overflow loop.
+    Surface this to the user — do not swallow it. Silently returning
+    the unchanged conversation traps the agent loop in a
+    context-overflow cycle where every subsequent provider call fails
+    the same way.
     """
 
 
-def _estimate_tokens(messages: list[Message]) -> int:
-    """Rough token estimate: ~4 chars per token for English text."""
-    total = 0
-    for m in messages:
-        total += len(m.content)
-        for tr in m.tool_results:
-            total += len(tr.content)
-        for tc in m.tool_calls:
-            # Count serialized arguments roughly
-            total += len(str(tc.arguments))
-    return total // 4
+# ---------------------------------------------------------------------- #
+#  Token accounting
+# ---------------------------------------------------------------------- #
 
 
-def _format_messages_for_summary(messages: list[Message]) -> str:
-    """Format a list of messages into a text block for the summarization prompt."""
+def _message_tokens(msg: Message, model: str) -> int:
+    """Estimate tokens for a single message, including tool traffic."""
+    total = 4  # per-message framing overhead
+    total += count_tokens(msg.content or "", model)
+    for tc in msg.tool_calls:
+        total += count_tokens(tc.name, model)
+        total += count_tokens(str(tc.arguments), model)
+    for tr in msg.tool_results:
+        total += count_tokens(tr.content or "", model)
+    return total
+
+
+def _conv_tokens(messages: list[Message], model: str) -> int:
+    return sum(_message_tokens(m, model) for m in messages)
+
+
+def should_compact(conv: Conversation, budget: int, model: str = "") -> bool:
+    """True when the conversation is above the compaction trigger."""
+    if budget <= 0:
+        return False
+    return _conv_tokens(conv.messages, model) > int(budget * _COMPACT_TRIGGER_FRACTION)
+
+
+# ---------------------------------------------------------------------- #
+#  Formatting
+# ---------------------------------------------------------------------- #
+
+
+def _format_middle(messages: list[Message]) -> str:
+    """Render a list of middle-zone messages as a flat transcript.
+
+    Long messages and tool results are truncated so the summariser
+    prompt stays manageable — the summary's job is to compress, not to
+    faithfully reproduce.
+    """
     parts: list[str] = []
-    for i, msg in enumerate(messages):
+    for msg in messages:
         role = msg.role.upper()
-        content = msg.content
-        # Truncate very long messages to keep the summary prompt manageable
+        content = msg.content or ""
         if len(content) > 3000:
             content = content[:1500] + "\n...[truncated]...\n" + content[-500:]
         parts.append(f"[{role}]: {content}")
-
-        # Include tool results inline
         for tr in msg.tool_results:
-            result_text = tr.content
-            if len(result_text) > 2000:
-                result_text = result_text[:1000] + "\n...[truncated]...\n" + result_text[-500:]
+            text = tr.content or ""
+            if len(text) > 2000:
+                text = text[:1000] + "\n...[truncated]...\n" + text[-500:]
             status = "ERROR" if tr.is_error else "OK"
-            parts.append(f"  [TOOL RESULT ({status})]: {result_text}")
-
+            parts.append(f"  [TOOL RESULT ({status})]: {text}")
     return "\n\n".join(parts)
 
 
-class Compactor:
-    """Auto-compact conversation when context hits threshold.
+# ---------------------------------------------------------------------- #
+#  Main entry point
+# ---------------------------------------------------------------------- #
 
-    Strategy (from cc-src):
-    1. Trigger when estimated tokens > threshold % of context window
-    2. Take oldest N messages (keeping system + last 5 messages)
-    3. Send to the provider with summarization prompt
-    4. Replace oldest messages with the summary
-    5. Circuit breaker: if 3 consecutive compaction failures, stop trying
+
+async def auto_compact(
+    conversation: Conversation,
+    provider: "BaseProvider",
+    model: str,
+    *,
+    budget_tokens: int,
+    summary_budget: int = 800,
+    head_turns_to_keep: int = 2,
+    tail_turns_to_keep: int = 8,
+) -> Conversation:
+    """Compact ``conversation`` when it exceeds ``budget_tokens``.
+
+    See module docstring for the algorithm. Returns the (possibly
+    unchanged) conversation.
+
+    Raises ``CompactionError`` if three consecutive summariser calls
+    fail — callers should surface this to the user rather than retry.
+    """
+    if budget_tokens <= 0:
+        return conversation
+
+    used = _conv_tokens(conversation.messages, model)
+    threshold = int(budget_tokens * _COMPACT_TRIGGER_FRACTION)
+    if used <= threshold:
+        return conversation
+
+    messages = conversation.messages
+    if len(messages) <= head_turns_to_keep + tail_turns_to_keep:
+        # Not enough middle to compact.
+        return conversation
+
+    head = messages[:head_turns_to_keep]
+    tail = messages[-tail_turns_to_keep:] if tail_turns_to_keep > 0 else []
+    middle = messages[head_turns_to_keep : len(messages) - tail_turns_to_keep]
+    if not middle:
+        return conversation
+
+    # Scrub BEFORE sending off-host — if a tool result echoed an API
+    # key into the transcript, we don't want to hand it to the
+    # summariser provider.
+    formatted = scrub_secrets(_format_middle(middle))
+    summary_prompt = SUMMARY_PROMPT.format(messages=formatted)
+
+    summary_text: str | None = None
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            response = await provider.complete(
+                [
+                    Message(role="system", content=COMPACT_SYSTEM_PROMPT),
+                    Message(role="user", content=summary_prompt),
+                ],
+                tools=None,
+                max_tokens=summary_budget,
+                temperature=0.3,
+            )
+            text = (response.content or "").strip()
+            if not text:
+                raise ValueError("Provider returned empty summary")
+            summary_text = text
+            break
+        except Exception as exc:  # noqa: BLE001 — retry any failure
+            last_exc = exc
+            logger.warning(
+                "Compaction attempt %d/%d failed: %s",
+                attempt,
+                _MAX_ATTEMPTS,
+                exc,
+            )
+            if attempt < _MAX_ATTEMPTS:
+                await asyncio.sleep(0.5 * attempt)
+
+    if summary_text is None:
+        raise CompactionError(f"Compaction failed after {_MAX_ATTEMPTS} attempts: {last_exc}") from last_exc
+
+    summary_msg = Message(
+        role="system",
+        content=f"[Compacted summary of {len(middle)} earlier turns]: {summary_text}",
+    )
+    conversation.messages = list(head) + [summary_msg] + list(tail)
+    return conversation
+
+
+# ---------------------------------------------------------------------- #
+#  Backwards-compat class (pre-existing callers)
+# ---------------------------------------------------------------------- #
+
+
+class Compactor:
+    """Threshold-based auto-compactor — legacy class-style API.
+
+    The functional ``auto_compact`` is preferred for new code; this
+    wrapper exists so earlier integration points (the agent loop,
+    sessions persistence) keep working without churn.
     """
 
     def __init__(
         self,
-        provider: BaseProvider,
+        provider: "BaseProvider",
         threshold: float = 0.93,
     ) -> None:
         self.provider = provider
         self.threshold = threshold
         self.consecutive_failures = 0
-        self.max_failures = _MAX_CONSECUTIVE_FAILURES
+        self.max_failures = _MAX_ATTEMPTS
 
     @property
     def circuit_breaker_tripped(self) -> bool:
-        """True if the circuit breaker has tripped (too many failures)."""
         return self.consecutive_failures >= self.max_failures
 
     async def should_compact(
@@ -108,137 +235,29 @@ class Compactor:
         messages: list[Message],
         context_window: int,
     ) -> bool:
-        """Check if compaction is needed.
-
-        Returns True when estimated token usage exceeds the threshold
-        percentage of the context window AND the circuit breaker has
-        not tripped.
-        """
-        if self.circuit_breaker_tripped:
+        if self.circuit_breaker_tripped or not messages:
             return False
-
-        if not messages:
-            return False
-
-        estimated = _estimate_tokens(messages)
-        limit = int(context_window * self.threshold)
-        return estimated > limit
+        used = _conv_tokens(messages, "")
+        return used > int(context_window * self.threshold)
 
     async def compact(
         self,
         conversation: Conversation,
         context_window: int,
     ) -> Conversation:
-        """Compact the conversation by summarizing older messages.
-
-        Preserves:
-        - System prompt (always -- first message if role == system)
-        - Last 5 messages (recent context)
-        - All tool results from the current turn
-
-        Summarizes everything in between.
-        """
-        messages = conversation.messages
-
-        # Nothing to compact if too few messages
-        if len(messages) <= _PRESERVE_TAIL + 1:
-            return conversation
-
-        # Identify system message (if present) and split
-        system_msgs: list[Message] = []
-        rest: list[Message] = []
-        for msg in messages:
-            if msg.role == "system" and not rest:
-                system_msgs.append(msg)
-            else:
-                rest.append(msg)
-
-        # If not enough to compact after preserving tail, skip
-        if len(rest) <= _PRESERVE_TAIL:
-            return conversation
-
-        # Split into summarizable and preserved portions
-        to_summarize = rest[:-_PRESERVE_TAIL]
-        to_preserve = rest[-_PRESERVE_TAIL:]
-
-        if not to_summarize:
-            return conversation
-
-        # Build the summarization prompt
-        summary_prompt = self._build_summary_prompt(to_summarize)
-
+        budget = int(context_window * self.threshold)
         try:
-            # Call the provider for summarization
-            summary_response = await self.provider.complete(
-                [
-                    Message(role="system", content=COMPACT_SYSTEM_PROMPT),
-                    Message(role="user", content=summary_prompt),
-                ],
-                tools=None,
-                max_tokens=1024,
-                temperature=0.3,
+            result = await auto_compact(
+                conversation,
+                self.provider,
+                model="",
+                budget_tokens=budget,
             )
-
-            summary_text = summary_response.content.strip()
-            if not summary_text:
-                raise ValueError("Provider returned empty summary")
-
-            # Reset failure counter on success
             self.consecutive_failures = 0
+            return result
+        except CompactionError:
+            self.consecutive_failures = self.max_failures
+            raise
 
-        except Exception as exc:
-            self.consecutive_failures += 1
-            logger.warning(
-                "Compaction failed (attempt %d/%d): %s",
-                self.consecutive_failures,
-                self.max_failures,
-                exc,
-            )
-            if self.circuit_breaker_tripped:
-                logger.warning(
-                    "Compaction circuit breaker tripped after %d consecutive "
-                    "failures -- skipping future attempts this session",
-                    self.max_failures,
-                )
-                # Refuse further auto-compaction: require a manual /compact.
-                raise CompactionError(
-                    f"Context compaction failed: {exc}. "
-                    f"Auto-compaction disabled after "
-                    f"{self.max_failures} consecutive failures. "
-                    f"Please start a new conversation or compact manually "
-                    f"with /compact."
-                ) from exc
-            # Raise so the agent loop can surface a user-visible error event
-            # instead of silently returning the unchanged conversation (which
-            # would leave the user trapped in a context-overflow loop).
-            raise CompactionError(
-                f"Context compaction failed: {exc}. Please start a new conversation or compact manually with /compact."
-            ) from exc
 
-        # Build compacted conversation
-        summary_msg = Message(
-            role="user",
-            content=(
-                "[Context compacted -- the following is an LLM-generated "
-                "summary of earlier messages]\n\n" + summary_text
-            ),
-        )
-
-        new_messages = system_msgs + [summary_msg] + to_preserve
-        conversation.messages = new_messages
-        return conversation
-
-    def _build_summary_prompt(self, messages_to_summarize: list[Message]) -> str:
-        """Build the summarization prompt.
-
-        From cc-src: Ask for structured summary with:
-        - Key decisions made
-        - Code changes completed
-        - Open questions/tasks remaining
-        - Important context for continuing the conversation
-        """
-        # MEDIUM-2 fix: scrub API keys / tokens from the summary prompt
-        # before sending to the LLM.  Compaction is a natural leak point
-        # because earlier tool results may echo secrets into the context.
-        formatted = scrub_secrets(_format_messages_for_summary(messages_to_summarize))
-        return SUMMARY_PROMPT.format(messages=formatted)
+__all__ = ["auto_compact", "should_compact", "CompactionError", "Compactor"]

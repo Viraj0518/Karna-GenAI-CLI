@@ -349,12 +349,27 @@ async def _call_provider_with_retry(
     max_tokens: int | None = None,
     temperature: float | None = None,
     max_retries: int = 3,
+    thinking: bool = False,
+    thinking_budget: int | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Stream from the provider with exponential backoff on transient errors.
 
     Handles 429 (rate limit), 5xx (server errors), and connection errors.
     Non-retryable errors (4xx except 429) are raised immediately.
+
+    ``thinking`` / ``thinking_budget`` are forwarded verbatim to
+    :meth:`BaseProvider.stream`; providers that don't support reasoning
+    silently ignore the kwargs.
     """
+    # Only forward the thinking kwargs when something is actually requested.
+    # Older provider implementations (and the in-tree test doubles) don't
+    # accept these kwargs yet; preserving the kwargs-free call path for
+    # the default state keeps this change fully additive.
+    extra: dict[str, Any] = {}
+    if thinking or thinking_budget is not None:
+        extra["thinking"] = thinking
+        extra["thinking_budget"] = thinking_budget
+
     for attempt in range(max_retries):
         try:
             async for event in provider.stream(
@@ -363,6 +378,7 @@ async def _call_provider_with_retry(
                 system_prompt=system_prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                **extra,
             ):
                 yield event
             return  # Stream completed successfully
@@ -415,6 +431,8 @@ async def agent_loop(
     temperature: float | None = None,
     context_window: int | None = None,
     provider_max_retries: int = 3,
+    thinking: bool = False,
+    thinking_budget: int | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Run the tool-use agent loop (streaming variant).
 
@@ -472,6 +490,8 @@ async def agent_loop(
             max_tokens=max_tokens,
             temperature=temperature,
             max_retries=provider_max_retries,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
         ):
             yield event
 
@@ -616,6 +636,8 @@ async def agent_loop_sync(
     max_tokens: int | None = None,
     temperature: float | None = None,
     context_window: int | None = None,
+    thinking: bool = False,
+    thinking_budget: int | None = None,
 ) -> Message:
     """Run the tool-use agent loop (non-streaming variant).
 
@@ -645,6 +667,12 @@ async def agent_loop_sync(
         # ---- Call provider with retry on transient errors -----------
         response: Message | None = None
         last_exc: Exception | None = None
+        # Only pass thinking kwargs when actually requested so legacy
+        # provider doubles that predate the signature still work.
+        extra: dict[str, Any] = {}
+        if thinking or thinking_budget is not None:
+            extra["thinking"] = thinking
+            extra["thinking_budget"] = thinking_budget
         for attempt in range(3):
             try:
                 response = await provider.complete(
@@ -653,6 +681,7 @@ async def agent_loop_sync(
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    **extra,
                 )
                 break
             except httpx.HTTPStatusError as exc:

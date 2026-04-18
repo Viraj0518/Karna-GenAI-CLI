@@ -329,8 +329,18 @@ class BaseProvider(ABC):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
-        """Send *messages* and return a single assistant ``Message``."""
+        """Send *messages* and return a single assistant ``Message``.
+
+        ``thinking`` toggles extended-reasoning mode on providers that
+        support it (Anthropic extended thinking, OpenAI o-series, OpenRouter
+        reasoning, Vertex Gemini 2.5 thinking, Bedrock Claude thinking).
+        Providers that don't support it MUST silently ignore the kwarg.
+        ``thinking_budget`` is the requested reasoning token budget (ignored
+        when unsupported by the target provider).
+        """
         ...
 
     @abstractmethod
@@ -342,8 +352,13 @@ class BaseProvider(ABC):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        """Yield ``StreamEvent`` objects from the model."""
+        """Yield ``StreamEvent`` objects from the model.
+
+        See :meth:`complete` for ``thinking`` / ``thinking_budget`` semantics.
+        """
         ...
         yield StreamEvent(type="done")  # type: ignore[misc]  # pragma: no cover
 

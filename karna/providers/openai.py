@@ -127,6 +127,30 @@ class OpenAIProvider(BaseProvider):
     #  Interface
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    #  Thinking-mode support
+    # ------------------------------------------------------------------ #
+
+    # Model substrings that accept OpenAI's ``reasoning_effort`` param.
+    _REASONING_MODEL_HINTS: tuple[str, ...] = (
+        "o1",
+        "o3",
+        "gpt-oss",
+    )
+
+    def _supports_reasoning(self) -> bool:
+        lowered = self.model.lower()
+        return any(hint in lowered for hint in self._REASONING_MODEL_HINTS)
+
+    def _apply_thinking(self, payload: dict[str, Any], *, thinking: bool) -> None:
+        """Attach OpenAI's ``reasoning_effort`` when thinking is on.
+
+        OpenAI doesn't expose a raw budget, so we map the boolean to
+        ``reasoning_effort="high"``. Silently no-ops for non-reasoning models.
+        """
+        if thinking and self._supports_reasoning():
+            payload["reasoning_effort"] = "high"
+
     async def complete(
         self,
         messages: list[Message],
@@ -135,6 +159,8 @@ class OpenAIProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         """Non-streaming chat completion."""
         payload: dict[str, Any] = {
@@ -147,6 +173,7 @@ class OpenAIProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await self._request_with_retry(
@@ -177,6 +204,8 @@ class OpenAIProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Streaming chat completion -- yields StreamEvent objects."""
         payload: dict[str, Any] = {
@@ -191,6 +220,7 @@ class OpenAIProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking)
 
         tool_call_buffers: dict[int, dict[str, Any]] = {}
 

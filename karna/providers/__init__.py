@@ -21,6 +21,8 @@ _PROVIDER_PATHS: dict[str, tuple[str, str]] = {
     "vertex": ("karna.providers.vertex", "VertexProvider"),
     "bedrock": ("karna.providers.bedrock", "BedrockProvider"),
     "failover": ("karna.providers.failover", "FailoverProvider"),
+    "moa": ("karna.providers.moa", "MixtureOfAgentsProvider"),
+    "router": ("karna.providers.router", "CostAwareRouterProvider"),
 }
 
 # Convenience re-export so callers can do ``from karna.providers import PROVIDERS``

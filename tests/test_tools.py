@@ -422,4 +422,8 @@ class TestRegistry:
             "clipboard",
             "image",
             "git",
+            "mcp",
+            "monitor",
+            "notebook",
+            "task",
         }

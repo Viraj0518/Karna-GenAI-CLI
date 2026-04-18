@@ -170,6 +170,25 @@ class OpenRouterProvider(BaseProvider):
     #  Interface
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    #  Thinking-mode support
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _apply_thinking(payload: dict[str, Any], *, thinking: bool, thinking_budget: int | None) -> None:
+        """Attach OpenRouter's ``reasoning`` passthrough block.
+
+        OpenRouter routes ``reasoning`` to whichever underlying provider
+        supports it (Anthropic thinking, OpenAI reasoning, Gemini thinking,
+        etc.). The ``max_tokens`` sub-field becomes the reasoning budget.
+        Silently no-ops when thinking is off so upstream models that don't
+        support reasoning aren't affected.
+        """
+        if not thinking:
+            return
+        budget = thinking_budget if thinking_budget and thinking_budget > 0 else 10000
+        payload["reasoning"] = {"enabled": True, "max_tokens": int(budget)}
+
     async def complete(
         self,
         messages: list[Message],
@@ -178,6 +197,8 @@ class OpenRouterProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         """Non-streaming chat completion."""
         payload: dict[str, Any] = {
@@ -190,6 +211,7 @@ class OpenRouterProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await self._request_with_retry(
@@ -220,6 +242,8 @@ class OpenRouterProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Streaming chat completion -- yields StreamEvent objects."""
         payload: dict[str, Any] = {
@@ -233,6 +257,7 @@ class OpenRouterProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
 
         # Track accumulated tool calls during streaming
         tool_call_buffers: dict[int, dict[str, Any]] = {}
@@ -258,6 +283,13 @@ class OpenRouterProvider(BaseProvider):
                     # Text content
                     if content := delta.get("content"):
                         yield StreamEvent(type="text", text=content)
+
+                    # OpenRouter surfaces reasoning tokens as ``delta.reasoning``
+                    # when the upstream provider (Anthropic/OpenAI/Gemini)
+                    # returns them. We fold them into the text stream so the
+                    # renderer can display them without a dedicated event type.
+                    if reasoning := delta.get("reasoning"):
+                        yield StreamEvent(type="text", text=reasoning)
 
                     # Tool calls in streaming
                     for tc_delta in delta.get("tool_calls", []):

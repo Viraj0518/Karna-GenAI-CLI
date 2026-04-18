@@ -18,7 +18,7 @@ from rich import print as rprint
 from rich.table import Table
 
 from karna import __version__
-from karna.config import load_config, save_config
+from karna.config import effective_thinking, load_config, save_config
 
 # --------------------------------------------------------------------------- #
 #  App & sub-groups
@@ -38,6 +38,7 @@ mcp_app = typer.Typer(help="MCP server management commands.")
 
 history_app = typer.Typer(help="Session history commands.", invoke_without_command=True)
 cost_app = typer.Typer(help="Cost tracking commands.")
+cron_app = typer.Typer(help="Scheduled agent jobs.", invoke_without_command=True)
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(model_app, name="model")
@@ -45,6 +46,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(history_app, name="history")
 app.add_typer(cost_app, name="cost")
+app.add_typer(cron_app, name="cron")
 
 
 # --------------------------------------------------------------------------- #
@@ -201,6 +203,65 @@ def model_set(
     cfg.active_model = model
     save_config(cfg)
     rprint(f"[green]Active model set to [bold]{provider}/{model}[/bold][/green]")
+
+
+# --------------------------------------------------------------------------- #
+#  Thinking-mode command
+# --------------------------------------------------------------------------- #
+
+
+@app.command("think")
+def think(
+    mode: str = typer.Argument(
+        None,
+        help="on | off | auto. Omit to show current state.",
+    ),
+) -> None:
+    """Toggle Nellie's extended-thinking mode.
+
+    ``on``   — always request a reasoning budget from the provider.
+    ``off``  — never request reasoning.
+    ``auto`` — let Nellie pick based on the active model name (default).
+
+    Called with no argument, prints the current setting and how it
+    resolves for the currently active model.
+    """
+    cfg = load_config()
+
+    if mode is None:
+        # Query mode — display current config + auto-resolution.
+        setting = cfg.thinking_enabled
+        if setting is None:
+            label = "auto"
+        elif setting:
+            label = "on"
+        else:
+            label = "off"
+        resolved = effective_thinking(cfg.active_model, cfg)
+        rprint(f"[bold]Thinking mode:[/bold] {label}")
+        rprint(f"[bold]Active model:[/bold]  {cfg.active_provider}/{cfg.active_model}")
+        rprint(f"[bold]Resolved:[/bold]      {'on' if resolved else 'off'}")
+        rprint(f"[bold]Budget:[/bold]        {cfg.thinking_budget_tokens} tokens")
+        return
+
+    normalized = mode.strip().lower()
+    if normalized in ("on", "true", "1", "yes"):
+        cfg.thinking_enabled = True
+        label = "on"
+    elif normalized in ("off", "false", "0", "no"):
+        cfg.thinking_enabled = False
+        label = "off"
+    elif normalized in ("auto", "default", "unset", "none"):
+        cfg.thinking_enabled = None
+        label = "auto"
+    else:
+        rprint(f"[red]Invalid mode '{mode}'. Use: on | off | auto[/red]")
+        raise typer.Exit(code=1)
+
+    save_config(cfg)
+    resolved = effective_thinking(cfg.active_model, cfg)
+    rprint(f"[green]Thinking mode set to [bold]{label}[/bold][/green]")
+    rprint(f"[bright_black]Resolved for {cfg.active_model}: {'on' if resolved else 'off'}[/bright_black]")
 
 
 # --------------------------------------------------------------------------- #
@@ -585,6 +646,191 @@ def init(
     (project_dir / ".gitignore").write_text("*\n")
 
     rprint("\n[green][OK] Project initialized. Run `nellie` to start.[/green]")
+
+
+# --------------------------------------------------------------------------- #
+#  Cron commands
+# --------------------------------------------------------------------------- #
+
+
+@cron_app.callback(invoke_without_command=True)
+def cron_root(ctx: typer.Context) -> None:
+    """List scheduled jobs (default action)."""
+    if ctx.invoked_subcommand is not None:
+        return
+    cron_list()
+
+
+@cron_app.command("add")
+def cron_add(
+    name: str = typer.Option(..., "--name", help="Human-readable job name"),
+    schedule: str = typer.Option(..., "--schedule", help="Cron expression or @daily/@hourly/..."),
+    prompt: str = typer.Option(..., "--prompt", help="Prompt to feed the agent"),
+    model: str = typer.Option("", "--model", help="Optional provider:model override"),
+) -> None:
+    """Register a new scheduled job."""
+    from karna.cron.expression import CronParseError, parse_expression
+    from karna.cron.store import CronStore
+
+    try:
+        parse_expression(schedule)
+    except CronParseError as exc:
+        rprint(f"[red]Invalid schedule: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    store = CronStore()
+    job = store.add_job(name=name, schedule=schedule, prompt=prompt, model=model)
+    rprint(f"[green]Added cron job [bold]{job.id}[/bold] ({job.name}) — {job.schedule}[/green]")
+
+
+@cron_app.command("list")
+def cron_list() -> None:
+    """List every configured cron job."""
+    from karna.cron.runner import summarize_job
+    from karna.cron.store import CronStore
+
+    jobs = CronStore().list_jobs()
+    if not jobs:
+        rprint("[bright_black]No cron jobs configured.[/bright_black]")
+        return
+
+    table = Table(title="Cron Jobs")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Schedule", style="green")
+    table.add_column("Enabled", style="yellow")
+    table.add_column("Last Run", style="bright_black")
+    table.add_column("Next Fire", style="bright_black")
+    for job in jobs:
+        info = summarize_job(job)
+        table.add_row(
+            job.id,
+            job.name,
+            job.schedule,
+            "yes" if job.enabled else "no",
+            (info.get("last_run_at") or "")[:19].replace("T", " "),
+            (info.get("next_fire_at") or "")[:19].replace("T", " "),
+        )
+    rprint(table)
+
+
+@cron_app.command("remove")
+def cron_remove(job_id: str = typer.Argument(..., help="Cron job id (or prefix)")) -> None:
+    """Delete a cron job by id."""
+    from karna.cron.store import CronStore
+
+    if CronStore().remove_job(job_id):
+        rprint(f"[green]Removed cron job {job_id}[/green]")
+    else:
+        rprint(f"[red]No cron job matches {job_id}[/red]")
+        raise typer.Exit(code=1)
+
+
+@cron_app.command("enable")
+def cron_enable(job_id: str = typer.Argument(..., help="Cron job id (or prefix)")) -> None:
+    """Enable a cron job."""
+    from karna.cron.store import CronStore
+
+    if CronStore().set_enabled(job_id, True):
+        rprint(f"[green]Enabled {job_id}[/green]")
+    else:
+        rprint(f"[red]No cron job matches {job_id}[/red]")
+        raise typer.Exit(code=1)
+
+
+@cron_app.command("disable")
+def cron_disable(job_id: str = typer.Argument(..., help="Cron job id (or prefix)")) -> None:
+    """Disable a cron job."""
+    from karna.cron.store import CronStore
+
+    if CronStore().set_enabled(job_id, False):
+        rprint(f"[green]Disabled {job_id}[/green]")
+    else:
+        rprint(f"[red]No cron job matches {job_id}[/red]")
+        raise typer.Exit(code=1)
+
+
+@cron_app.command("tick")
+def cron_tick() -> None:
+    """Run any due cron jobs once (for OS-level cron wrapping)."""
+    from karna.cron.runner import scan_and_fire
+
+    fired = asyncio.run(scan_and_fire())
+    if not fired:
+        rprint("[bright_black]No jobs due.[/bright_black]")
+        return
+    for job, text in fired:
+        snippet = (text or "")[:120].replace("\n", " ")
+        rprint(f"[green]fired[/green] {job.id} ({job.name}) -> {snippet}")
+
+
+@cron_app.command("show")
+def cron_show(job_id: str = typer.Argument(..., help="Cron job id (or prefix)")) -> None:
+    """Show full details for one cron job."""
+    from karna.cron.runner import summarize_job
+    from karna.cron.store import CronStore
+
+    job = CronStore().get_job(job_id)
+    if job is None:
+        rprint(f"[red]No cron job matches {job_id}[/red]")
+        raise typer.Exit(code=1)
+    info = summarize_job(job)
+    rprint(f"[bold]{job.id}[/bold] — {job.name}")
+    rprint(f"  Schedule : {job.schedule}")
+    rprint(f"  Enabled  : {job.enabled}")
+    rprint(f"  Model    : {job.model or '(default)'}")
+    rprint(f"  Prompt   : {job.prompt}")
+    rprint(f"  Last run : {job.last_run_at or '(never)'}")
+    rprint(f"  Next fire: {info.get('next_fire_at') or '(unknown)'}")
+    if job.last_result_snippet:
+        rprint(f"  Last out : {job.last_result_snippet}")
+
+
+# --------------------------------------------------------------------------- #
+#  Fork / replay commands
+# --------------------------------------------------------------------------- #
+
+
+@app.command()
+def fork(
+    session_id: str = typer.Argument(..., help="Source session id to fork"),
+    name: str = typer.Option(None, "--name", help="Optional new session name/summary"),
+) -> None:
+    """Duplicate a session (messages + metadata) into a new session."""
+    from karna.sessions.db import SessionDB
+
+    db = SessionDB()
+    try:
+        new_id = db.fork_session(session_id, new_name=name)
+    except KeyError:
+        rprint(f"[red]Source session not found: {session_id}[/red]")
+        db.close()
+        raise typer.Exit(code=1) from None
+    db.close()
+    rprint(f"[green]Forked {session_id} -> [bold]{new_id}[/bold][/green]")
+
+
+@app.command()
+def replay(
+    session_id: str = typer.Argument(..., help="Session id to replay"),
+) -> None:
+    """Re-feed user messages through the active agent loop and print responses."""
+    from karna.sessions.db import SessionDB
+
+    db = SessionDB()
+    conv = db.resume_session(session_id)
+    db.close()
+    if conv is None:
+        rprint(f"[red]Session not found: {session_id}[/red]")
+        raise typer.Exit(code=1)
+
+    user_msgs = [m for m in conv.messages if m.role == "user"]
+    if not user_msgs:
+        rprint("[bright_black]No user messages to replay.[/bright_black]")
+        return
+    rprint(f"[bold]Replaying {len(user_msgs)} user prompt(s) from {session_id}[/bold]")
+    for i, m in enumerate(user_msgs, 1):
+        rprint(f"[cyan]#{i}[/cyan] {m.content[:200]}")
 
 
 # --------------------------------------------------------------------------- #

@@ -162,6 +162,14 @@ class TestProjectContext:
         assert "Project root instructions" in result
 
     def test_no_files_returns_none(self, tmp_path: Path) -> None:
+        # Skip if any ancestor of tmp_path has a CLAUDE.md / KARNA.md —
+        # this pollutes the walk-up detection on dev machines (e.g. ~/CLAUDE.md).
+        # CI runners have clean $HOME so this is rarely triggered there.
+        for p in [tmp_path, *tmp_path.parents]:
+            if (p / "CLAUDE.md").exists() or (p / "KARNA.md").exists():
+                import pytest
+
+                pytest.skip(f"Ancestor {p} has project instructions — pollutes walk-up detection")
         ctx = ProjectContext()
         assert ctx.detect(tmp_path) is None
 

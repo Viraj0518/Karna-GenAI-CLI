@@ -119,7 +119,7 @@ def _bottom_toolbar_factory():
     return _toolbar
 
 
-def _make_session(prompt_str: str) -> "PromptSession":
+def _make_session(prompt_str: str, *, vim_mode: bool = False) -> "PromptSession":
     """Build a ``PromptSession`` with multiline key-bindings and styling.
 
     * Enter                       -> submit
@@ -127,6 +127,9 @@ def _make_session(prompt_str: str) -> "PromptSession":
     * Trailing ``\\`` at EOL      -> shell-style continuation
     * Ctrl-C                      -> cancel current input
     * Ctrl-D                      -> exit
+
+    When ``vim_mode`` is ``True``, prompt_toolkit's native vi editing mode
+    is enabled and extra vim-specific key-bindings are layered on top.
     """
     bindings = KeyBindings()
     history = InMemoryHistory()
@@ -135,28 +138,53 @@ def _make_session(prompt_str: str) -> "PromptSession":
     def _insert_newline(event):  # type: ignore[no-untyped-def]
         event.current_buffer.insert_text("\n")
 
-    return PromptSession(
-        message=_format_prompt(prompt_str),
-        history=history,
-        key_bindings=bindings,
-        multiline=False,  # Enter submits; Esc-Enter inserts newline
-        enable_history_search=True,
-        style=_pt_style(),
-        placeholder=HTML("<placeholder>Ask anything...</placeholder>"),
-        bottom_toolbar=_bottom_toolbar_factory(),
-        include_default_pygments_style=False,
-    )
+    session_kwargs: dict = {
+        "message": _format_prompt(prompt_str),
+        "history": history,
+        "key_bindings": bindings,
+        "multiline": False,  # Enter submits; Esc-Enter inserts newline
+        "enable_history_search": True,
+        "style": _pt_style(),
+        "placeholder": HTML("<placeholder>Ask anything...</placeholder>"),
+        "bottom_toolbar": _bottom_toolbar_factory(),
+        "include_default_pygments_style": False,
+    }
+
+    if vim_mode:
+        try:  # pragma: no cover - exercised via tests/test_vim_mode
+            from karna.tui.vim import apply_vim_mode
+
+            apply_vim_mode(session_kwargs, enabled=True)
+        except Exception:
+            pass
+
+    return PromptSession(**session_kwargs)
 
 
 # Global session, lazily created / rebuilt when the prompt label changes.
 _session: Optional["PromptSession"] = None
-_session_label: Optional[str] = None
+# Cache key: legacy code stored a bare label string; when vim-mode plumbing
+# is in use it becomes a ``(label, vim_mode)`` tuple. Both forms compare
+# correctly against the stored value.
+_session_label: Optional[object] = None
 
 
-async def get_multiline_input(console: Console, prompt_str: str = "karna> ") -> str:
+async def get_multiline_input(
+    console: Console,
+    prompt_str: str = "karna> ",
+    *,
+    vim_mode: bool = False,
+) -> str:
     """Read (possibly multiline) user input.
 
     Returns the final string.
+
+    Args:
+        console: Rich console for fallback rendering.
+        prompt_str: Prompt label (e.g. ``"karna> "``).
+        vim_mode: When True, enable prompt_toolkit's vi editing mode for
+            this session (h/j/k/l, d/c/y + motion, u/Ctrl+R undo, etc.).
+            Default off for backward compatibility.
 
     Raises:
         EOFError:          when the user presses Ctrl-D (caller should exit).
@@ -166,9 +194,11 @@ async def get_multiline_input(console: Console, prompt_str: str = "karna> ") -> 
     global _session, _session_label
 
     if _HAS_PROMPT_TOOLKIT:
-        if _session is None or _session_label != prompt_str:
-            _session = _make_session(prompt_str)
-            _session_label = prompt_str
+        # Rebuild session if label changed or if we need to switch vim mode.
+        label_key = (prompt_str, bool(vim_mode))
+        if _session is None or _session_label != label_key:
+            _session = _make_session(prompt_str, vim_mode=vim_mode)
+            _session_label = label_key  # type: ignore[assignment]
 
         # prompt_toolkit is sync — run in executor so we don't block the loop.
         loop = asyncio.get_running_loop()

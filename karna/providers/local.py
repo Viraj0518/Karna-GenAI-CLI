@@ -124,6 +124,20 @@ class LocalProvider(BaseProvider):
     #  Interface
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _apply_thinking(payload: dict[str, Any], *, thinking: bool, thinking_budget: int | None) -> None:
+        """Pass ``reasoning`` hints through to the local endpoint.
+
+        Many OpenAI-compatible local servers (vLLM, LM Studio, llama.cpp with
+        the reasoning hint) accept a ``reasoning`` passthrough. Servers that
+        don't recognise it simply ignore the extra field, so this is safe as
+        an always-off default.
+        """
+        if not thinking:
+            return
+        budget = thinking_budget if thinking_budget and thinking_budget > 0 else 10000
+        payload["reasoning"] = {"enabled": True, "max_tokens": int(budget)}
+
     async def complete(
         self,
         messages: list[Message],
@@ -132,6 +146,8 @@ class LocalProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         """Non-streaming chat completion against local server."""
         payload: dict[str, Any] = {
@@ -144,6 +160,7 @@ class LocalProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await self._request_with_retry(
@@ -181,6 +198,8 @@ class LocalProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Streaming chat completion -- yields StreamEvent objects."""
         payload: dict[str, Any] = {
@@ -194,6 +213,7 @@ class LocalProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
 
         tool_call_buffers: dict[int, dict[str, Any]] = {}
 
