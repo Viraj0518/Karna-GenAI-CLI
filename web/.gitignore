@@ -1,0 +1,7 @@
+# Next.js build + deps (web-specific, belt-and-suspenders with repo root).
+node_modules/
+.next/
+out/
+.turbo/
+next-env.d.ts
+.env*.local
