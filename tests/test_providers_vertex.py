@@ -72,8 +72,10 @@ def test_vertex_construct_with_kwargs() -> None:
 
 
 def test_vertex_construct_from_env() -> None:
-    with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "env-proj"}, clear=False), \
-         patch.object(VertexProvider, "_load_credential", return_value={}):
+    with (
+        patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "env-proj"}, clear=False),
+        patch.object(VertexProvider, "_load_credential", return_value={}),
+    ):
         p = VertexProvider()
     assert p.project_id == "env-proj"
 
@@ -90,8 +92,7 @@ def test_vertex_endpoint_url() -> None:
 
 
 def test_vertex_require_project_raises() -> None:
-    with patch.dict(os.environ, {}, clear=True), \
-         patch.object(VertexProvider, "_load_credential", return_value={}):
+    with patch.dict(os.environ, {}, clear=True), patch.object(VertexProvider, "_load_credential", return_value={}):
         p = VertexProvider()
     with pytest.raises(ValueError, match="no project_id configured"):
         p._require_project()
@@ -136,9 +137,7 @@ def test_vertex_build_payload_has_system_instruction() -> None:
 @pytest.mark.asyncio
 async def test_vertex_complete_happy_path() -> None:
     fake_response = {
-        "candidates": [
-            {"content": {"parts": [{"text": "hi from gemini"}]}}
-        ],
+        "candidates": [{"content": {"parts": [{"text": "hi from gemini"}]}}],
         "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 4},
     }
 
@@ -149,12 +148,15 @@ async def test_vertex_complete_happy_path() -> None:
 
     transport = httpx.MockTransport(_handler)
 
-    with _patch_google_auth(), \
-         patch.object(VertexProvider, "_load_credential", return_value={}), \
-         patch.object(
-            VertexProvider, "_make_client",
+    with (
+        _patch_google_auth(),
+        patch.object(VertexProvider, "_load_credential", return_value={}),
+        patch.object(
+            VertexProvider,
+            "_make_client",
             lambda self, **kw: httpx.AsyncClient(transport=transport, **kw),
-         ):
+        ),
+    ):
         p = VertexProvider(project_id="proj")
         msg = await p.complete([Message(role="user", content="go")])
 
@@ -171,8 +173,7 @@ async def test_vertex_complete_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_vertex_list_models_fallback_without_project() -> None:
-    with patch.dict(os.environ, {}, clear=True), \
-         patch.object(VertexProvider, "_load_credential", return_value={}):
+    with patch.dict(os.environ, {}, clear=True), patch.object(VertexProvider, "_load_credential", return_value={}):
         p = VertexProvider()
     models = await p.list_models()
     assert len(models) == len(_FALLBACK_MODELS)
@@ -186,7 +187,10 @@ async def test_vertex_list_models_fallback_without_project() -> None:
 
 def test_vertex_lazy_import_raises_when_missing() -> None:
     # Simulate google.auth being unavailable by poisoning the module cache.
-    saved = {k: sys.modules.get(k) for k in ("google", "google.auth", "google.auth.transport", "google.auth.transport.requests")}
+    saved = {
+        k: sys.modules.get(k)
+        for k in ("google", "google.auth", "google.auth.transport", "google.auth.transport.requests")
+    }
     try:
         for k in saved:
             sys.modules[k] = None  # type: ignore[assignment]

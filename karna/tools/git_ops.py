@@ -56,9 +56,7 @@ async def _run(argv: list[str], cwd: str | Path | None = None, timeout: float = 
         env=_git_env(),
     )
     try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
@@ -95,10 +93,7 @@ class GitTool(BaseTool):
     """
 
     name = "git"
-    description = (
-        "Perform git operations with safety checks. "
-        "Prefer this over running git via bash."
-    )
+    description = "Perform git operations with safety checks. Prefer this over running git via bash."
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -156,19 +151,13 @@ class GitTool(BaseTool):
 
         # Block force-push (any form)
         if "push" in combined and ("--force" in combined or " -f " in combined or combined.endswith(" -f")):
-            return (
-                "[BLOCKED] Force-push is not allowed. "
-                "Use a regular push or rebase instead."
-            )
+            return "[BLOCKED] Force-push is not allowed. Use a regular push or rebase instead."
 
         # Block any push via this tool. ``push`` isn't in the action
         # enum, but callers sometimes smuggle one via args
         # (e.g., "main && git push ..."). We look for "git push".
         if "git push" in combined or action == "push":
-            return (
-                "[BLOCKED] git push is not allowed via this tool. "
-                "Push manually after reviewing the commits."
-            )
+            return "[BLOCKED] git push is not allowed via this tool. Push manually after reviewing the commits."
 
         # Block reset --hard
         if "reset" in combined and "--hard" in combined:
@@ -185,14 +174,9 @@ class GitTool(BaseTool):
                 "Edit ~/.gitconfig manually if you need to change settings."
             )
         if "remote" in combined and "set-url" in combined:
-            return (
-                "[BLOCKED] git remote set-url is not allowed — it can "
-                "redirect pushes to an attacker-controlled URL."
-            )
+            return "[BLOCKED] git remote set-url is not allowed — it can redirect pushes to an attacker-controlled URL."
         if "credential" in combined:
-            return (
-                "[BLOCKED] git credential operations are not allowed."
-            )
+            return "[BLOCKED] git credential operations are not allowed."
 
         return None
 
@@ -260,10 +244,7 @@ class GitTool(BaseTool):
     async def _add(self, args: str, files: list[str] | None) -> str:
         """Stage specific files. Refuses git add -A unless explicit."""
         if not files and not args:
-            return (
-                "[error] No files specified. "
-                "Provide a list of files to stage, or pass args='-A' explicitly."
-            )
+            return "[error] No files specified. Provide a list of files to stage, or pass args='-A' explicitly."
 
         if files:
             rc, out = await _run(["git", "add", "--", *files], self._cwd)
@@ -289,8 +270,7 @@ class GitTool(BaseTool):
         extra = _split_args(args)
         if "--amend" in extra:
             return (
-                "[BLOCKED] --amend is not allowed by default. "
-                "If you really need to amend, use the bash tool directly."
+                "[BLOCKED] --amend is not allowed by default. If you really need to amend, use the bash tool directly."
             )
 
         if not message:
@@ -328,10 +308,7 @@ class GitTool(BaseTool):
         _, status = await _run(["git", "status", "--porcelain"], self._cwd)
         warning = ""
         if status.strip():
-            warning = (
-                "[warning] Working tree has uncommitted changes. "
-                "Consider committing or stashing first.\n"
-            )
+            warning = "[warning] Working tree has uncommitted changes. Consider committing or stashing first.\n"
 
         # Try create-and-switch first; if branch exists, just switch
         rc, out = await _run(["git", "checkout", "-b", *extra], self._cwd)
@@ -367,10 +344,7 @@ class GitTool(BaseTool):
         _, status = await _run(["git", "status", "--porcelain"], self._cwd)
         warning = ""
         if status.strip():
-            warning = (
-                "[warning] Working tree has uncommitted changes. "
-                "Consider committing or stashing first.\n"
-            )
+            warning = "[warning] Working tree has uncommitted changes. Consider committing or stashing first.\n"
 
         rc, out = await _run(["git", "checkout", *extra], self._cwd)
         if rc != 0:

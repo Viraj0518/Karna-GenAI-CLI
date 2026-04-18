@@ -16,7 +16,10 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from karna.auth.pool import CredentialPool
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +109,7 @@ def load_credential_pool(provider: str) -> "CredentialPool":
 def list_credentials() -> list[str]:
     """Return a list of provider names that have saved credentials."""
     _ensure_dir()
-    return [
-        p.stem.removesuffix(".token")
-        for p in CREDENTIALS_DIR.glob("*.token.json")
-        if p.is_file()
-    ]
+    return [p.stem.removesuffix(".token") for p in CREDENTIALS_DIR.glob("*.token.json") if p.is_file()]
 
 
 def check_credential_permissions() -> list[str]:
@@ -136,8 +135,7 @@ def check_credential_permissions() -> list[str]:
         file_mode = cred_file.stat().st_mode & 0o777
         if file_mode != 0o600:
             warnings.append(
-                f"Credential file {cred_file} has mode "
-                f"{oct(file_mode)} (expected 0600). Run: chmod 600 {cred_file}"
+                f"Credential file {cred_file} has mode {oct(file_mode)} (expected 0600). Run: chmod 600 {cred_file}"
             )
 
     return warnings

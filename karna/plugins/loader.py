@@ -162,9 +162,7 @@ class PluginLoader:
 
     def _resolve_entry(self, plugin: Plugin) -> Callable[[KarnaContext], None]:
         if ":" not in plugin.entry:
-            raise PluginManifestError(
-                f"plugin {plugin.name}: entry '{plugin.entry}' must be 'module:callable'"
-            )
+            raise PluginManifestError(f"plugin {plugin.name}: entry '{plugin.entry}' must be 'module:callable'")
         module_path, _, attr = plugin.entry.partition(":")
 
         plugin_dir_str = str(plugin.path)
@@ -175,9 +173,7 @@ class PluginLoader:
         try:
             module = importlib.import_module(module_path)
         except Exception as exc:  # noqa: BLE001
-            raise PluginManifestError(
-                f"plugin {plugin.name}: cannot import '{module_path}': {exc}"
-            ) from exc
+            raise PluginManifestError(f"plugin {plugin.name}: cannot import '{module_path}': {exc}") from exc
         finally:
             if added:
                 try:
@@ -186,12 +182,8 @@ class PluginLoader:
                     pass
 
         if not hasattr(module, attr):
-            raise PluginManifestError(
-                f"plugin {plugin.name}: module '{module_path}' has no attribute '{attr}'"
-            )
+            raise PluginManifestError(f"plugin {plugin.name}: module '{module_path}' has no attribute '{attr}'")
         callable_ = getattr(module, attr)
         if not callable(callable_):
-            raise PluginManifestError(
-                f"plugin {plugin.name}: '{plugin.entry}' is not callable"
-            )
+            raise PluginManifestError(f"plugin {plugin.name}: '{plugin.entry}' is not callable")
         return callable_

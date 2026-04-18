@@ -47,7 +47,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -56,12 +55,14 @@ from urllib.parse import urlparse
 
 import httpx
 
-from karna.auth.pool import AllKeysExhaustedError, CredentialPool
+from karna.auth.pool import CredentialPool
 from karna.models import Message, ModelInfo, StreamEvent, Usage, estimate_cost
 from karna.providers._retry import (
     DEFAULT_BASE_DELAY,
     DEFAULT_JITTER_RATIO,
     DEFAULT_MAX_DELAY,
+)
+from karna.providers._retry import (
     jittered_backoff as _shared_jittered_backoff,
 )
 
@@ -145,8 +146,9 @@ class BaseProvider(ABC):
         parsed = urlparse(self.base_url)
         host = parsed.hostname or ""
 
-        # Allow HTTP for local development servers
-        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        # Allow HTTP for local development servers.
+        # nosec B104 — this is a host *comparison*, not a socket bind.
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # nosec B104
             return
 
         if parsed.scheme != "https":
@@ -258,7 +260,11 @@ class BaseProvider(ABC):
                     elapsed = time.monotonic() - t0
                     logger.debug(
                         "%s: %s %s -> %d (%.1fs)",
-                        self.name, method, url, resp.status_code, elapsed,
+                        self.name,
+                        method,
+                        url,
+                        resp.status_code,
+                        elapsed,
                     )
                     resp.raise_for_status()
                     return resp
@@ -272,13 +278,20 @@ class BaseProvider(ABC):
                     delay = _parse_retry_after(resp) or _jittered_backoff(attempt)
                     logger.warning(
                         "%s: rate limited (429), retrying in %.1fs (attempt %d/%d)",
-                        self.name, delay, attempt, self.max_retries,
+                        self.name,
+                        delay,
+                        attempt,
+                        self.max_retries,
                     )
                 else:
                     delay = _jittered_backoff(attempt)
                     logger.warning(
                         "%s: server error %d, retrying in %.1fs (attempt %d/%d)",
-                        self.name, resp.status_code, delay, attempt, self.max_retries,
+                        self.name,
+                        resp.status_code,
+                        delay,
+                        attempt,
+                        self.max_retries,
                     )
 
                 await asyncio.sleep(delay)
@@ -290,7 +303,10 @@ class BaseProvider(ABC):
                 delay = _jittered_backoff(attempt)
                 logger.warning(
                     "%s: timeout, retrying in %.1fs (attempt %d/%d)",
-                    self.name, delay, attempt, self.max_retries,
+                    self.name,
+                    delay,
+                    attempt,
+                    self.max_retries,
                 )
                 await asyncio.sleep(delay)
 

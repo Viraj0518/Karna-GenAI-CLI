@@ -38,10 +38,7 @@ def get_tool(name: str) -> "BaseTool":
     """
     key = name.lower()
     if key not in _TOOL_PATHS:
-        raise KeyError(
-            f"Unknown tool: {name!r}. "
-            f"Available: {', '.join(sorted(_TOOL_PATHS))}"
-        )
+        raise KeyError(f"Unknown tool: {name!r}. Available: {', '.join(sorted(_TOOL_PATHS))}")
     import importlib
 
     module_path, class_name = _TOOL_PATHS[key]

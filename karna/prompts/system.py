@@ -63,19 +63,19 @@ def _load_template(name: str) -> str:
 
 MODEL_ADAPTATIONS: dict[str, dict[str, Any]] = {
     "anthropic": {
-        "tool_format": "anthropic_native",   # uses Anthropic tool_use blocks
-        "system_placement": "top_level",      # system as separate param
-        "supports_cache": True,               # prompt caching
+        "tool_format": "anthropic_native",  # uses Anthropic tool_use blocks
+        "system_placement": "top_level",  # system as separate param
+        "supports_cache": True,  # prompt caching
         "template": "anthropic",
     },
     "openai": {
-        "tool_format": "openai_functions",    # uses function_call
+        "tool_format": "openai_functions",  # uses function_call
         "system_placement": "first_message",  # system as first message
         "supports_cache": False,
         "template": "default",
     },
     "openrouter": {
-        "tool_format": "openai_functions",    # OpenAI-compatible
+        "tool_format": "openai_functions",  # OpenAI-compatible
         "system_placement": "first_message",
         "supports_cache": False,
         "template": "default",
@@ -111,13 +111,13 @@ def _is_weak_model(model: str) -> bool:
     """Return True if the model is considered 'weak' and needs
     more explicit instructions."""
     model_lower = model.lower()
-    return any(model_lower.startswith(p) or f"/{p}" in model_lower
-               for p in _WEAK_MODEL_PREFIXES)
+    return any(model_lower.startswith(p) or f"/{p}" in model_lower for p in _WEAK_MODEL_PREFIXES)
 
 
 # ------------------------------------------------------------------ #
 #  Context section builders
 # ------------------------------------------------------------------ #
+
 
 def _build_context_sections(
     project_context: str | None,
@@ -163,6 +163,7 @@ def _format_context_sections(sections: list[tuple[str, str, int]]) -> str:
 #  Token budget estimation
 # ------------------------------------------------------------------ #
 
+
 def _estimate_tokens(text: str) -> int:
     """Token count via tiktoken when available, else len//4 fallback."""
     return count_tokens(text)
@@ -207,6 +208,7 @@ def _trim_to_budget(
 # ------------------------------------------------------------------ #
 #  Model-specific adaptation
 # ------------------------------------------------------------------ #
+
 
 def adapt_for_model(base_prompt: str, provider: str, model: str) -> str:
     """Add model-specific instructions to the base prompt.
@@ -265,10 +267,10 @@ def get_adaptation(provider: str) -> dict[str, Any]:
 #  Environment info
 # ------------------------------------------------------------------ #
 
+
 def _build_env_section() -> str:
     """Build the environment information section."""
     import platform
-    import shutil
 
     cwd = os.getcwd()
     shell = os.environ.get("SHELL", "unknown")
@@ -293,6 +295,7 @@ def _build_env_section() -> str:
 # ------------------------------------------------------------------ #
 #  Main builder
 # ------------------------------------------------------------------ #
+
 
 def build_system_prompt(
     config: "KarnaConfig",

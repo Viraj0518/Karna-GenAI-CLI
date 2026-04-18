@@ -6,7 +6,7 @@ Sessions can be deleted: nellie history delete <id>
 Full wipe: rm -rf ~/.karna/sessions/
 """
 
-from karna.sessions.db import SessionDB
 from karna.sessions.cost import CostTracker
+from karna.sessions.db import SessionDB
 
 __all__ = ["SessionDB", "CostTracker"]

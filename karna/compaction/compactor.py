@@ -212,9 +212,7 @@ class Compactor:
             # instead of silently returning the unchanged conversation (which
             # would leave the user trapped in a context-overflow loop).
             raise CompactionError(
-                f"Context compaction failed: {exc}. "
-                f"Please start a new conversation or compact manually "
-                f"with /compact."
+                f"Context compaction failed: {exc}. Please start a new conversation or compact manually with /compact."
             ) from exc
 
         # Build compacted conversation

@@ -37,11 +37,12 @@ from karna.tui.design_tokens import SEMANTIC
 #    resilient if it hasn't landed yet). ────────────────────────────────
 try:  # pragma: no cover - trivial import guard
     from karna.tui import icons as _icons  # type: ignore
-    _DIAMOND = getattr(_icons, "DIAMOND", None) or getattr(_icons, "diamond", None) or "\u25C6"
-    _DOT = getattr(_icons, "DOT", None) or getattr(_icons, "dot", None) or "\u25CF"
+
+    _DIAMOND = getattr(_icons, "DIAMOND", None) or getattr(_icons, "diamond", None) or "\u25c6"
+    _DOT = getattr(_icons, "DOT", None) or getattr(_icons, "dot", None) or "\u25cf"
 except Exception:  # pragma: no cover - fallback
-    _DIAMOND = "\u25C6"  # ◆
-    _DOT = "\u25CF"      # ●
+    _DIAMOND = "\u25c6"  # ◆
+    _DOT = "\u25cf"  # ●
 
 
 # --------------------------------------------------------------------------- #
@@ -95,6 +96,7 @@ def _workspace_label(cwd: Path) -> str:
 # --------------------------------------------------------------------------- #
 #  Public API
 # --------------------------------------------------------------------------- #
+
 
 def print_banner(
     console: Console,

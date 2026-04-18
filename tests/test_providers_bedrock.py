@@ -11,7 +11,6 @@ Covers:
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import sys
@@ -63,8 +62,10 @@ def test_bedrock_construct_with_kwargs() -> None:
 
 
 def test_bedrock_region_from_env() -> None:
-    with patch.dict(os.environ, {"AWS_REGION": "eu-west-1"}, clear=False), \
-         patch.object(BedrockProvider, "_load_credential", return_value={}):
+    with (
+        patch.dict(os.environ, {"AWS_REGION": "eu-west-1"}, clear=False),
+        patch.object(BedrockProvider, "_load_credential", return_value={}),
+    ):
         p = BedrockProvider()
     assert p.region == "eu-west-1"
 
@@ -142,9 +143,7 @@ def test_bedrock_parse_anthropic_response() -> None:
 def test_bedrock_parse_llama_response() -> None:
     with patch.object(BedrockProvider, "_load_credential", return_value={}):
         p = BedrockProvider(model="meta.llama3-1-8b-instruct-v1:0")
-    text, _, usage = p._parse_response(
-        {"generation": "ok", "prompt_token_count": 4, "generation_token_count": 2}
-    )
+    text, _, usage = p._parse_response({"generation": "ok", "prompt_token_count": 4, "generation_token_count": 2})
     assert text == "ok"
     assert usage.input_tokens == 4
 
@@ -175,8 +174,10 @@ async def test_bedrock_complete_happy_path() -> None:
         "usage": {"input_tokens": 10, "output_tokens": 6},
     }
     fake_client = _fake_runtime_client(resp_payload)
-    with patch.object(BedrockProvider, "_load_credential", return_value={}), \
-         patch.object(BedrockProvider, "_get_runtime_client", return_value=fake_client):
+    with (
+        patch.object(BedrockProvider, "_load_credential", return_value={}),
+        patch.object(BedrockProvider, "_get_runtime_client", return_value=fake_client),
+    ):
         p = BedrockProvider(model="anthropic.claude-sonnet-4-20250514-v1:0")
         msg = await p.complete([Message(role="user", content="hi")])
     assert msg.content == "claude-on-bedrock says hi"
@@ -198,8 +199,10 @@ async def test_bedrock_list_models_fallback_on_error() -> None:
     def _raise() -> None:
         raise RuntimeError("boom")
 
-    with patch.object(BedrockProvider, "_load_credential", return_value={}), \
-         patch.object(BedrockProvider, "_get_control_client", side_effect=RuntimeError("nope")):
+    with (
+        patch.object(BedrockProvider, "_load_credential", return_value={}),
+        patch.object(BedrockProvider, "_get_control_client", side_effect=RuntimeError("nope")),
+    ):
         p = BedrockProvider()
         models = await p.list_models()
     assert len(models) == len(_FALLBACK_MODELS)
@@ -214,8 +217,10 @@ async def test_bedrock_list_models_from_boto3() -> None:
             {"modelId": "meta.llama3-1-8b-instruct-v1:0", "modelName": "Llama"},
         ]
     }
-    with patch.object(BedrockProvider, "_load_credential", return_value={}), \
-         patch.object(BedrockProvider, "_get_control_client", return_value=fake_client):
+    with (
+        patch.object(BedrockProvider, "_load_credential", return_value={}),
+        patch.object(BedrockProvider, "_get_control_client", return_value=fake_client),
+    ):
         p = BedrockProvider()
         models = await p.list_models()
     ids = {m.id for m in models}

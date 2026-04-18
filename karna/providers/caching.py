@@ -84,6 +84,7 @@ class PromptCache:
         Works with both OpenAI-format (``{"type":"function","function":{...}}``)
         and Anthropic-format (``{"name":...}``) tools.
         """
+
         def _tool_sort_key(t: dict[str, Any]) -> str:
             # OpenAI format
             fn = t.get("function", {})
@@ -130,10 +131,9 @@ class PromptCache:
 
         Useful for logging / debugging cache invalidation.
         """
-        sys_hash = hashlib.md5(system_prompt.encode()).hexdigest()[:12]
-        tools_hash = hashlib.md5(
-            json.dumps(tools, sort_keys=True).encode()
-        ).hexdigest()[:12]
+        # MD5 used as a non-security-sensitive cache fingerprint.
+        sys_hash = hashlib.md5(system_prompt.encode(), usedforsecurity=False).hexdigest()[:12]
+        tools_hash = hashlib.md5(json.dumps(tools, sort_keys=True).encode(), usedforsecurity=False).hexdigest()[:12]
 
         changed = sys_hash != self._system_hash or tools_hash != self._tools_hash
         self._system_hash = sys_hash

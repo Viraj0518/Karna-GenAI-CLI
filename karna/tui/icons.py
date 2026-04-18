@@ -24,10 +24,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Dict
 
-
 # --------------------------------------------------------------------------- #
 #  Capability detection
 # --------------------------------------------------------------------------- #
+
 
 @lru_cache(maxsize=1)
 def _detect_nerd_font() -> bool:
@@ -88,37 +88,34 @@ def _detect_nerd_font() -> bool:
 # (nerd_font_glyph, ascii_fallback)
 _GLYPHS: Dict[str, tuple[str, str]] = {
     # Tools
-    "tool_bash":    ("\uf489",  "$"),    # terminal
-    "tool_read":    ("\uf15c",  "R"),    # file-lines
-    "tool_write":   ("\uf040",  "W"),    # pencil
-    "tool_edit":    ("\uf044",  "E"),    # edit
-    "tool_grep":    ("\uf002",  "/"),    # search
-    "tool_glob":    ("\uf07b",  "*"),    # folder
-    "tool_git":     ("\uf1d3",  "g"),    # git logo
-    "tool_web":     ("\uf0ac",  "@"),    # globe
-    "tool_mcp":     ("\uf1e6",  "~"),    # plug
-    "tool_task":    ("\uf0ae",  "T"),    # list-check
-    "tool_monitor": ("\uf200",  "M"),    # chart
-
+    "tool_bash": ("\uf489", "$"),  # terminal
+    "tool_read": ("\uf15c", "R"),  # file-lines
+    "tool_write": ("\uf040", "W"),  # pencil
+    "tool_edit": ("\uf044", "E"),  # edit
+    "tool_grep": ("\uf002", "/"),  # search
+    "tool_glob": ("\uf07b", "*"),  # folder
+    "tool_git": ("\uf1d3", "g"),  # git logo
+    "tool_web": ("\uf0ac", "@"),  # globe
+    "tool_mcp": ("\uf1e6", "~"),  # plug
+    "tool_task": ("\uf0ae", "T"),  # list-check
+    "tool_monitor": ("\uf200", "M"),  # chart
     # Roles — ASCII fallbacks use widely-supported Unicode block chars
-    "user":         ("\uf007",  "\u25B8"),   # person → ▸ (black right-pointing small triangle)
-    "assistant":    ("\uf544",  "\u25C6"),   # robot → ◆ (black diamond, brand mark)
-    "thinking":     ("\uf0eb",  "\u25CB"),   # lightbulb → ○ (white circle)
-    "sparkle":      ("\uf890",  "\u2726"),   # sparkle → ✦ (widely supported star)
-
+    "user": ("\uf007", "\u25b8"),  # person → ▸ (black right-pointing small triangle)
+    "assistant": ("\uf544", "\u25c6"),  # robot → ◆ (black diamond, brand mark)
+    "thinking": ("\uf0eb", "\u25cb"),  # lightbulb → ○ (white circle)
+    "sparkle": ("\uf890", "\u2726"),  # sparkle → ✦ (widely supported star)
     # Status
-    "success":      ("\uf00c",  "\u2713"),   # check → ✓
-    "error":        ("\uf00d",  "\u2717"),   # x → ✗
-    "warning":      ("\uf071",  "\u26A0"),   # triangle → ⚠
-    "pending":      ("\uf251",  "\u2026"),   # hourglass → …
-    "running":      ("\uf46a",  "\u25B6"),   # play → ▶
-
+    "success": ("\uf00c", "\u2713"),  # check → ✓
+    "error": ("\uf00d", "\u2717"),  # x → ✗
+    "warning": ("\uf071", "\u26a0"),  # triangle → ⚠
+    "pending": ("\uf251", "\u2026"),  # hourglass → …
+    "running": ("\uf46a", "\u25b6"),  # play → ▶
     # Affordances
-    "chevron_right":("\uf054",  ">"),
-    "chevron_down": ("\uf078",  "v"),
-    "bullet":       ("\u2022",  "-"),    # actual unicode bullet, widely supported
-    "arrow_right":  ("\uf061",  "->"),
-    "ellipsis":     ("\u2026",  "..."),
+    "chevron_right": ("\uf054", ">"),
+    "chevron_down": ("\uf078", "v"),
+    "bullet": ("\u2022", "-"),  # actual unicode bullet, widely supported
+    "arrow_right": ("\uf061", "->"),
+    "ellipsis": ("\u2026", "..."),
 }
 
 

@@ -39,11 +39,7 @@ def _truncate_output(text: str, limit: int = _MAX_OUTPUT_CHARS) -> str:
         return text
     half = limit // 2
     omitted = len(text) - limit
-    return (
-        text[:half]
-        + f"\n\n... [{omitted} characters truncated] ...\n\n"
-        + text[-half:]
-    )
+    return text[:half] + f"\n\n... [{omitted} characters truncated] ...\n\n" + text[-half:]
 
 
 class BashTool(BaseTool):
@@ -61,10 +57,7 @@ class BashTool(BaseTool):
 
     name = "bash"
     sequential = True  # Shell commands must not run concurrently
-    description = (
-        "Execute a bash command and return stdout/stderr. "
-        "The working directory persists between calls."
-    )
+    description = "Execute a bash command and return stdout/stderr. The working directory persists between calls."
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

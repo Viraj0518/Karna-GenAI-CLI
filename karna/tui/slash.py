@@ -19,14 +19,12 @@ picker, the same metadata powers it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-
-from typing import TYPE_CHECKING
 
 from karna.config import KarnaConfig, save_config
 from karna.models import Conversation
@@ -61,6 +59,7 @@ def _icon(name: str, fallback: str) -> str:
 #  Session-level cost tracking (populated by output.py)
 # --------------------------------------------------------------------------- #
 
+
 @dataclass
 class SessionCost:
     """Mutable accumulator for per-session token/cost tracking."""
@@ -78,6 +77,7 @@ class SessionCost:
 # --------------------------------------------------------------------------- #
 #  Command definitions
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class SlashCommand:
@@ -104,38 +104,44 @@ _CATEGORY_LABELS: dict[str, str] = {
 def _build_commands() -> dict[str, SlashCommand]:
     """Return the canonical command table (handlers are bound later)."""
     # Icons resolved via the optional icons module with sensible fallbacks.
-    ic_help     = _icon("HELP",     "?")
-    ic_model    = _icon("MODEL",    "\u25CE")   # circled ring
-    ic_clear    = _icon("CLEAR",    "\u2715")   # x
-    ic_history  = _icon("HISTORY",  "\u231A")   # clock
-    ic_cost     = _icon("COST",     "$")
-    ic_exit     = _icon("EXIT",     "\u21B5")   # return
-    ic_compact  = _icon("COMPACT",  "\u29C7")   # circled dot
-    ic_tools    = _icon("TOOLS",    "\u2699")   # gear
-    ic_system   = _icon("SYSTEM",   "\u24E2")   # circled S
-    ic_sessions = _icon("SESSIONS", "\u2630")   # trigram
-    ic_resume   = _icon("RESUME",   "\u21BB")   # rotate
-    ic_paste    = _icon("PASTE",    "\u2398")   # next page
-    ic_copy     = _icon("COPY",     "\u2398")
+    ic_help = _icon("HELP", "?")
+    ic_model = _icon("MODEL", "\u25ce")  # circled ring
+    ic_clear = _icon("CLEAR", "\u2715")  # x
+    ic_history = _icon("HISTORY", "\u231a")  # clock
+    ic_cost = _icon("COST", "$")
+    ic_exit = _icon("EXIT", "\u21b5")  # return
+    ic_compact = _icon("COMPACT", "\u29c7")  # circled dot
+    ic_tools = _icon("TOOLS", "\u2699")  # gear
+    ic_system = _icon("SYSTEM", "\u24e2")  # circled S
+    ic_sessions = _icon("SESSIONS", "\u2630")  # trigram
+    ic_resume = _icon("RESUME", "\u21bb")  # rotate
+    ic_paste = _icon("PASTE", "\u2398")  # next page
+    ic_copy = _icon("COPY", "\u2398")
 
     cmds: list[SlashCommand] = [
         # ── Session ────────────────────────────────────────────────────
-        SlashCommand("history",  "/history",             "Show conversation so far",               category="session",  icon=ic_history),
-        SlashCommand("clear",    "/clear",               "Reset conversation history",             category="session",  icon=ic_clear),
-        SlashCommand("sessions", "/sessions",            "Show last 5 sessions from history",      category="session",  icon=ic_sessions),
-        SlashCommand("resume",   "/resume <id>",         "Resume a previous session",              category="session",  icon=ic_resume),
+        SlashCommand("history", "/history", "Show conversation so far", category="session", icon=ic_history),
+        SlashCommand("clear", "/clear", "Reset conversation history", category="session", icon=ic_clear),
+        SlashCommand(
+            "sessions", "/sessions", "Show last 5 sessions from history", category="session", icon=ic_sessions
+        ),
+        SlashCommand("resume", "/resume <id>", "Resume a previous session", category="session", icon=ic_resume),
         # ── Context ────────────────────────────────────────────────────
-        SlashCommand("model",    "/model <provider:model>", "Switch model mid-conversation",       category="context",  icon=ic_model),
-        SlashCommand("system",   "/system <prompt>",     "Set the system prompt",                  category="context",  icon=ic_system),
-        SlashCommand("cost",     "/cost",                "Show total token usage and cost",        category="context",  icon=ic_cost),
-        SlashCommand("compact",  "/compact",             "Trigger conversation compaction (stub)", category="context",  icon=ic_compact),
-        SlashCommand("tools",    "/tools",               "List available tools",                   category="context",  icon=ic_tools),
+        SlashCommand(
+            "model", "/model <provider:model>", "Switch model mid-conversation", category="context", icon=ic_model
+        ),
+        SlashCommand("system", "/system <prompt>", "Set the system prompt", category="context", icon=ic_system),
+        SlashCommand("cost", "/cost", "Show total token usage and cost", category="context", icon=ic_cost),
+        SlashCommand(
+            "compact", "/compact", "Trigger conversation compaction (stub)", category="context", icon=ic_compact
+        ),
+        SlashCommand("tools", "/tools", "List available tools", category="context", icon=ic_tools),
         # ── Utility ────────────────────────────────────────────────────
-        SlashCommand("copy",     "/copy",                "Copy last assistant response",           category="utility",  icon=ic_copy),
-        SlashCommand("paste",    "/paste",               "Read clipboard and send as message",     category="utility",  icon=ic_paste),
-        SlashCommand("help",     "/help",                "List available commands",                category="utility",  icon=ic_help),
-        SlashCommand("exit",     "/exit",                "Exit the REPL",                          category="utility",  icon=ic_exit),
-        SlashCommand("quit",     "/quit",                "Exit the REPL",                          category="utility",  icon=ic_exit),
+        SlashCommand("copy", "/copy", "Copy last assistant response", category="utility", icon=ic_copy),
+        SlashCommand("paste", "/paste", "Read clipboard and send as message", category="utility", icon=ic_paste),
+        SlashCommand("help", "/help", "List available commands", category="utility", icon=ic_help),
+        SlashCommand("exit", "/exit", "Exit the REPL", category="utility", icon=ic_exit),
+        SlashCommand("quit", "/quit", "Exit the REPL", category="utility", icon=ic_exit),
     ]
     return {c.name: c for c in cmds}
 
@@ -146,6 +152,7 @@ COMMANDS = _build_commands()
 # --------------------------------------------------------------------------- #
 #  /help rendering helpers
 # --------------------------------------------------------------------------- #
+
 
 def _group_for_help(cmds: Iterable[SlashCommand]) -> dict[str, list[SlashCommand]]:
     """Partition *cmds* by category, preserving insertion order inside each."""
@@ -163,7 +170,6 @@ def _render_category_table(label: str, cmds: list[SlashCommand]) -> Table:
     cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
     primary = SEMANTIC.get("text.primary", "#E6E8EC")
     secondary = SEMANTIC.get("text.secondary", "#A0A4AD")
-    tertiary = SEMANTIC.get("text.tertiary", "#5F6472")
 
     table = Table(
         title=Text(f"  {label}", style=f"bold {cyan}"),
@@ -187,6 +193,7 @@ def _render_category_table(label: str, cmds: list[SlashCommand]) -> Table:
 # --------------------------------------------------------------------------- #
 #  Handler implementations
 # --------------------------------------------------------------------------- #
+
 
 def _cmd_help(console: Console, **_kw) -> None:  # type: ignore[no-untyped-def]
     """Grouped, icon-prefixed help panel."""
@@ -352,6 +359,7 @@ def _cmd_sessions(console: Console, session_db: "SessionDB | None" = None, **_kw
 def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
     """Read clipboard and return content to be injected as user message."""
     import asyncio
+
     from karna.tools.clipboard import ClipboardTool
 
     tool = ClipboardTool()
@@ -380,6 +388,7 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
 def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     """Copy the last assistant response to clipboard."""
     import asyncio
+
     from karna.tools.clipboard import ClipboardTool
 
     last_assistant = None
@@ -396,9 +405,7 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(
-                tool.execute(action="write", content=last_assistant), loop
-            )
+            future = asyncio.run_coroutine_threadsafe(tool.execute(action="write", content=last_assistant), loop)
             result = future.result(timeout=10)
         else:
             result = asyncio.run(tool.execute(action="write", content=last_assistant))
@@ -429,6 +436,7 @@ def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = No
 # --------------------------------------------------------------------------- #
 #  Fuzzy prefix matching (used by dispatcher before reporting "unknown")
 # --------------------------------------------------------------------------- #
+
 
 def _fuzzy_match(partial: str) -> str | None:
     """Return the unique command whose name starts with *partial*, else None."""
@@ -494,9 +502,7 @@ def handle_slash_command(
         if resolved is not None:
             handler = _HANDLERS.get(resolved)
         if handler is None:
-            console.print(
-                f"[red]Unknown command: /{cmd_name}[/red]  (type [bold]/help[/bold] to list commands)"
-            )
+            console.print(f"[red]Unknown command: /{cmd_name}[/red]  (type [bold]/help[/bold] to list commands)")
             return None
 
     result = handler(

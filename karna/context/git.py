@@ -51,13 +51,25 @@ class GitContext:
                 self._run_git("rev-parse", "--show-toplevel", cwd=cwd),
                 self._run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=cwd),
                 self._run_git(
-                    "--no-optional-locks", "status", "--short", cwd=cwd,
+                    "--no-optional-locks",
+                    "status",
+                    "--short",
+                    cwd=cwd,
                 ),
                 self._run_git(
-                    "--no-optional-locks", "log", "--oneline", "-n", "5", cwd=cwd,
+                    "--no-optional-locks",
+                    "log",
+                    "--oneline",
+                    "-n",
+                    "5",
+                    cwd=cwd,
                 ),
                 self._run_git(
-                    "--no-optional-locks", "diff", "--stat", "HEAD", cwd=cwd,
+                    "--no-optional-locks",
+                    "diff",
+                    "--stat",
+                    "HEAD",
+                    cwd=cwd,
                 ),
             )
         except Exception:
@@ -66,10 +78,7 @@ class GitContext:
 
         # Truncate large status output.
         if len(status) > MAX_STATUS_CHARS:
-            status = (
-                status[:MAX_STATUS_CHARS]
-                + "\n... (truncated, run `git status` for full output)"
-            )
+            status = status[:MAX_STATUS_CHARS] + "\n... (truncated, run `git status` for full output)"
 
         # Parse status summary.
         status_summary = self._summarize_status(status)

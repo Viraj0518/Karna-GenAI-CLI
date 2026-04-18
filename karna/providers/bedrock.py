@@ -123,9 +123,7 @@ class BedrockProvider(BaseProvider):
 
     def _get_runtime_client(self) -> Any:
         if self._runtime_client is None:
-            self._runtime_client = self._make_boto3_session().client(
-                "bedrock-runtime"
-            )
+            self._runtime_client = self._make_boto3_session().client("bedrock-runtime")
         return self._runtime_client
 
     def _get_control_client(self) -> Any:
@@ -172,9 +170,7 @@ class BedrockProvider(BaseProvider):
                         "content": tr.content or "(no output)",
                     }
                 )
-            anth_messages.append(
-                {"role": role, "content": content or [{"type": "text", "text": ""}]}
-            )
+            anth_messages.append({"role": role, "content": content or [{"type": "text", "text": ""}]})
 
         payload: dict[str, Any] = {
             "anthropic_version": "bedrock-2023-05-31",
@@ -188,9 +184,7 @@ class BedrockProvider(BaseProvider):
                 {
                     "name": t.get("function", {}).get("name", ""),
                     "description": t.get("function", {}).get("description", ""),
-                    "input_schema": t.get("function", {}).get(
-                        "parameters", {"type": "object", "properties": {}}
-                    ),
+                    "input_schema": t.get("function", {}).get("parameters", {"type": "object", "properties": {}}),
                 }
                 for t in tools
             ]
@@ -255,21 +249,13 @@ class BedrockProvider(BaseProvider):
         temperature: float | None,
     ) -> dict[str, Any]:
         if _is_anthropic_model(self.model):
-            return self._build_anthropic_payload(
-                messages, tools, system_prompt, max_tokens, temperature
-            )
+            return self._build_anthropic_payload(messages, tools, system_prompt, max_tokens, temperature)
         if _is_llama_model(self.model):
-            return self._build_llama_payload(
-                messages, system_prompt, max_tokens, temperature
-            )
+            return self._build_llama_payload(messages, system_prompt, max_tokens, temperature)
         if _is_titan_model(self.model):
-            return self._build_titan_payload(
-                messages, system_prompt, max_tokens, temperature
-            )
+            return self._build_titan_payload(messages, system_prompt, max_tokens, temperature)
         # Unknown family — best-effort fall through as Anthropic shape.
-        return self._build_anthropic_payload(
-            messages, tools, system_prompt, max_tokens, temperature
-        )
+        return self._build_anthropic_payload(messages, tools, system_prompt, max_tokens, temperature)
 
     # ------------------------------------------------------------------ #
     #  Response parsing
@@ -309,9 +295,7 @@ class BedrockProvider(BaseProvider):
                 text_parts.append(r.get("outputText", ""))
             usage = Usage(
                 input_tokens=data.get("inputTextTokenCount", 0),
-                output_tokens=sum(
-                    r.get("tokenCount", 0) for r in results
-                ),
+                output_tokens=sum(r.get("tokenCount", 0) for r in results),
             )
         return "".join(text_parts), tool_calls, usage
 
@@ -328,9 +312,7 @@ class BedrockProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> Message:
-        payload = self._build_payload(
-            messages, tools, system_prompt, max_tokens, temperature
-        )
+        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
         body = json.dumps(payload).encode("utf-8")
 
         def _invoke() -> dict[str, Any]:
@@ -358,9 +340,7 @@ class BedrockProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        payload = self._build_payload(
-            messages, tools, system_prompt, max_tokens, temperature
-        )
+        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
         body = json.dumps(payload).encode("utf-8")
 
         def _invoke_stream() -> Iterator[dict[str, Any]]:
@@ -381,9 +361,7 @@ class BedrockProvider(BaseProvider):
         # Drain the stream in a worker thread — boto3 EventStream is sync.
         # We collect all chunks up-front since bridging sync iterators to
         # async iterators is painful and the chunks themselves are small.
-        chunks: list[dict[str, Any]] = await asyncio.to_thread(
-            lambda: list(_invoke_stream())
-        )
+        chunks: list[dict[str, Any]] = await asyncio.to_thread(lambda: list(_invoke_stream()))
 
         cumulative = Usage()
         for chunk in chunks:
@@ -410,9 +388,7 @@ class BedrockProvider(BaseProvider):
         self._track_usage(cumulative)
         yield StreamEvent(type="done", usage=cumulative)
 
-    async def _iter_anthropic_chunk(
-        self, chunk: dict[str, Any], cumulative: Usage
-    ) -> AsyncIterator[StreamEvent]:
+    async def _iter_anthropic_chunk(self, chunk: dict[str, Any], cumulative: Usage) -> AsyncIterator[StreamEvent]:
         """Parse one Bedrock/Anthropic streaming chunk into StreamEvents."""
         ctype = chunk.get("type")
         if ctype == "content_block_delta":
@@ -429,10 +405,10 @@ class BedrockProvider(BaseProvider):
 
     async def list_models(self) -> list[ModelInfo]:
         fallback = [
-            ModelInfo(id=mid, name=mid, provider="bedrock", context_window=ctx)
-            for (mid, ctx) in _FALLBACK_MODELS
+            ModelInfo(id=mid, name=mid, provider="bedrock", context_window=ctx) for (mid, ctx) in _FALLBACK_MODELS
         ]
         try:
+
             def _list() -> list[dict[str, Any]]:
                 client = self._get_control_client()
                 resp = client.list_foundation_models()

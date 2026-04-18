@@ -115,12 +115,11 @@ class CredentialPool:
             if pool.strategy not in _VALID_STRATEGIES:
                 logger.warning(
                     "Unknown strategy %r for %s, falling back to failover",
-                    pool.strategy, provider,
+                    pool.strategy,
+                    provider,
                 )
                 pool.strategy = STRATEGY_FAILOVER
-            pool.cooldown_seconds = float(
-                data.get("rate_limit_cooldown_seconds", DEFAULT_COOLDOWN_SECONDS)
-            )
+            pool.cooldown_seconds = float(data.get("rate_limit_cooldown_seconds", DEFAULT_COOLDOWN_SECONDS))
         elif data.get("api_key"):
             # Single-key backward-compatible config
             pool.keys.append(
@@ -166,7 +165,10 @@ class CredentialPool:
 
         logger.debug(
             "credential pool [%s]: selected key %s (strategy=%s, count=%d)",
-            self.provider, entry.masked_key, self.strategy, entry.request_count,
+            self.provider,
+            entry.masked_key,
+            self.strategy,
+            entry.request_count,
         )
         return entry.api_key
 
@@ -182,18 +184,12 @@ class CredentialPool:
                 self.provider,
             )
 
-        return [
-            entry
-            for entry in self.keys
-            if not entry._removed and entry.api_key not in self._cooldowns
-        ]
+        return [entry for entry in self.keys if not entry._removed and entry.api_key not in self._cooldowns]
 
     def _select_round_robin(self, available: list[KeyEntry]) -> KeyEntry:
         """Select next key in round-robin order among available keys."""
         # Map available keys to their indices in self.keys
-        available_indices = [
-            i for i, k in enumerate(self.keys) if k in available
-        ]
+        available_indices = [i for i, k in enumerate(self.keys) if k in available]
         # Find the next index >= _current_index
         for idx in available_indices:
             if idx >= self._current_index:
@@ -223,7 +219,8 @@ class CredentialPool:
             entry.error_count += 1
         logger.info(
             "credential pool [%s]: key rate-limited, cooldown %.0fs",
-            self.provider, self.cooldown_seconds,
+            self.provider,
+            self.cooldown_seconds,
         )
 
     def mark_auth_failed(self, key: str) -> None:
@@ -255,18 +252,18 @@ class CredentialPool:
             in_cooldown = entry.api_key in self._cooldowns
             cooldown_remaining = 0.0
             if in_cooldown:
-                cooldown_remaining = max(
-                    0.0, self._cooldowns[entry.api_key] - now
-                )
-            key_stats.append({
-                "label": entry.label,
-                "masked_key": entry.masked_key,
-                "request_count": entry.request_count,
-                "error_count": entry.error_count,
-                "removed": entry._removed,
-                "in_cooldown": in_cooldown,
-                "cooldown_remaining_seconds": round(cooldown_remaining, 1),
-            })
+                cooldown_remaining = max(0.0, self._cooldowns[entry.api_key] - now)
+            key_stats.append(
+                {
+                    "label": entry.label,
+                    "masked_key": entry.masked_key,
+                    "request_count": entry.request_count,
+                    "error_count": entry.error_count,
+                    "removed": entry._removed,
+                    "in_cooldown": in_cooldown,
+                    "cooldown_remaining_seconds": round(cooldown_remaining, 1),
+                }
+            )
         return {
             "provider": self.provider,
             "strategy": self.strategy,

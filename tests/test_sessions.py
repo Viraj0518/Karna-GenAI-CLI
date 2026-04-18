@@ -180,7 +180,7 @@ def test_resume_nonexistent_session(db: SessionDB) -> None:
 
 def test_get_latest_session_id(db: SessionDB) -> None:
     assert db.get_latest_session_id() is None
-    sid1 = db.create_session(model="m1", provider="p1", cwd="/tmp")
+    db.create_session(model="m1", provider="p1", cwd="/tmp")
     sid2 = db.create_session(model="m2", provider="p2", cwd="/tmp")
     assert db.get_latest_session_id() == sid2
 

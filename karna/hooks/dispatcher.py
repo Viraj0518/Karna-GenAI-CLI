@@ -15,14 +15,14 @@ import asyncio
 import logging
 import shlex
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Sequence
 
 if sys.version_info >= (3, 11):
-    import tomllib
+    pass
 else:
-    import tomli as tomllib  # type: ignore[no-redef]
+    pass  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ _DEFAULT_HOOK_TIMEOUT = 30
 # ----------------------------------------------------------------------- #
 #  Public types
 # ----------------------------------------------------------------------- #
+
 
 class HookType(Enum):
     """Well-known lifecycle points where hooks can fire."""
@@ -70,6 +71,7 @@ class HookResult:
 # ----------------------------------------------------------------------- #
 #  Shell-command hook wrapper
 # ----------------------------------------------------------------------- #
+
 
 def _make_shell_hook(
     command: str,
@@ -123,7 +125,10 @@ def _make_shell_hook(
         if proc.returncode != 0:
             err_text = (stderr or stdout or b"").decode(errors="replace").strip()
             logger.info(
-                "Shell hook exited %d: %s — %s", proc.returncode, rendered, err_text,
+                "Shell hook exited %d: %s — %s",
+                proc.returncode,
+                rendered,
+                err_text,
             )
             return HookResult(
                 proceed=False,
@@ -139,6 +144,7 @@ def _make_shell_hook(
 #  Dispatcher
 # ----------------------------------------------------------------------- #
 
+
 class HookDispatcher:
     """Central registry and executor for lifecycle hooks.
 
@@ -152,9 +158,7 @@ class HookDispatcher:
     """
 
     def __init__(self, config: Any | None = None) -> None:
-        self.hooks: dict[HookType, list[Callable[..., Any]]] = {
-            t: [] for t in HookType
-        }
+        self.hooks: dict[HookType, list[Callable[..., Any]]] = {t: [] for t in HookType}
         if config is not None:
             self._load_hooks(config)
 
@@ -201,20 +205,21 @@ class HookDispatcher:
                 if hook_type == HookType.PRE_TOOL_USE:
                     logger.error(
                         "PRE_TOOL_USE hook %s crashed — BLOCKING tool call: %s",
-                        fn_name, exc,
+                        fn_name,
+                        exc,
                         exc_info=True,
                     )
                     aggregated.proceed = False
-                    aggregated.message = (
-                        f"pre-tool-use hook failed: {exc}"
-                    )
+                    aggregated.message = f"pre-tool-use hook failed: {exc}"
                     # Don't run further hooks — the tool is already
                     # blocked and later hooks shouldn't override the
                     # fail-closed decision.
                     return aggregated
                 logger.warning(
                     "Hook %s for %s raised (fail-open): %s",
-                    fn_name, hook_type.value, exc,
+                    fn_name,
+                    hook_type.value,
+                    exc,
                     exc_info=True,
                 )
                 continue
@@ -225,7 +230,8 @@ class HookDispatcher:
             if not isinstance(result, HookResult):
                 logger.warning(
                     "Hook %s returned non-HookResult: %r — ignoring",
-                    fn, result,
+                    fn,
+                    result,
                 )
                 continue
 

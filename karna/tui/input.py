@@ -40,18 +40,18 @@ except ImportError:  # pragma: no cover
 
 try:  # pragma: no cover - trivial import guard
     from karna.tui import icons as _icons  # type: ignore
+
     _CHEVRON = (
-        getattr(_icons, "CHEVRON_RIGHT", None)
-        or getattr(_icons, "chevron_right", None)
-        or "\u276F"  # ❯
+        getattr(_icons, "CHEVRON_RIGHT", None) or getattr(_icons, "chevron_right", None) or "\u276f"  # ❯
     )
 except Exception:  # pragma: no cover - fallback
-    _CHEVRON = "\u276F"
+    _CHEVRON = "\u276f"
 
 
 # --------------------------------------------------------------------------- #
 #  Style helpers
 # --------------------------------------------------------------------------- #
+
 
 def _pt_style() -> "PTStyle":
     """Build the prompt_toolkit ``Style`` from semantic design tokens."""
@@ -84,10 +84,7 @@ def _format_prompt(prompt_str: str) -> "HTML":
     label = prompt_str.rstrip()
     if label.endswith(">"):
         label = label[:-1].rstrip()
-    return HTML(
-        f"<prompt.chevron>{_CHEVRON}</prompt.chevron> "
-        f"<prompt.text>{label}</prompt.text> "
-    )
+    return HTML(f"<prompt.chevron>{_CHEVRON}</prompt.chevron> <prompt.text>{label}</prompt.text> ")
 
 
 def _format_continuation() -> "HTML":

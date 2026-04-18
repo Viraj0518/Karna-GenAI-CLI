@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator, Callable
 
 import pytest
 
-from karna.models import Message, ModelInfo, StreamEvent, ToolCall
+from karna.models import Message, ModelInfo, StreamEvent
 from karna.providers.base import BaseProvider
 
 

@@ -14,7 +14,6 @@ Usage:
 """
 
 import asyncio
-import json
 import os
 import sys
 import time
@@ -23,10 +22,8 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from karna.providers.openrouter import OpenRouterProvider
 from karna.models import Message
-from karna.config import load_config
-
+from karna.providers.openrouter import OpenRouterProvider
 
 REPO_ROOT = Path(__file__).parent.parent
 MODEL = "minimax/minimax-m2.7"
@@ -48,12 +45,21 @@ def read_codebase_summary() -> str:
 
     # Key file contents (truncated)
     key_files = {}
-    for name in ["karna/cli.py", "karna/config.py", "karna/models.py",
-                  "karna/providers/__init__.py", "karna/providers/openrouter.py",
-                  "karna/providers/base.py", "karna/tools/__init__.py",
-                  "karna/agents/__init__.py", "karna/security/guards.py",
-                  "karna/sessions/__init__.py", "karna/prompts/system.py",
-                  "pyproject.toml", "README.md"]:
+    for name in [
+        "karna/cli.py",
+        "karna/config.py",
+        "karna/models.py",
+        "karna/providers/__init__.py",
+        "karna/providers/openrouter.py",
+        "karna/providers/base.py",
+        "karna/tools/__init__.py",
+        "karna/agents/__init__.py",
+        "karna/security/guards.py",
+        "karna/sessions/__init__.py",
+        "karna/prompts/system.py",
+        "pyproject.toml",
+        "README.md",
+    ]:
         path = REPO_ROOT / name
         if path.exists():
             content = path.read_text()
@@ -84,12 +90,10 @@ async def generate_doc(provider: OpenRouterProvider, doc_type: str, context: str
 Include: project description, features, installation, quickstart, configuration,
 available commands, provider support, tool list, security model, and contributing guide.
 Make it professional and welcoming. Use the codebase context below.""",
-
         "ARCHITECTURE": """Write an ARCHITECTURE.md for the Karna project.
 Include: system overview, component diagram (text-based), provider abstraction,
 tool system, agent loop, session management, security model, configuration flow,
 and extension points. Be technical but accessible.""",
-
         "API_REFERENCE": """Write an API_REFERENCE.md for the Karna project.
 Document: all CLI commands (nellie <cmd>), all providers and their config,
 all tools and their parameters, configuration file format, environment variables,
@@ -108,7 +112,11 @@ and the Python API for embedding. Be precise with types and defaults.""",
     try:
         response: Message = await provider.complete(
             messages=messages,
-            system_prompt="You are a technical documentation writer. Write clear, accurate, comprehensive documentation based on the source code provided. Output raw markdown only — no commentary.",
+            system_prompt=(
+                "You are a technical documentation writer. Write clear, accurate, "
+                "comprehensive documentation based on the source code provided. "
+                "Output raw markdown only — no commentary."
+            ),
             max_tokens=4000,
             temperature=0.3,
         )
@@ -122,6 +130,7 @@ and the Python API for embedding. Be precise with types and defaults.""",
         return content
     except Exception as e:
         import traceback
+
         print(f"  ✗ {doc_type}: {e}", flush=True)
         traceback.print_exc()
         return f"# Error generating {doc_type}\n\n{e}"
@@ -148,7 +157,7 @@ async def main():
     provider = OpenRouterProvider(model=MODEL)
 
     # Generate 3 docs
-    print(f"\n[3] Generating documentation via M2.7...", flush=True)
+    print("\n[3] Generating documentation via M2.7...", flush=True)
     t_start = time.time()
 
     docs = {}
@@ -159,7 +168,7 @@ async def main():
     total_chars = sum(len(d) for d in docs.values())
 
     # Write output
-    print(f"\n[4] Writing generated docs...", flush=True)
+    print("\n[4] Writing generated docs...", flush=True)
     out_dir = REPO_ROOT / "docs" / "generated"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -169,7 +178,7 @@ async def main():
         print(f"  {out_path.relative_to(REPO_ROOT)}: {len(content)} chars")
 
     # Validation
-    print(f"\n[5] Validation...", flush=True)
+    print("\n[5] Validation...", flush=True)
     all_pass = True
     for doc_type, content in docs.items():
         checks = {
@@ -189,7 +198,7 @@ async def main():
     print(f"  Total: {total_chars} chars generated in {total_time:.1f}s")
     print(f"  Model: {MODEL}")
     print(f"  Verdict: {'PASS ✓' if all_pass else 'FAIL ✗'}")
-    print(f"  Output: docs/generated/")
+    print("  Output: docs/generated/")
     print(f"{'=' * 60}")
 
     return 0 if all_pass else 1

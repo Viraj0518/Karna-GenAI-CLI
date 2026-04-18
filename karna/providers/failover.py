@@ -83,12 +83,8 @@ class FailoverProvider(BaseProvider):
         self.name = f"failover:{instances[0].name}"
         self._instances: list[BaseProvider] = list(instances)
         self._current: int = 0
-        self._cooldowns: dict[int, float] = {
-            i: 0.0 for i in range(len(instances))
-        }
-        self._failure_counts: dict[int, int] = {
-            i: 0 for i in range(len(instances))
-        }
+        self._cooldowns: dict[int, float] = {i: 0.0 for i in range(len(instances))}
+        self._failure_counts: dict[int, int] = {i: 0 for i in range(len(instances))}
         # Surface the first instance's model for observability.
         self.model = getattr(instances[0], "model", "")
 
@@ -120,7 +116,10 @@ class FailoverProvider(BaseProvider):
         self._cooldowns[idx] = time.monotonic() + delay
         logger.warning(
             "failover[%s]: instance %d cooldown for %.1fs (failure #%d)",
-            self._instances[idx].name, idx, delay, count,
+            self._instances[idx].name,
+            idx,
+            delay,
+            count,
         )
 
     def _mark_success(self, idx: int) -> None:
@@ -179,8 +178,7 @@ class FailoverProvider(BaseProvider):
                 # Advance the start pointer so the next attempt skips idx.
                 start = (idx + 1) % len(self._instances)
         raise AllInstancesExhaustedError(
-            f"All {len(self._instances)} failover instances are in cooldown "
-            f"for provider {self._instances[0].name!r}"
+            f"All {len(self._instances)} failover instances are in cooldown for provider {self._instances[0].name!r}"
         ) from last_exc
 
     async def stream(
@@ -225,8 +223,7 @@ class FailoverProvider(BaseProvider):
                 self._mark_failure(idx, self._retry_after(exc))
                 start = (idx + 1) % len(self._instances)
         raise AllInstancesExhaustedError(
-            f"All {len(self._instances)} failover instances are in cooldown "
-            f"for provider {self._instances[0].name!r}"
+            f"All {len(self._instances)} failover instances are in cooldown for provider {self._instances[0].name!r}"
         ) from last_exc
 
     async def list_models(self) -> list[ModelInfo]:
@@ -248,7 +245,9 @@ class FailoverProvider(BaseProvider):
             except Exception as exc:  # noqa: BLE001
                 logger.debug(
                     "failover: list_models failed on instance %d (%s): %s",
-                    idx, inst.name, exc,
+                    idx,
+                    inst.name,
+                    exc,
                 )
                 continue
         if not seen and self._instances:
@@ -265,13 +264,7 @@ class FailoverProvider(BaseProvider):
     def cooldown_status(self) -> dict[int, float]:
         """Remaining cooldown seconds per instance index (0 when ready)."""
         now = time.monotonic()
-        return {
-            idx: max(0.0, self._cooldowns[idx] - now)
-            for idx in self._cooldowns
-        }
+        return {idx: max(0.0, self._cooldowns[idx] - now) for idx in self._cooldowns}
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
-        return (
-            f"FailoverProvider(n={len(self._instances)}, "
-            f"current={self._current}, name={self.name!r})"
-        )
+        return f"FailoverProvider(n={len(self._instances)}, current={self._current}, name={self.name!r})"

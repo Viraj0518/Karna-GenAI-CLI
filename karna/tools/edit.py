@@ -36,8 +36,7 @@ class EditTool(BaseTool):
     name = "edit"
     sequential = True  # File edits must not run concurrently
     description = (
-        "Replace an exact string in a file with new content. "
-        "old_string must be unique unless replace_all is true."
+        "Replace an exact string in a file with new content. old_string must be unique unless replace_all is true."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -56,9 +55,7 @@ class EditTool(BaseTool):
             },
             "replace_all": {
                 "type": "boolean",
-                "description": (
-                    "Replace all occurrences of old_string (default false)."
-                ),
+                "description": ("Replace all occurrences of old_string (default false)."),
             },
         },
         "required": ["file_path", "old_string", "new_string"],
@@ -85,10 +82,7 @@ class EditTool(BaseTool):
 
         # ---- No-op guard ------------------------------------------------
         if old_string == new_string:
-            return (
-                "[error] No changes to make: old_string and new_string "
-                "are exactly the same."
-            )
+            return "[error] No changes to make: old_string and new_string are exactly the same."
 
         # ---- New file creation (empty old_string, file doesn't exist) ----
         if old_string == "" and not file_path.exists():
@@ -114,10 +108,7 @@ class EditTool(BaseTool):
         # ---- Empty old_string on existing file with content ---------------
         if old_string == "":
             if content.strip():
-                return (
-                    "[error] Cannot create new file -- file already exists "
-                    "and has content."
-                )
+                return "[error] Cannot create new file -- file already exists and has content."
             # Empty file -- treat as full replacement
             try:
                 file_path.write_text(new_string, encoding="utf-8")
@@ -127,10 +118,7 @@ class EditTool(BaseTool):
 
         # ---- old_string not found ----------------------------------------
         if old_string not in content:
-            return (
-                f"[error] String to replace not found in file.\n"
-                f"String: {old_string}"
-            )
+            return f"[error] String to replace not found in file.\nString: {old_string}"
 
         # ---- Uniqueness check (unless replace_all) -----------------------
         match_count = content.count(old_string)
@@ -155,9 +143,6 @@ class EditTool(BaseTool):
             return f"[error] {exc}"
 
         if replace_all and match_count > 1:
-            return (
-                f"The file {file_path} has been updated successfully. "
-                f"All {match_count} occurrences were replaced."
-            )
+            return f"The file {file_path} has been updated successfully. All {match_count} occurrences were replaced."
 
         return f"The file {file_path} has been updated successfully."

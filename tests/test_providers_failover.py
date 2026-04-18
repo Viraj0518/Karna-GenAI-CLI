@@ -13,13 +13,10 @@ Covers:
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
-from unittest.mock import AsyncMock
-
 import httpx
 import pytest
 
-from karna.models import Message, ModelInfo, StreamEvent, Usage
+from karna.models import Message, ModelInfo, StreamEvent
 from karna.providers.base import BaseProvider
 from karna.providers.failover import (
     AllInstancesExhaustedError,

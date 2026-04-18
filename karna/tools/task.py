@@ -10,12 +10,11 @@ attribution to the Anthropic Claude Code codebase.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 from uuid import uuid4
 
-from karna.agents.subagent import SubAgent, SubAgentManager
+from karna.agents.subagent import SubAgentManager
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -89,10 +88,7 @@ class TaskTool(BaseTool):
         isolation: str = kwargs.get("isolation", "none")
 
         if self._provider is None:
-            return (
-                "[error] TaskTool has no provider configured. "
-                "Set provider when instantiating TaskTool."
-            )
+            return "[error] TaskTool has no provider configured. Set provider when instantiating TaskTool."
 
         # Generate a unique agent name
         agent_id = uuid4().hex[:8]
@@ -110,11 +106,13 @@ class TaskTool(BaseTool):
             return f"[error] {exc}"
 
         # Launch in background
-        task = await agent.run_in_background(prompt)
+        await agent.run_in_background(prompt)
 
         logger.info(
             "Spawned subagent %s: %s (isolation=%s)",
-            agent_name, description, isolation,
+            agent_name,
+            description,
+            isolation,
         )
 
         return (

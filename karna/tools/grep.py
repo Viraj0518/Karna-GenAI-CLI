@@ -34,10 +34,7 @@ class GrepTool(BaseTool):
     """
 
     name = "grep"
-    description = (
-        "Search for a regex pattern across files. Uses ripgrep if "
-        "available, otherwise grep -rn."
-    )
+    description = "Search for a regex pattern across files. Uses ripgrep if available, otherwise grep -rn."
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -47,24 +44,16 @@ class GrepTool(BaseTool):
             },
             "path": {
                 "type": "string",
-                "description": (
-                    "File or directory to search in. "
-                    "Defaults to current working directory."
-                ),
+                "description": ("File or directory to search in. Defaults to current working directory."),
             },
             "glob": {
                 "type": "string",
-                "description": (
-                    "Glob pattern to filter files "
-                    '(e.g. "*.py", "*.{ts,tsx}").'
-                ),
+                "description": ('Glob pattern to filter files (e.g. "*.py", "*.{ts,tsx}").'),
             },
             "output_mode": {
                 "type": "string",
                 "enum": ["content", "files_with_matches", "count"],
-                "description": (
-                    "Output mode. Defaults to files_with_matches."
-                ),
+                "description": ("Output mode. Defaults to files_with_matches."),
             },
             "-i": {
                 "type": "boolean",
@@ -92,10 +81,7 @@ class GrepTool(BaseTool):
             },
             "head_limit": {
                 "type": "integer",
-                "description": (
-                    "Limit output to first N entries. "
-                    "Defaults to 250. Pass 0 for unlimited."
-                ),
+                "description": ("Limit output to first N entries. Defaults to 250. Pass 0 for unlimited."),
             },
             "offset": {
                 "type": "integer",
@@ -103,10 +89,7 @@ class GrepTool(BaseTool):
             },
             "type": {
                 "type": "string",
-                "description": (
-                    "File type filter (rg --type). "
-                    "E.g. py, js, rust."
-                ),
+                "description": ("File type filter (rg --type). E.g. py, js, rust."),
             },
             "multiline": {
                 "type": "boolean",

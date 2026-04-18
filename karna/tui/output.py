@@ -120,13 +120,13 @@ _ICON_CURSOR = _icon("cursor", "▌")
 
 class EventKind(Enum):
     TEXT_DELTA = auto()
-    THINKING_DELTA = auto()       # optional: reasoning / thinking content
+    THINKING_DELTA = auto()  # optional: reasoning / thinking content
     TOOL_CALL_START = auto()
     TOOL_CALL_ARGS_DELTA = auto()
     TOOL_CALL_END = auto()
     TOOL_RESULT = auto()
     ERROR = auto()
-    USAGE = auto()                # token counts + cost
+    USAGE = auto()  # token counts + cost
     DONE = auto()
 
 
@@ -166,18 +166,12 @@ def _truncate_args_json(raw: str) -> str:
         return pretty
 
     hidden = len(lines) - _ARG_HEAD - _ARG_TAIL
-    return "\n".join(
-        lines[:_ARG_HEAD]
-        + [f"  … {hidden} more lines …"]
-        + lines[-_ARG_TAIL:]
-    )
+    return "\n".join(lines[:_ARG_HEAD] + [f"  … {hidden} more lines …"] + lines[-_ARG_TAIL:])
 
 
 def _looks_like_json(s: str) -> bool:
     s = s.strip()
-    return (s.startswith("{") and s.endswith("}")) or (
-        s.startswith("[") and s.endswith("]")
-    )
+    return (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]"))
 
 
 def _error_hint(msg: str) -> str | None:
@@ -483,9 +477,7 @@ class OutputRenderer:
         status_style = _STYLE_DANGER if is_error else _STYLE_SUCCESS
 
         # Short summary of result for the status line.
-        summary = content.strip().splitlines()[0] if content.strip() else (
-            "error" if is_error else "done"
-        )
+        summary = content.strip().splitlines()[0] if content.strip() else ("error" if is_error else "done")
         if len(summary) > 80:
             summary = summary[:77] + "..."
 
@@ -503,10 +495,7 @@ class OutputRenderer:
         if stripped and len(stripped) > _RESULT_INLINE_LIMIT:
             display = stripped
             if len(display) > _RESULT_PANEL_LIMIT:
-                display = (
-                    display[:_RESULT_PANEL_LIMIT]
-                    + f"\n… ({len(stripped) - _RESULT_PANEL_LIMIT} chars truncated)"
-                )
+                display = display[:_RESULT_PANEL_LIMIT] + f"\n… ({len(stripped) - _RESULT_PANEL_LIMIT} chars truncated)"
 
             body: RenderableType
             if _looks_like_json(display):
@@ -590,9 +579,7 @@ class OutputRenderer:
             parts.append(f"${total_usd:.4f}")
 
         if parts:
-            self.console.print(
-                Text("  " + " · ".join(parts), style=COST_INFO)
-            )
+            self.console.print(Text("  " + " · ".join(parts), style=COST_INFO))
 
     def _on_done(self, _data: Any = None) -> None:
         self._stop_live()
