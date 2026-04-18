@@ -11,9 +11,20 @@ This module exposes the public surface consumed by ``repl.py``:
 
 The user-facing ``/help`` output is a grouped, icon-prefixed, padded
 table rather than a plain list. Commands are tagged with a category
-(``session``, ``context``, ``utility``) and rendered group-by-group so
-the picker feels discoverable. If/when we wire a proper interactive
-picker, the same metadata powers it.
+(``session``, ``context``, ``utility``, ``advanced``) and rendered
+group-by-group so the picker feels discoverable. If/when we wire a
+proper interactive picker, the same metadata powers it.
+
+The ``advanced`` category holds the higher-level driving modes:
+
+    /loop <goal>   - repeat-until-done autonomous agent (karna.agents.autonomous)
+    /plan <goal>   - think-first / read-only plan mode    (karna.agents.plan)
+    /do            - execute the last plan produced by /plan
+
+``/plan`` parks its plan text in a module-level store keyed by
+``id(conversation)`` so the matching ``/do`` can recall it inside
+the same REPL session without needing to extend the sessions DB
+schema (which is owned by another agent).
 """
 
 from __future__ import annotations
@@ -93,10 +104,11 @@ class SlashCommand:
 
 
 # Category ordering + display labels for /help.
-_CATEGORY_ORDER: tuple[str, ...] = ("session", "context", "utility")
+_CATEGORY_ORDER: tuple[str, ...] = ("session", "context", "advanced", "utility")
 _CATEGORY_LABELS: dict[str, str] = {
     "session": "Session",
     "context": "Context",
+    "advanced": "Advanced",
     "utility": "Utility",
 }
 
@@ -117,6 +129,10 @@ def _build_commands() -> dict[str, SlashCommand]:
     ic_resume = _icon("RESUME", "\u21bb")  # rotate
     ic_paste = _icon("PASTE", "\u2398")  # next page
     ic_copy = _icon("COPY", "\u2398")
+    # Advanced-mode icons — reuse the "running" / "thinking" glyphs if the
+    # sibling icons module exposes them, else fall back to unicode glyphs.
+    ic_running = _icon("RUNNING", "\u25b6")  # play
+    ic_thinking = _icon("THINKING", "\u25cb")  # white circle
 
     cmds: list[SlashCommand] = [
         # ── Session ────────────────────────────────────────────────────
@@ -136,6 +152,28 @@ def _build_commands() -> dict[str, SlashCommand]:
             "compact", "/compact", "Trigger conversation compaction (stub)", category="context", icon=ic_compact
         ),
         SlashCommand("tools", "/tools", "List available tools", category="context", icon=ic_tools),
+        # ── Advanced ───────────────────────────────────────────────────
+        SlashCommand(
+            "loop",
+            "/loop <goal>",
+            "Repeat-until-done autonomous agent cycle",
+            category="advanced",
+            icon=ic_running,
+        ),
+        SlashCommand(
+            "plan",
+            "/plan <goal>",
+            "Think first, don't execute (read-only)",
+            category="advanced",
+            icon=ic_thinking,
+        ),
+        SlashCommand(
+            "do",
+            "/do",
+            "Execute the last plan produced by /plan",
+            category="advanced",
+            icon=ic_running,
+        ),
         # ── Utility ────────────────────────────────────────────────────
         SlashCommand("copy", "/copy", "Copy last assistant response", category="utility", icon=ic_copy),
         SlashCommand("paste", "/paste", "Read clipboard and send as message", category="utility", icon=ic_paste),
@@ -416,6 +454,92 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     console.print(f"[green]{result}[/green]")
 
 
+# --------------------------------------------------------------------------- #
+#  Advanced commands: /loop, /plan, /do
+# --------------------------------------------------------------------------- #
+
+# Per-conversation plan storage. Keyed by id(conversation) so multiple
+# Conversation objects (e.g. parallel REPLs, tests) don't collide.
+# The sessions DB is owned by another agent so we deliberately keep
+# plan persistence in-process — it survives within a single REPL run,
+# which is exactly what ``/plan`` → ``/do`` needs.
+_LAST_PLAN: dict[int, str] = {}
+
+
+def _store_last_plan(conversation: Conversation, plan: str) -> None:
+    """Remember *plan* so a later ``/do`` can retrieve it."""
+    _LAST_PLAN[id(conversation)] = plan
+
+
+def get_last_plan(conversation: Conversation) -> str | None:
+    """Return the most recent plan for *conversation*, or ``None``.
+
+    Exposed for the REPL (and tests) so the ``/do`` handler in
+    ``repl.py`` can recall and execute the plan.
+    """
+    return _LAST_PLAN.get(id(conversation))
+
+
+def clear_last_plan(conversation: Conversation) -> None:
+    """Drop any stored plan for *conversation*.
+
+    Called by the REPL once ``/do`` successfully executes the plan,
+    so a stale plan isn't silently reused on a second ``/do``.
+    """
+    _LAST_PLAN.pop(id(conversation), None)
+
+
+def _cmd_loop(console: Console, args: str, **_kw) -> str | None:
+    """``/loop <goal>`` — kick the repeat-until-done autonomous agent.
+
+    The actual agent invocation lives in ``repl.py`` (it needs the
+    provider and tools). This handler only validates the args and
+    returns a sentinel string that the REPL recognises; an empty
+    goal is rejected here so we never dispatch a no-op cycle.
+    """
+    goal = args.strip()
+    if not goal:
+        console.print(
+            "[red]Usage:[/red] [bold]/loop <goal>[/bold]  "
+            "[bright_black](e.g. /loop refactor auth module and get tests green)[/bright_black]"
+        )
+        return None
+    # Sentinel returned to repl.py — see handle_slash_command docstring.
+    return f"__LOOP__{goal}"
+
+
+def _cmd_plan(console: Console, args: str, **_kw) -> str | None:
+    """``/plan <goal>`` — enter plan mode (read-only, no execution).
+
+    Like ``/loop`` the real work happens in ``repl.py``; we just
+    validate + hand off via a sentinel string.
+    """
+    goal = args.strip()
+    if not goal:
+        console.print(
+            "[red]Usage:[/red] [bold]/plan <goal>[/bold]  "
+            "[bright_black](investigates with read/grep/glob and outputs a numbered plan)[/bright_black]"
+        )
+        return None
+    return f"__PLAN__{goal}"
+
+
+def _cmd_do(console: Console, conversation: Conversation, **_kw) -> str | None:
+    """``/do`` — execute the most recently produced plan.
+
+    Recalls the plan stored by ``/plan`` for this conversation and
+    hands it to the REPL as a regular user message (via a sentinel
+    prefix that the REPL unwraps).
+    """
+    plan = get_last_plan(conversation)
+    if not plan:
+        console.print("[bright_black]No plan to execute. Run [bold]/plan <goal>[/bold] first.[/bright_black]")
+        return None
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    console.print(f"[{cyan}]Executing last plan...[/]")
+    return f"__DO__{plan}"
+
+
 def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = None, **_kw) -> None:
     if session_db is None:
         console.print("[bright_black]Session database not available.[/bright_black]")
@@ -470,6 +594,9 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "resume": _cmd_resume,
     "paste": _cmd_paste,
     "copy": _cmd_copy,
+    "loop": _cmd_loop,
+    "plan": _cmd_plan,
+    "do": _cmd_do,
 }
 
 
@@ -489,6 +616,15 @@ def handle_slash_command(
 
     Returns a string if the command produces text to inject as a user
     message (e.g. ``/paste``), otherwise ``None``.
+
+    Sentinel return values (consumed by ``repl.py``, not the user):
+
+    - ``"__LOOP__<goal>"``  — run :func:`karna.agents.autonomous.run_autonomous_loop`
+    - ``"__PLAN__<goal>"``  — run :func:`karna.agents.plan.run_plan_mode`
+    - ``"__DO__<plan>"``    — execute *plan* as a regular agent-loop turn
+
+    The sentinels are prefixed with double underscores so they cannot
+    collide with any plausible clipboard paste content.
     """
     stripped = raw_input.strip().lstrip("/")
     parts = stripped.split(None, 1)
@@ -523,4 +659,6 @@ __all__ = [
     "SlashCommand",
     "COMMANDS",
     "handle_slash_command",
+    "get_last_plan",
+    "clear_last_plan",
 ]

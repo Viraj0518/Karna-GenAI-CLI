@@ -142,6 +142,9 @@ class BedrockProvider(BaseProvider):
         system_prompt: str | None,
         max_tokens: int | None,
         temperature: float | None,
+        *,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> dict[str, Any]:
         # Bedrock Claude uses the Messages API shape with
         # ``anthropic_version`` instead of a server-side version header.
@@ -190,6 +193,11 @@ class BedrockProvider(BaseProvider):
             ]
         if temperature is not None:
             payload["temperature"] = temperature
+        if thinking:
+            budget = thinking_budget if thinking_budget and thinking_budget > 0 else 10000
+            payload["thinking"] = {"type": "enabled", "budget_tokens": int(budget)}
+            # Extended thinking is incompatible with a user-set temperature.
+            payload.pop("temperature", None)
         return payload
 
     @staticmethod
@@ -247,15 +255,35 @@ class BedrockProvider(BaseProvider):
         system_prompt: str | None,
         max_tokens: int | None,
         temperature: float | None,
+        *,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> dict[str, Any]:
         if _is_anthropic_model(self.model):
-            return self._build_anthropic_payload(messages, tools, system_prompt, max_tokens, temperature)
+            return self._build_anthropic_payload(
+                messages,
+                tools,
+                system_prompt,
+                max_tokens,
+                temperature,
+                thinking=thinking,
+                thinking_budget=thinking_budget,
+            )
         if _is_llama_model(self.model):
+            # Llama/Titan don't expose thinking knobs on Bedrock — silently ignore.
             return self._build_llama_payload(messages, system_prompt, max_tokens, temperature)
         if _is_titan_model(self.model):
             return self._build_titan_payload(messages, system_prompt, max_tokens, temperature)
         # Unknown family — best-effort fall through as Anthropic shape.
-        return self._build_anthropic_payload(messages, tools, system_prompt, max_tokens, temperature)
+        return self._build_anthropic_payload(
+            messages,
+            tools,
+            system_prompt,
+            max_tokens,
+            temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
+        )
 
     # ------------------------------------------------------------------ #
     #  Response parsing
@@ -311,8 +339,18 @@ class BedrockProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
-        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
+        payload = self._build_payload(
+            messages,
+            tools,
+            system_prompt,
+            max_tokens,
+            temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
+        )
         body = json.dumps(payload).encode("utf-8")
 
         def _invoke() -> dict[str, Any]:
@@ -339,8 +377,18 @@ class BedrockProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
+        payload = self._build_payload(
+            messages,
+            tools,
+            system_prompt,
+            max_tokens,
+            temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
+        )
         body = json.dumps(payload).encode("utf-8")
 
         def _invoke_stream() -> Iterator[dict[str, Any]]:
@@ -395,6 +443,11 @@ class BedrockProvider(BaseProvider):
             delta = chunk.get("delta", {})
             if delta.get("type") == "text_delta":
                 yield StreamEvent(type="text", text=delta.get("text", ""))
+            elif delta.get("type") in ("thinking_delta", "signature_delta"):
+                # Surface reasoning tokens as text (no dedicated event kind).
+                txt = delta.get("thinking") or delta.get("text") or ""
+                if txt:
+                    yield StreamEvent(type="text", text=txt)
         elif ctype == "message_start":
             u = chunk.get("message", {}).get("usage", {})
             cumulative.input_tokens = u.get("input_tokens", cumulative.input_tokens)

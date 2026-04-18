@@ -58,6 +58,10 @@ def test_slash_commands_registered() -> None:
         "paste",
         "copy",
         "sessions",
+        # Advanced mode (autonomous loop + plan-first)
+        "loop",
+        "plan",
+        "do",
     }
     assert expected == set(COMMANDS.keys())
 

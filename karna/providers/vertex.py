@@ -230,6 +230,15 @@ class VertexProvider(BaseProvider):
             output_tokens=meta.get("candidatesTokenCount", 0),
         )
 
+    # ------------------------------------------------------------------ #
+    #  Thinking-mode support
+    # ------------------------------------------------------------------ #
+
+    def _supports_thinking(self) -> bool:
+        """Gemini 2.5 family exposes the ``thinkingConfig`` generation knob."""
+        lowered = self.model.lower()
+        return "gemini-2.5" in lowered or "gemini-3" in lowered
+
     def _build_payload(
         self,
         messages: list[Message],
@@ -237,6 +246,9 @@ class VertexProvider(BaseProvider):
         system_prompt: str | None,
         max_tokens: int | None,
         temperature: float | None,
+        *,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "contents": self._serialize_messages(messages),
@@ -257,6 +269,10 @@ class VertexProvider(BaseProvider):
             gen_config["maxOutputTokens"] = max_tokens
         if temperature is not None:
             gen_config["temperature"] = temperature
+        if thinking and self._supports_thinking():
+            budget = thinking_budget if thinking_budget and thinking_budget > 0 else 10000
+            # Vertex Gemini exposes ``thinkingConfig`` inside ``generationConfig``.
+            gen_config["thinkingConfig"] = {"thinkingBudget": int(budget)}
         if gen_config:
             payload["generationConfig"] = gen_config
         return payload
@@ -273,8 +289,18 @@ class VertexProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
-        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
+        payload = self._build_payload(
+            messages,
+            tools,
+            system_prompt,
+            max_tokens,
+            temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
+        )
         url = self._endpoint(streaming=False)
 
         async with self._make_client() as client:
@@ -299,8 +325,18 @@ class VertexProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
+        payload = self._build_payload(
+            messages,
+            tools,
+            system_prompt,
+            max_tokens,
+            temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
+        )
         # Vertex REST supports SSE via ``?alt=sse``.
         url = self._endpoint(streaming=True) + "?alt=sse"
 

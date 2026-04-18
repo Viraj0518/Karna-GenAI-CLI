@@ -4,6 +4,11 @@ A SubAgent is a lightweight agent that runs in the background with its own
 conversation history, tools, and optional git worktree isolation. The
 SubAgentManager tracks all spawned agents and provides lookup / listing.
 
+The canonical entrypoint for one-shot subagent runs is :func:`spawn_subagent`,
+which returns the final assistant content as a string. The legacy
+``SubAgent`` / ``SubAgentManager`` classes are retained for long-running
+background agents tracked by name.
+
 Ported from cc-src teammate/agent patterns with attribution to the
 Anthropic Claude Code codebase.
 """
@@ -12,12 +17,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, AsyncIterator, Literal
+from uuid import uuid4
 
 from karna.agents.loop import agent_loop_sync
 from karna.models import Conversation, Message
@@ -25,6 +33,240 @@ from karna.providers.base import BaseProvider
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
+
+# Serialise worktree creation so concurrent spawns don't race on `git worktree add`.
+_WORKTREE_LOCK = asyncio.Lock()
+
+
+# --------------------------------------------------------------------------- #
+#  Worktree isolation helpers
+# --------------------------------------------------------------------------- #
+
+
+def _is_git_repo(path: Path) -> bool:
+    """Return True if *path* is inside a git working tree."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "true"
+    except (FileNotFoundError, OSError):
+        return False
+
+
+def _git_worktree_add(parent_cwd: Path, worktree_path: Path) -> bool:
+    """Create a git worktree at *worktree_path* based on HEAD of *parent_cwd*.
+
+    Returns True on success, False on failure (logged as warning).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(parent_cwd), "worktree", "add", str(worktree_path), "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            logger.info("Created worktree at %s", worktree_path)
+            return True
+        logger.warning(
+            "git worktree add failed (%d): %s",
+            result.returncode,
+            (result.stderr or result.stdout or "").strip(),
+        )
+        return False
+    except (FileNotFoundError, OSError) as exc:
+        logger.warning("git worktree add errored: %s", exc)
+        return False
+
+
+def _git_worktree_remove(parent_cwd: Path, worktree_path: Path) -> None:
+    """Remove a git worktree, with a shutil.rmtree fallback.
+
+    Failures are logged, never raised — cleanup is best-effort.
+    """
+    removed_by_git = False
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(parent_cwd), "worktree", "remove", "--force", str(worktree_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            removed_by_git = True
+            logger.info("Removed worktree at %s", worktree_path)
+        else:
+            logger.warning(
+                "git worktree remove exited %d for %s: %s",
+                result.returncode,
+                worktree_path,
+                (result.stderr or result.stdout or "").strip(),
+            )
+    except (FileNotFoundError, OSError) as exc:
+        logger.warning("git worktree remove errored for %s: %s", worktree_path, exc)
+
+    if not removed_by_git and worktree_path.exists():
+        try:
+            shutil.rmtree(worktree_path, ignore_errors=False)
+            logger.info("Fallback rmtree removed worktree dir %s", worktree_path)
+        except OSError as exc:
+            logger.error("Failed to rmtree worktree dir %s: %s", worktree_path, exc)
+
+
+@asynccontextmanager
+async def _isolation_context(
+    isolation: Literal["none", "worktree"],
+    worktree_base: Path | None,
+) -> AsyncIterator[Path]:
+    """Yield the cwd the subagent should run in.
+
+    For ``isolation="none"`` this is simply the current cwd.
+
+    For ``isolation="worktree"`` a fresh worktree is created under
+    ``worktree_base`` (defaulting to the system temp dir). The worktree
+    is removed on exit, even if the body raises. If the current cwd is
+    not a git repo, we log a warning and fall back to no isolation
+    instead of crashing.
+    """
+    original_cwd = Path(os.getcwd())
+
+    if isolation == "none":
+        yield original_cwd
+        return
+
+    # isolation == "worktree"
+    if not _is_git_repo(original_cwd):
+        logger.warning(
+            "spawn_subagent: parent cwd %s is not a git repo; falling back to isolation='none'",
+            original_cwd,
+        )
+        yield original_cwd
+        return
+
+    base = worktree_base or Path(tempfile.gettempdir())
+    base.mkdir(parents=True, exist_ok=True)
+    worktree_path = base / f"karna-worktree-{uuid4().hex[:8]}"
+
+    # Serialise creation so concurrent spawns don't race on the same git index.
+    async with _WORKTREE_LOCK:
+        created = _git_worktree_add(original_cwd, worktree_path)
+
+    if not created:
+        logger.warning(
+            "spawn_subagent: failed to create worktree at %s; falling back to isolation='none'",
+            worktree_path,
+        )
+        yield original_cwd
+        return
+
+    try:
+        # Change cwd for the duration of the subagent run.
+        os.chdir(worktree_path)
+        yield worktree_path
+    finally:
+        # Restore cwd before cleanup so we don't delete the dir we're standing in.
+        try:
+            os.chdir(original_cwd)
+        except OSError:
+            pass
+        _git_worktree_remove(original_cwd, worktree_path)
+
+
+# --------------------------------------------------------------------------- #
+#  Primary entrypoint
+# --------------------------------------------------------------------------- #
+
+
+async def spawn_subagent(
+    prompt: str,
+    *,
+    parent_config: Any,
+    parent_provider: BaseProvider,
+    tools: list[BaseTool],
+    model: str | None = None,
+    max_iterations: int = 20,
+    isolation: Literal["none", "worktree"] = "none",
+    worktree_base: Path | None = None,
+    system_prompt: str | None = None,
+) -> str:
+    """Run a one-shot subagent and return the final assistant content.
+
+    Parameters
+    ----------
+    prompt
+        The user task for the subagent.
+    parent_config
+        Parent :class:`~karna.config.KarnaConfig` — used to seed defaults
+        (system prompt, max_tokens, temperature) when not overridden.
+    parent_provider
+        Provider instance; reused directly so credentials are inherited.
+    tools
+        Tools the subagent may call. Pass a filtered subset to sandbox.
+    model
+        Optional model override. Currently informational — the provider
+        dictates the real model choice. Reserved for future use.
+    max_iterations
+        Hard cap on agent-loop iterations.
+    isolation
+        ``"none"`` runs in the parent cwd. ``"worktree"`` creates a git
+        worktree and runs there, falling back to ``"none"`` with a
+        warning if the parent cwd isn't a git repo.
+    worktree_base
+        Directory under which worktrees are created. Defaults to the
+        system temp dir.
+    system_prompt
+        Override for the subagent's system prompt. If None, falls back
+        to ``parent_config.system_prompt`` (if present) or a default.
+
+    Returns
+    -------
+    str
+        The final assistant message content.  Never raises for normal
+        operation — errors are returned as ``[error] ...`` strings so
+        the caller can surface them without try/except boilerplate.
+    """
+    # Resolve system prompt
+    if system_prompt is None:
+        system_prompt = getattr(
+            parent_config,
+            "system_prompt",
+            "You are a subagent. Complete the assigned task thoroughly and report back.",
+        )
+
+    # Resolve completion-side defaults from parent_config when available
+    max_tokens = getattr(parent_config, "max_tokens", None)
+    temperature = getattr(parent_config, "temperature", None)
+
+    conversation = Conversation(messages=[Message(role="user", content=prompt)])
+
+    # model is informational for now; log so operators can trace overrides
+    if model is not None:
+        logger.debug("spawn_subagent: model override requested: %s", model)
+
+    try:
+        async with _isolation_context(isolation, worktree_base):
+            final_message = await agent_loop_sync(
+                parent_provider,
+                conversation,
+                tools,
+                system_prompt=system_prompt,
+                max_iterations=max_iterations,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        return final_message.content
+    except Exception as exc:
+        logger.exception("spawn_subagent failed: %s", exc)
+        return f"[error] Subagent failed: {type(exc).__name__}: {exc}"
+
+
+# --------------------------------------------------------------------------- #
+#  Legacy long-running subagent support
+# --------------------------------------------------------------------------- #
 
 
 class SubAgent:

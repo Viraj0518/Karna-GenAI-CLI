@@ -150,6 +150,21 @@ class AzureOpenAIProvider(BaseProvider):
     #  Interface
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    #  Thinking-mode support
+    # ------------------------------------------------------------------ #
+
+    # Azure deployments of OpenAI's o-series accept the same reasoning param.
+    _REASONING_MODEL_HINTS: tuple[str, ...] = ("o1", "o3", "gpt-oss")
+
+    def _supports_reasoning(self) -> bool:
+        lowered = f"{self.model} {self.deployment}".lower()
+        return any(hint in lowered for hint in self._REASONING_MODEL_HINTS)
+
+    def _apply_thinking(self, payload: dict[str, Any], *, thinking: bool) -> None:
+        if thinking and self._supports_reasoning():
+            payload["reasoning_effort"] = "high"
+
     async def complete(
         self,
         messages: list[Message],
@@ -158,6 +173,8 @@ class AzureOpenAIProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         """Non-streaming chat completion via Azure."""
         payload: dict[str, Any] = {
@@ -169,6 +186,7 @@ class AzureOpenAIProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await self._request_with_retry(
@@ -199,6 +217,8 @@ class AzureOpenAIProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Streaming chat completion via Azure -- yields StreamEvent objects."""
         payload: dict[str, Any] = {
@@ -211,6 +231,7 @@ class AzureOpenAIProvider(BaseProvider):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking)
 
         tool_call_buffers: dict[int, dict[str, Any]] = {}
 

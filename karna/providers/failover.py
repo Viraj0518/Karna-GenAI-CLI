@@ -149,9 +149,17 @@ class FailoverProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         last_exc: BaseException | None = None
         start = self._current
+        # Only pass thinking kwargs when actually requested — this keeps
+        # legacy stub providers that don't accept the kwarg working.
+        extra: dict[str, Any] = {}
+        if thinking or thinking_budget is not None:
+            extra["thinking"] = thinking
+            extra["thinking_budget"] = thinking_budget
         for _ in range(len(self._instances)):
             idx = self._next_ready_index(start)
             if idx is None:
@@ -164,6 +172,7 @@ class FailoverProvider(BaseProvider):
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    **extra,
                 )
                 self._current = idx
                 self._mark_success(idx)
@@ -189,6 +198,8 @@ class FailoverProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         # For streaming we try each instance in turn, yielding from the first
         # one that produces at least one event. If an error happens after the
@@ -196,6 +207,11 @@ class FailoverProvider(BaseProvider):
         # because that would corrupt the user's output.
         last_exc: BaseException | None = None
         start = self._current
+        # Only forward thinking kwargs when a caller actually requested them.
+        extra: dict[str, Any] = {}
+        if thinking or thinking_budget is not None:
+            extra["thinking"] = thinking
+            extra["thinking_budget"] = thinking_budget
         for _ in range(len(self._instances)):
             idx = self._next_ready_index(start)
             if idx is None:
@@ -209,6 +225,7 @@ class FailoverProvider(BaseProvider):
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    **extra,
                 ):
                     first_event_seen = True
                     yield event

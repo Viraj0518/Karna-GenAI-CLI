@@ -1,8 +1,10 @@
-"""Task tool — spawn a background subagent to handle a complex subtask.
+"""Task tool — spawn a subagent to handle a complex subtask.
 
 The parent agent uses this tool to delegate work to an independent
 subagent that runs with its own conversation context, tools, and
-optional git worktree isolation.
+optional git worktree isolation. The subagent runs synchronously
+within ``execute`` and its final assistant message is returned as
+the tool result.
 
 Ported from cc-src AgentTool / in-process teammate patterns with
 attribution to the Anthropic Claude Code codebase.
@@ -11,58 +13,116 @@ attribution to the Anthropic Claude Code codebase.
 from __future__ import annotations
 
 import logging
-from typing import Any
-from uuid import uuid4
+from pathlib import Path
+from typing import Any, Literal
 
-from karna.agents.subagent import SubAgentManager
+from karna.agents.subagent import SubAgentManager, spawn_subagent
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
 
-# Module-level manager so all TaskTool instances share state.
+# Valid values for the ``subagent_type`` parameter. Each type maps to a
+# filter applied to the parent's tool registry — see ``_filter_tools_for_type``.
+_VALID_SUBAGENT_TYPES = {"general", "research", "code"}
+
+# Tools considered "dangerous" (mutate state, run shell, or hit the
+# network). These are excluded from the default ``general`` subset.
+_DANGEROUS_TOOL_NAMES = {"bash", "write", "edit", "git"}
+
+# Read-only / information-gathering tools (used for the ``research`` type).
+_RESEARCH_TOOL_NAMES = {"read", "grep", "glob", "web_search", "web_fetch", "task"}
+
+# Module-level manager retained for backwards-compatibility with the
+# long-running ``SubAgent`` API. New code should prefer ``spawn_subagent``.
 _manager = SubAgentManager()
 
 
 def get_subagent_manager() -> SubAgentManager:
-    """Return the global SubAgentManager singleton."""
+    """Return the global SubAgentManager singleton (legacy API)."""
     return _manager
 
 
+def _filter_tools_for_type(
+    all_tools: list[BaseTool],
+    subagent_type: str,
+    override_names: list[str] | None,
+) -> list[BaseTool]:
+    """Resolve the tool subset for a given subagent_type + override.
+
+    If *override_names* is provided, it wins — only tools whose names
+    appear in it are returned (the type is ignored).
+
+    Otherwise:
+    - ``general``: everything except dangerous tools
+    - ``research``: read/grep/glob/web_search/web_fetch/task only
+    - ``code``: all tools (caller trusts the subagent to mutate)
+    """
+    if override_names is not None:
+        wanted = set(override_names)
+        return [t for t in all_tools if t.name in wanted]
+
+    if subagent_type == "code":
+        return list(all_tools)
+    if subagent_type == "research":
+        return [t for t in all_tools if t.name in _RESEARCH_TOOL_NAMES]
+    # default: general
+    return [t for t in all_tools if t.name not in _DANGEROUS_TOOL_NAMES]
+
+
 class TaskTool(BaseTool):
-    """Spawn a background subagent to handle a complex subtask independently.
+    """Spawn a subagent to handle a complex subtask.
 
     The subagent runs with its own conversation context and tool set.
     It can optionally use a git worktree for filesystem isolation.
-
-    Returns immediately with the subagent name and status. The parent
-    can query progress later.
+    The tool blocks until the subagent completes and returns the final
+    assistant message content as its result.
     """
 
     name = "task"
     description = (
-        "Spawn a background subagent to handle a complex subtask independently. "
-        "Returns immediately with the agent ID. The subagent runs asynchronously "
-        "with its own conversation context."
+        "Spawn a subagent to handle a complex subtask independently. "
+        "The subagent runs with its own conversation context and a "
+        "filtered tool subset. Returns the subagent's final answer."
     )
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
             "description": {
                 "type": "string",
-                "description": "What the subagent should do (short summary).",
+                "description": "What the subagent should do (short summary for logs).",
             },
             "prompt": {
                 "type": "string",
                 "description": "Full prompt for the subagent.",
             },
-            "model": {
+            "subagent_type": {
                 "type": "string",
-                "description": "Model override (optional). Uses parent model if omitted.",
+                "enum": sorted(_VALID_SUBAGENT_TYPES),
+                "description": (
+                    "Tool subset preset: 'general' (default, excludes "
+                    "bash/write/edit/git), 'research' (read-only), or "
+                    "'code' (all tools)."
+                ),
+            },
+            "tools": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Explicit list of tool names to expose. Overrides subagent_type.",
             },
             "isolation": {
                 "type": "string",
                 "enum": ["none", "worktree"],
                 "description": "Isolation mode. 'worktree' creates a git worktree.",
+            },
+            "model": {
+                "type": "string",
+                "description": "Model override (optional). Uses parent model if omitted.",
+            },
+            "max_iterations": {
+                "type": "integer",
+                "description": "Upper bound on agent-loop iterations. Default 20.",
+                "minimum": 1,
+                "maximum": 100,
             },
         },
         "required": ["description", "prompt"],
@@ -72,52 +132,68 @@ class TaskTool(BaseTool):
         self,
         *,
         provider: Any | None = None,
+        parent_config: Any | None = None,
         tools: list[BaseTool] | None = None,
+        worktree_base: Path | None = None,
         system_prompt: str | None = None,
     ) -> None:
         super().__init__()
         self._provider = provider
-        self._tools = tools or []
-        self._system_prompt = system_prompt or (
-            "You are a subagent. Complete the assigned task thoroughly and report back."
-        )
+        self._parent_config = parent_config
+        self._all_tools = list(tools) if tools is not None else []
+        self._worktree_base = worktree_base
+        self._system_prompt = system_prompt
 
     async def execute(self, **kwargs: Any) -> str:
         description: str = kwargs["description"]
         prompt: str = kwargs["prompt"]
-        isolation: str = kwargs.get("isolation", "none")
+        subagent_type: str = kwargs.get("subagent_type", "general")
+        tool_names: list[str] | None = kwargs.get("tools")
+        isolation: Literal["none", "worktree"] = kwargs.get("isolation", "none")
+        model: str | None = kwargs.get("model")
+        max_iterations: int = int(kwargs.get("max_iterations", 20))
+
+        # --- Validation --------------------------------------------------
+        if subagent_type not in _VALID_SUBAGENT_TYPES:
+            raise ValueError(
+                f"Invalid subagent_type {subagent_type!r}. Must be one of: {sorted(_VALID_SUBAGENT_TYPES)}"
+            )
+
+        if isolation not in ("none", "worktree"):
+            return f"[error] Invalid isolation {isolation!r}. Must be 'none' or 'worktree'."
 
         if self._provider is None:
-            return "[error] TaskTool has no provider configured. Set provider when instantiating TaskTool."
-
-        # Generate a unique agent name
-        agent_id = uuid4().hex[:8]
-        agent_name = f"agent-{agent_id}"
-
-        try:
-            agent = _manager.spawn(
-                name=agent_name,
-                provider=self._provider,
-                tools=self._tools,
-                system_prompt=self._system_prompt,
-                isolation=isolation,
+            return (
+                "[error] TaskTool has no provider configured. "
+                "Instantiate TaskTool with provider=<BaseProvider> before use."
             )
-        except ValueError as exc:
-            return f"[error] {exc}"
 
-        # Launch in background
-        await agent.run_in_background(prompt)
+        # --- Resolve tool subset ----------------------------------------
+        selected_tools = _filter_tools_for_type(
+            self._all_tools,
+            subagent_type,
+            tool_names,
+        )
 
         logger.info(
-            "Spawned subagent %s: %s (isolation=%s)",
-            agent_name,
+            "TaskTool spawning subagent: %s (type=%s, tools=%d, isolation=%s)",
             description,
+            subagent_type,
+            len(selected_tools),
             isolation,
         )
 
-        return (
-            f"Subagent '{agent_name}' spawned for: {description}\n"
-            f"Isolation: {isolation}\n"
-            f"Status: {agent.status}\n"
-            f"The subagent is running in the background."
+        # --- Run the subagent -------------------------------------------
+        result = await spawn_subagent(
+            prompt,
+            parent_config=self._parent_config,
+            parent_provider=self._provider,
+            tools=selected_tools,
+            model=model,
+            max_iterations=max_iterations,
+            isolation=isolation,
+            worktree_base=self._worktree_base,
+            system_prompt=self._system_prompt,
         )
+
+        return result

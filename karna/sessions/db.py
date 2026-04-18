@@ -350,6 +350,90 @@ class SessionDB:
             provider=session.get("provider", ""),
         )
 
+    # ------------------------------------------------------------------ #
+    #  Fork
+    # ------------------------------------------------------------------ #
+
+    def fork_session(
+        self,
+        source_id: str,
+        new_name: str | None = None,
+        *,
+        up_to_message_id: int | None = None,
+    ) -> str:
+        """Duplicate a session and its messages, return the new id.
+
+        If *up_to_message_id* is provided, only messages whose ``id`` is
+        ``<=`` that value are copied. Otherwise all messages through now
+        are included (the "fork from current state" case).
+
+        Raises ``KeyError`` if the source session does not exist.
+        """
+        source = self.get_session(source_id)
+        if source is None:
+            raise KeyError(f"source session not found: {source_id!r}")
+
+        new_id = uuid.uuid4().hex[:12]
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Optional name lives in the session summary (there's no first-class
+        # name column). Keep the source summary if no new name was given so
+        # history still reads sensibly.
+        summary = new_name if new_name is not None else source.get("summary")
+
+        conn = self._get_conn()
+        conn.execute(
+            """INSERT INTO sessions
+                 (id, started_at, ended_at, model, provider, cwd, git_branch,
+                  total_input_tokens, total_output_tokens, total_cost_usd, summary)
+               VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 0.0, ?)""",
+            (
+                new_id,
+                now,
+                source.get("model"),
+                source.get("provider"),
+                source.get("cwd"),
+                source.get("git_branch"),
+                summary,
+            ),
+        )
+
+        # Copy messages. We rewrite ``created_at`` to the original value
+        # so the replay preserves ordering, but assign fresh rowids.
+        if up_to_message_id is None:
+            rows = conn.execute(
+                "SELECT role, content, tool_calls, tool_results, tokens, cost_usd, created_at "
+                "FROM messages WHERE session_id = ? ORDER BY id",
+                (source_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT role, content, tool_calls, tool_results, tokens, cost_usd, created_at "
+                "FROM messages WHERE session_id = ? AND id <= ? ORDER BY id",
+                (source_id, up_to_message_id),
+            ).fetchall()
+
+        for row in rows:
+            conn.execute(
+                """INSERT INTO messages
+                     (session_id, role, content, tool_calls, tool_results,
+                      tokens, cost_usd, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    new_id,
+                    row["role"],
+                    row["content"],
+                    row["tool_calls"],
+                    row["tool_results"],
+                    row["tokens"],
+                    row["cost_usd"],
+                    row["created_at"],
+                ),
+            )
+
+        conn.commit()
+        return new_id
+
     def get_latest_session_id(self) -> str | None:
         """Return the id of the most recent session, or None.
 

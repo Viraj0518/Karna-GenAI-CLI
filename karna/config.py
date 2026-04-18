@@ -55,6 +55,57 @@ class KarnaConfig(BaseModel):
     max_tokens: int = Field(default=4096, ge=1, description="Max tokens for completion")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     safe_mode: bool = Field(default=False, description="Block dangerous bash commands instead of warning")
+    # Thinking-mode toggle. ``None`` means "auto" — use the per-model smart default
+    # computed by :func:`effective_thinking`. ``True`` / ``False`` override it.
+    thinking_enabled: bool | None = Field(
+        default=None,
+        description="Thinking mode: True=on, False=off, None=auto (per-model default)",
+    )
+    thinking_budget_tokens: int = Field(
+        default=10000,
+        ge=1,
+        description="Reasoning/thinking token budget requested from the provider when thinking is on",
+    )
+
+
+# Substrings that flag a model as "reasoning-capable" for auto-default purposes.
+# Matched case-insensitively against the resolved model name. The spec-required
+# set is ``thinking`` / ``reasoning`` / ``gpt-oss`` / ``o1`` / ``o3`` / ``kimi``
+# / ``deepseek-r1``; we additionally treat the Claude 4.x family as thinking-on
+# by default since every model in that family supports Anthropic's extended
+# thinking parameter.
+_THINKING_MODEL_HINTS: tuple[str, ...] = (
+    "thinking",
+    "reasoning",
+    "gpt-oss",
+    "o1",
+    "o3",
+    "kimi",
+    "deepseek-r1",
+    "claude-sonnet-4",
+    "claude-opus-4",
+    "claude-haiku-4",
+)
+
+
+def effective_thinking(model: str, cfg: "KarnaConfig | None" = None) -> bool:
+    """Resolve the effective thinking-mode flag for *model*.
+
+    Resolution order:
+    1. If the user explicitly set ``cfg.thinking_enabled`` to True/False, use it.
+    2. Otherwise, auto-detect from the model name: return True when the name
+       contains any of :data:`_THINKING_MODEL_HINTS` (case-insensitive).
+    3. Fall back to False.
+
+    Passing ``cfg=None`` skips step 1 and uses the name-based auto default
+    only — convenient for unit tests and call sites that don't have a config.
+    """
+    if cfg is not None and cfg.thinking_enabled is not None:
+        return bool(cfg.thinking_enabled)
+    if not model:
+        return False
+    lowered = model.lower()
+    return any(hint in lowered for hint in _THINKING_MODEL_HINTS)
 
 
 def _ensure_dir() -> None:
@@ -119,9 +170,14 @@ def save_config(cfg: KarnaConfig) -> None:
     """Persist *cfg* to ``~/.karna/config.toml``.
 
     Config file is set to mode 0644 (readable by all, writable by owner).
+
+    ``None`` values are omitted from the serialized TOML because the TOML
+    spec has no concept of null — we let ``KarnaConfig`` defaults re-hydrate
+    the missing keys on load (semantically identical round-trip).
     """
     _ensure_dir()
-    CONFIG_PATH.write_bytes(tomli_w.dumps(cfg.model_dump()).encode())
+    data = {k: v for k, v in cfg.model_dump().items() if v is not None}
+    CONFIG_PATH.write_bytes(tomli_w.dumps(data).encode())
     os.chmod(CONFIG_PATH, 0o644)
 
 

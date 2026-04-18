@@ -10,7 +10,9 @@ import os
 
 from rich.console import Console
 
+from karna.agents.autonomous import run_autonomous_loop
 from karna.agents.loop import agent_loop
+from karna.agents.plan import run_plan_mode
 from karna.config import KarnaConfig
 from karna.models import Conversation, Message
 from karna.prompts import build_system_prompt
@@ -21,8 +23,79 @@ from karna.tools import TOOLS, get_all_tools
 from karna.tui.banner import print_banner
 from karna.tui.input import get_multiline_input
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
-from karna.tui.slash import SessionCost, handle_slash_command
+from karna.tui.slash import (
+    SessionCost,
+    _store_last_plan,  # type: ignore[attr-defined]
+    clear_last_plan,
+    handle_slash_command,
+)
 from karna.tui.themes import KARNA_THEME
+
+# Sentinel prefixes returned by slash handlers that need REPL-level execution.
+# Kept in sync with ``karna.tui.slash.handle_slash_command``.
+_LOOP_SENTINEL = "__LOOP__"
+_PLAN_SENTINEL = "__PLAN__"
+_DO_SENTINEL = "__DO__"
+
+
+async def _run_loop_mode(
+    console: Console,
+    config: KarnaConfig,
+    goal: str,
+) -> str:
+    """Dispatch ``/loop`` — run the autonomous repeat-until-done agent.
+
+    Uses a fresh provider+tools bundle so the outer cycles don't share
+    cumulative usage state with the main REPL provider instance.
+    """
+    provider_name, model_name = resolve_model(
+        f"{config.active_provider}:{config.active_model}"
+        if ":" not in (config.active_model or "")
+        else config.active_model
+    )
+    provider = get_provider(provider_name)
+    provider.model = model_name
+    tools = get_all_tools()
+    system_prompt = build_system_prompt(config, tools)
+
+    def _on_cycle(idx: int, summary: str) -> None:
+        preview = summary.strip().splitlines()[0] if summary.strip() else "(no output)"
+        if len(preview) > 120:
+            preview = preview[:117] + "..."
+        console.print(f"[bright_black]  cycle {idx}:[/bright_black] {preview}")
+
+    return await run_autonomous_loop(
+        goal,
+        provider=provider,
+        tools=tools,
+        model=model_name,
+        system_prompt=system_prompt,
+        on_cycle_complete=_on_cycle,
+    )
+
+
+async def _run_plan_mode(
+    console: Console,
+    config: KarnaConfig,
+    goal: str,
+) -> str:
+    """Dispatch ``/plan`` — run plan mode and return the plan text."""
+    provider_name, model_name = resolve_model(
+        f"{config.active_provider}:{config.active_model}"
+        if ":" not in (config.active_model or "")
+        else config.active_model
+    )
+    provider = get_provider(provider_name)
+    provider.model = model_name
+    tools = get_all_tools()
+
+    return await run_plan_mode(
+        goal,
+        provider=provider,
+        tools=tools,
+        model=model_name,
+        base_system_prompt=config.system_prompt,
+    )
 
 
 def _load_tool_names() -> list[str]:
@@ -186,7 +259,7 @@ async def run_repl(
 
         # ── Slash commands ──────────────────────────────────────────────
         if user_input.startswith("/"):
-            handle_slash_command(
+            result = handle_slash_command(
                 user_input,
                 console,
                 config,
@@ -201,7 +274,51 @@ async def run_repl(
             if len(model_short) > 24:
                 model_short = model_short[:21] + "..."
             prompt_str = f"{model_short}> "
-            continue
+
+            # Advanced-command sentinels — these return a payload that
+            # the REPL (not the slash handler) executes.
+            if isinstance(result, str) and result.startswith(_LOOP_SENTINEL):
+                goal = result[len(_LOOP_SENTINEL) :]
+                try:
+                    final_text = await _run_loop_mode(console, config, goal)
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]Loop interrupted by user.[/yellow]")
+                    continue
+                except Exception as exc:
+                    console.print(f"[red]Loop failed: {type(exc).__name__}: {exc}[/red]")
+                    continue
+                if final_text:
+                    console.print(final_text)
+                continue
+
+            if isinstance(result, str) and result.startswith(_PLAN_SENTINEL):
+                goal = result[len(_PLAN_SENTINEL) :]
+                try:
+                    plan_text = await _run_plan_mode(console, config, goal)
+                except Exception as exc:
+                    console.print(f"[red]Plan mode failed: {type(exc).__name__}: {exc}[/red]")
+                    continue
+                if plan_text:
+                    console.print(plan_text)
+                    _store_last_plan(conversation, plan_text)
+                continue
+
+            if isinstance(result, str) and result.startswith(_DO_SENTINEL):
+                # /do → execute the stored plan by injecting it as the
+                # next user message and falling through to the normal
+                # agent-loop path below.
+                plan_text = result[len(_DO_SENTINEL) :]
+                clear_last_plan(conversation)
+                user_input = plan_text
+                # Fall through to the "Regular message" block below.
+            else:
+                # Any other (non-sentinel) slash result — including the
+                # string returned by /paste — should be treated as user
+                # input. /paste historically returned raw text.
+                if isinstance(result, str) and result:
+                    user_input = result
+                else:
+                    continue
 
         # ── Regular message ─────────────────────────────────────────────
         user_msg = Message(role="user", content=user_input)

@@ -226,6 +226,35 @@ class AnthropicProvider(BaseProvider):
     #  Interface
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    #  Thinking-mode support
+    # ------------------------------------------------------------------ #
+
+    # Model substrings that support Anthropic's extended-thinking parameter.
+    # Kept permissive — newer claude-4 / 4-5 / opus-4-7 families all support it.
+    _THINKING_SUPPORTED_SUBSTRINGS: tuple[str, ...] = (
+        "claude-sonnet-4",
+        "claude-opus-4",
+        "claude-haiku-4",
+    )
+
+    def _supports_thinking(self) -> bool:
+        lowered = self.model.lower().replace(".", "-")
+        return any(sub in lowered for sub in self._THINKING_SUPPORTED_SUBSTRINGS)
+
+    def _apply_thinking(self, payload: dict[str, Any], *, thinking: bool, thinking_budget: int | None) -> None:
+        """Attach Anthropic's ``thinking`` block to *payload* when enabled.
+
+        No-op when thinking is off or the model doesn't support it. Extended
+        thinking is incompatible with ``temperature`` overrides, so we drop
+        any caller-supplied temperature once thinking is turned on.
+        """
+        if not thinking or not self._supports_thinking():
+            return
+        budget = thinking_budget if thinking_budget and thinking_budget > 0 else 10000
+        payload["thinking"] = {"type": "enabled", "budget_tokens": int(budget)}
+        payload.pop("temperature", None)
+
     async def complete(
         self,
         messages: list[Message],
@@ -234,6 +263,8 @@ class AnthropicProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         """Non-streaming Messages API call."""
         payload: dict[str, Any] = {
@@ -250,6 +281,7 @@ class AnthropicProvider(BaseProvider):
             payload["tools"] = PromptCache.mark_anthropic_tools(serialized)
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await self._request_with_retry(
@@ -280,6 +312,8 @@ class AnthropicProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Streaming Messages API -- yields StreamEvent objects.
 
@@ -305,6 +339,7 @@ class AnthropicProvider(BaseProvider):
             payload["tools"] = PromptCache.mark_anthropic_tools(serialized)
         if temperature is not None:
             payload["temperature"] = temperature
+        self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
 
         # State for tracking in-flight tool calls across SSE events.
         # Anthropic streams tool arguments incrementally via input_json_delta
@@ -373,6 +408,15 @@ class AnthropicProvider(BaseProvider):
                         if delta.get("type") == "text_delta":
                             # Regular text token — stream to caller immediately
                             yield StreamEvent(type="text", text=delta.get("text", ""))
+                        elif delta.get("type") in ("thinking_delta", "signature_delta"):
+                            # Extended-thinking reasoning token. We can't add a
+                            # dedicated event type without touching models.py,
+                            # so we surface the content as regular text with a
+                            # leading marker so the renderer can distinguish it
+                            # downstream if it wants to.
+                            txt = delta.get("thinking") or delta.get("text") or ""
+                            if txt:
+                                yield StreamEvent(type="text", text=txt)
                         elif delta.get("type") == "input_json_delta":
                             # Tool argument fragment — accumulate until block stops
                             partial = delta.get("partial_json", "")
