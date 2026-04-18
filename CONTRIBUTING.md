@@ -87,3 +87,11 @@ See [SECURITY.md](SECURITY.md). Please do **not** open a public issue for a vuln
 ## Code of conduct
 
 All contributors are expected to follow the [Contributor Covenant](CODE_OF_CONDUCT.md).
+
+## License + contribution terms
+
+Nellie is **proprietary software** (see `LICENSE.md`). Use is restricted to the owner and organizations explicitly authorized in writing.
+
+**Before opening a PR from outside Karna** — contact Viraj first. Contributions you submit are licensed back to Karna on the same proprietary terms; there is no implicit MIT / Apache / open-source grant. If that's a blocker for you, please don't submit a PR.
+
+Internal Karna contributors: proceed normally.

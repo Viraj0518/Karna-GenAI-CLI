@@ -4,6 +4,9 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- License: resolved conflict between `LICENSE` (MIT) and `license.md` (proprietary). `LICENSE.md` (proprietary usage restriction) is now the single authoritative terms file. `pyproject.toml` points at it. MIT `LICENSE` file deleted. Third-party MIT attributions preserved in `NOTICES.md`.
+
 ### Added
 - Design token system: `karna/tui/design_tokens.py` with frozen palette, semantic roles, typography, spacing
 - Icon set: `karna/tui/icons.py` with 25 Nerd Font glyphs + ASCII fallback (auto-detects terminal capability)
