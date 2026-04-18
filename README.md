@@ -16,6 +16,30 @@ cd Karna-GenAI-CLI
 pip install -e .
 ```
 
+### One-line installers
+
+**Linux / macOS / WSL:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Viraj0518/Karna-GenAI-CLI/main/install.sh | bash
+```
+
+**Windows** (cmd.exe or Windows Terminal — NOT Git Bash):
+```powershell
+iwr https://raw.githubusercontent.com/Viraj0518/Karna-GenAI-CLI/main/install.ps1 | iex
+```
+
+Pin a version:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Viraj0518/Karna-GenAI-CLI/main/install.sh | bash -s -- --version 0.1.2
+```
+
+Isolated venv (recommended):
+```bash
+curl -fsSL https://raw.githubusercontent.com/Viraj0518/Karna-GenAI-CLI/main/install.sh | bash -s -- --venv ~/.nellie-venv
+```
+
+Flags: `--version X.Y.Z`, `--force`, `--venv <path>` (sh only), `--dry-run`, `--help`.
+
 ## Configure
 
 ```bash
