@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nellie TUI — Before / After</title>
+<style>
+  :root {
+    --bg:         #0E0F12;
+    --bg-raised:  #1A1D23;
+    --border:     #2A2F38;
+    --text:       #E6E8EC;
+    --text-2:     #A0A4AD;
+    --text-3:     #5F6472;
+    --brand:      #3C73BD;
+    --cyan:       #87CEEB;
+    --ok:         #7DCFA1;
+    --warn:       #E8C26B;
+    --danger:     #E87C7C;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 2rem 2rem 6rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  h1 { color: var(--cyan); font-weight: 600; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+  .lede { color: var(--text-2); margin: 0 0 2.5rem; max-width: 70ch; }
+  .lede code {
+    background: var(--bg-raised);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    font-size: 0.88em;
+  }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0 0 2.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .toc a {
+    color: var(--text-2);
+    text-decoration: none;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    transition: background 120ms, color 120ms;
+  }
+  .toc a:hover { background: var(--bg); color: var(--cyan); }
+  .scene {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .scene:last-child { border-bottom: none; }
+  .scene h2 {
+    color: var(--brand);
+    margin: 0 0 0.4rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .scene h2 .num {
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    margin-right: 0.5rem;
+  }
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 0.75rem;
+  }
+  .panel {
+    background: var(--bg-raised);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    min-width: 0;   /* allow SVG to shrink */
+  }
+  .panel h3 {
+    margin: 0 0 0.75rem;
+    font-size: 0.72rem;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+  }
+  .panel.before h3 { color: var(--text-3); }
+  .panel.after  h3 { color: var(--cyan); }
+  .panel img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 4px;
+  }
+  .notes {
+    color: var(--text-2);
+    font-size: 0.9rem;
+    margin: 0.75rem 0 0;
+    line-height: 1.55;
+  }
+  .notes strong { color: var(--text); font-weight: 600; }
+  @media (max-width: 900px) {
+    .pair { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <h1>Nellie TUI — Before / After</h1>
+  <p class="lede">
+    Rendered via Rich SVG export at 100 cols. Captured 2026-04-17.
+    Design language: Karna brand palette, Nerd Font icons with ASCII fallback,
+    semantic design tokens (<code>karna.tui.design_tokens</code>) and
+    <code>karna.tui.icons</code>. Width-matched snapshots so you can eyeball
+    spacing differences directly.
+  </p>
+
+  <nav class="toc" aria-label="Scene index">
+    <a href="#s01">01 Banner</a>
+    <a href="#s02">02 Empty prompt</a>
+    <a href="#s03">03 User echo</a>
+    <a href="#s04">04 Assistant streaming</a>
+    <a href="#s05">05 Tool call</a>
+    <a href="#s06">06 Tool result</a>
+    <a href="#s07">07 Thinking</a>
+    <a href="#s08">08 Error</a>
+    <a href="#s09">09 Slash help</a>
+    <a href="#s10">10 Multi-tool</a>
+  </nav>
+
+  <section class="scene" id="s01">
+    <h2><span class="num">01</span>Banner</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/01_banner.svg" alt="Before: startup banner">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/01_banner.svg" alt="After: startup banner">
+      </div>
+    </div>
+    <p class="notes">
+      Redesigned as a minimal header (diamond glyph, wordmark, version) above a
+      dim divider rule, followed by a one-line status row
+      (<code>model - N tools - workspace (kind - git)</code>) and a dim hint
+      line. Banner learns about the workspace via project-marker detection
+      (<code>pyproject.toml</code> → python) and git presence. Gone: the boxed
+      panel; in: horizontal rhythm + generous vertical whitespace.
+    </p>
+  </section>
+
+  <section class="scene" id="s02">
+    <h2><span class="num">02</span>Empty prompt</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/02_empty_prompt.svg" alt="Before: empty prompt">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/02_empty_prompt.svg" alt="After: empty prompt">
+      </div>
+    </div>
+    <p class="notes">
+      Prompt now has a leading brand-blue <strong>chevron</strong> affordance, a
+      muted arrow glyph between the model name and the cursor, and an explicit
+      muted cursor stub. Signals "you are typing here" more clearly than a bare
+      <code>model&gt;</code>.
+    </p>
+  </section>
+
+  <section class="scene" id="s03">
+    <h2><span class="num">03</span>User message echo</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/03_user_msg_echo.svg" alt="Before: user message echoed">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/03_user_msg_echo.svg" alt="After: user message echoed">
+      </div>
+    </div>
+    <p class="notes">
+      Same information, but the chevron + arrow glyphs visually bracket the user's
+      message so it reads as a chat turn rather than a shell line. The user body
+      uses <code>text.primary</code> so it pops against the muted chrome.
+    </p>
+  </section>
+
+  <section class="scene" id="s04">
+    <h2><span class="num">04</span>Assistant streaming</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/04_assistant_streaming.svg" alt="Before: assistant streaming">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/04_assistant_streaming.svg" alt="After: assistant streaming">
+      </div>
+    </div>
+    <p class="notes">
+      Explicit <strong>role label</strong> (<code>* nellie</code> in dim cyan)
+      above the markdown body. <code>OutputRenderer</code> now flushes at
+      sentence boundaries, so scrollback lands in clean paragraph chunks
+      rather than mid-token. Turn rhythm: a dimmed divider above each new
+      turn. Long transcripts finally scannable.
+    </p>
+  </section>
+
+  <section class="scene" id="s05">
+    <h2><span class="num">05</span>Tool call</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/05_tool_call.svg" alt="Before: tool call">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/05_tool_call.svg" alt="After: tool call">
+      </div>
+    </div>
+    <p class="notes">
+      The panel is gone. A tool call is now a <strong>single-line header</strong>
+      (<code>⚒ write  …  called write</code>) followed by a borderless
+      <code>ansi_dark</code> JSON block. Visual weight drops dramatically; JSON
+      now reads as content, not chrome. Very long args auto-collapse to
+      head + <code>… N more lines …</code> + tail.
+    </p>
+  </section>
+
+  <section class="scene" id="s06">
+    <h2><span class="num">06</span>Tool result</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/06_tool_result.svg" alt="Before: tool result">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/06_tool_result.svg" alt="After: tool result">
+      </div>
+    </div>
+    <p class="notes">
+      Result collapses to a <strong>single status line</strong>
+      (<code>⚒ write  ✓  wrote 12 lines to fib.py</code>) — check glyph in
+      success-green, summary in muted text. No panel, no re-displayed args.
+      For long outputs (&gt; 120 chars) a borderless output panel appears
+      below with the body; JSON content auto-renders with syntax highlighting.
+    </p>
+  </section>
+
+  <section class="scene" id="s07">
+    <h2><span class="num">07</span>Thinking</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/07_thinking.svg" alt="Before: thinking spinner">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/07_thinking.svg" alt="After: thinking spinner">
+      </div>
+    </div>
+    <p class="notes">
+      Reasoning gets a <strong>dedicated event kind</strong>
+      (<code>THINKING_DELTA</code>) and its own semantic color
+      (violet <code>accent.thinking</code>, italic). First line of reasoning
+      renders inline as a preview; multi-line reasoning collapses to
+      <code>… (N chars)</code> so it never dominates the transcript.
+    </p>
+  </section>
+
+  <section class="scene" id="s08">
+    <h2><span class="num">08</span>Error</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/08_error.svg" alt="Before: error panel">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/08_error.svg" alt="After: error panel">
+      </div>
+    </div>
+      <p class="notes">
+      Error panel now has a title (<code>✗ something went wrong</code>), a
+      primary message (coloured but not bold-red screaming), a context line
+      (<em>provider: agent loop</em>), and a <strong>pattern-matched hint</strong>
+      line that recognises common failure modes — 401/403, 404 model,
+      429 rate-limit, connection refused, timeouts, TLS. For the 401 case the
+      hint is <code>check your API key with `nellie auth list`</code>.
+    </p>
+  </section>
+
+  <section class="scene" id="s09">
+    <h2><span class="num">09</span>Slash help</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/09_slash_help.svg" alt="Before: slash help table">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/09_slash_help.svg" alt="After: slash help table">
+      </div>
+    </div>
+    <p class="notes">
+      Dense 13-row table → <strong>grouped panel</strong> with
+      <em>Session / Context / Utility</em> sections, each row prefixed with
+      a <strong>command-specific icon</strong> (clock for history, ring for
+      model, gear for tools, etc.). Footer hint surfaces the fuzzy-match and
+      Ctrl-C/D keybindings so new users discover them.
+    </p>
+  </section>
+
+  <section class="scene" id="s10">
+    <h2><span class="num">10</span>Multi-tool</h2>
+    <div class="pair">
+      <div class="panel before"><h3>Before</h3>
+        <img src="../before/10_multi_tool.svg" alt="Before: sequential tool calls">
+      </div>
+      <div class="panel after"><h3>After</h3>
+        <img src="../after/10_multi_tool.svg" alt="After: sequential tool calls">
+      </div>
+    </div>
+    <p class="notes">
+      Before: four stacked panels (<code>tool call: read</code>,
+      <code>tool result</code>, <code>tool call: edit</code>,
+      <code>tool result</code>), all different widths, no grouping, Monokai
+      vs dim-green chrome fighting each other. After: two pairs of
+      header + body, each tool collapsing to a <code>⚒ name ✓ summary</code>
+      line once done; long outputs get a borderless content panel. Half the
+      vertical real estate, lifecycle state visible at a glance.
+    </p>
+  </section>
+
+</body>
+</html>

@@ -1,27 +1,61 @@
 """Slash-command handler for the Karna REPL.
 
-Slash commands start with ``/`` and control the session
-(model switching, conversation management, etc.) without being
-sent to the LLM.
+Slash commands start with ``/`` and control the session (model switching,
+conversation management, etc.) without being sent to the LLM.
+
+This module exposes the public surface consumed by ``repl.py``:
+
+    SessionCost                  - per-session token/cost accumulator
+    COMMANDS                     - canonical command metadata
+    handle_slash_command(...)    - parse + dispatch a raw ``/...`` string
+
+The user-facing ``/help`` output is a grouped, icon-prefixed, padded
+table rather than a plain list. Commands are tagged with a category
+(``session``, ``context``, ``utility``) and rendered group-by-group so
+the picker feels discoverable. If/when we wire a proper interactive
+picker, the same metadata powers it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Iterable
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from typing import TYPE_CHECKING
 
 from karna.config import KarnaConfig, save_config
 from karna.models import Conversation
+from karna.tui.design_tokens import SEMANTIC
 
 if TYPE_CHECKING:
     from karna.sessions.cost import CostTracker
     from karna.sessions.db import SessionDB
+
+# --------------------------------------------------------------------------- #
+#  Icons (optional; authored by a sibling agent — degrade gracefully)
+# --------------------------------------------------------------------------- #
+
+try:  # pragma: no cover - trivial import guard
+    from karna.tui import icons as _icons  # type: ignore
+except Exception:  # pragma: no cover
+    _icons = None  # type: ignore[assignment]
+
+
+def _icon(name: str, fallback: str) -> str:
+    """Look up *name* on the optional icons module, else return *fallback*."""
+    if _icons is None:
+        return fallback
+    for attr in (name, name.upper(), name.lower()):
+        glyph = getattr(_icons, attr, None)
+        if isinstance(glyph, str) and glyph:
+            return glyph
+    return fallback
+
 
 # --------------------------------------------------------------------------- #
 #  Session-level cost tracking (populated by output.py)
@@ -53,25 +87,55 @@ class SlashCommand:
     usage: str
     help_text: str
     handler: Callable[..., None] = field(repr=False, default=lambda *a, **k: None)
+    # Enhancements (optional; safe defaults preserve existing construction):
+    category: str = "utility"
+    icon: str = "\u2022"  # bullet
+
+
+# Category ordering + display labels for /help.
+_CATEGORY_ORDER: tuple[str, ...] = ("session", "context", "utility")
+_CATEGORY_LABELS: dict[str, str] = {
+    "session": "Session",
+    "context": "Context",
+    "utility": "Utility",
+}
 
 
 def _build_commands() -> dict[str, SlashCommand]:
     """Return the canonical command table (handlers are bound later)."""
+    # Icons resolved via the optional icons module with sensible fallbacks.
+    ic_help     = _icon("HELP",     "?")
+    ic_model    = _icon("MODEL",    "\u25CE")   # circled ring
+    ic_clear    = _icon("CLEAR",    "\u2715")   # x
+    ic_history  = _icon("HISTORY",  "\u231A")   # clock
+    ic_cost     = _icon("COST",     "$")
+    ic_exit     = _icon("EXIT",     "\u21B5")   # return
+    ic_compact  = _icon("COMPACT",  "\u29C7")   # circled dot
+    ic_tools    = _icon("TOOLS",    "\u2699")   # gear
+    ic_system   = _icon("SYSTEM",   "\u24E2")   # circled S
+    ic_sessions = _icon("SESSIONS", "\u2630")   # trigram
+    ic_resume   = _icon("RESUME",   "\u21BB")   # rotate
+    ic_paste    = _icon("PASTE",    "\u2398")   # next page
+    ic_copy     = _icon("COPY",     "\u2398")
+
     cmds: list[SlashCommand] = [
-        SlashCommand("help", "/help", "List available commands"),
-        SlashCommand("model", "/model <provider:model>", "Switch model mid-conversation"),
-        SlashCommand("clear", "/clear", "Reset conversation history"),
-        SlashCommand("history", "/history", "Show conversation so far"),
-        SlashCommand("cost", "/cost", "Show total token usage and cost this session"),
-        SlashCommand("exit", "/exit", "Exit the REPL"),
-        SlashCommand("quit", "/quit", "Exit the REPL"),
-        SlashCommand("compact", "/compact", "Trigger conversation compaction (stub)"),
-        SlashCommand("tools", "/tools", "List available tools"),
-        SlashCommand("system", "/system <prompt>", "Set the system prompt"),
-        SlashCommand("sessions", "/sessions", "Show last 5 sessions from history"),
-        SlashCommand("resume", "/resume <id>", "Resume a previous session"),
-        SlashCommand("paste", "/paste", "Read clipboard and insert as user message"),
-        SlashCommand("copy", "/copy", "Copy last assistant response to clipboard"),
+        # ── Session ────────────────────────────────────────────────────
+        SlashCommand("history",  "/history",             "Show conversation so far",               category="session",  icon=ic_history),
+        SlashCommand("clear",    "/clear",               "Reset conversation history",             category="session",  icon=ic_clear),
+        SlashCommand("sessions", "/sessions",            "Show last 5 sessions from history",      category="session",  icon=ic_sessions),
+        SlashCommand("resume",   "/resume <id>",         "Resume a previous session",              category="session",  icon=ic_resume),
+        # ── Context ────────────────────────────────────────────────────
+        SlashCommand("model",    "/model <provider:model>", "Switch model mid-conversation",       category="context",  icon=ic_model),
+        SlashCommand("system",   "/system <prompt>",     "Set the system prompt",                  category="context",  icon=ic_system),
+        SlashCommand("cost",     "/cost",                "Show total token usage and cost",        category="context",  icon=ic_cost),
+        SlashCommand("compact",  "/compact",             "Trigger conversation compaction (stub)", category="context",  icon=ic_compact),
+        SlashCommand("tools",    "/tools",               "List available tools",                   category="context",  icon=ic_tools),
+        # ── Utility ────────────────────────────────────────────────────
+        SlashCommand("copy",     "/copy",                "Copy last assistant response",           category="utility",  icon=ic_copy),
+        SlashCommand("paste",    "/paste",               "Read clipboard and send as message",     category="utility",  icon=ic_paste),
+        SlashCommand("help",     "/help",                "List available commands",                category="utility",  icon=ic_help),
+        SlashCommand("exit",     "/exit",                "Exit the REPL",                          category="utility",  icon=ic_exit),
+        SlashCommand("quit",     "/quit",                "Exit the REPL",                          category="utility",  icon=ic_exit),
     ]
     return {c.name: c for c in cmds}
 
@@ -80,18 +144,89 @@ COMMANDS = _build_commands()
 
 
 # --------------------------------------------------------------------------- #
+#  /help rendering helpers
+# --------------------------------------------------------------------------- #
+
+def _group_for_help(cmds: Iterable[SlashCommand]) -> dict[str, list[SlashCommand]]:
+    """Partition *cmds* by category, preserving insertion order inside each."""
+    buckets: dict[str, list[SlashCommand]] = {c: [] for c in _CATEGORY_ORDER}
+    for c in cmds:
+        if c.name == "quit":
+            continue  # avoid duplicating /exit in help output
+        buckets.setdefault(c.category, []).append(c)
+    return buckets
+
+
+def _render_category_table(label: str, cmds: list[SlashCommand]) -> Table:
+    """Build a Rich table for one command category."""
+    brand = SEMANTIC.get("accent.brand", "#3C73BD")
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    primary = SEMANTIC.get("text.primary", "#E6E8EC")
+    secondary = SEMANTIC.get("text.secondary", "#A0A4AD")
+    tertiary = SEMANTIC.get("text.tertiary", "#5F6472")
+
+    table = Table(
+        title=Text(f"  {label}", style=f"bold {cyan}"),
+        title_justify="left",
+        show_header=False,
+        show_edge=False,
+        show_lines=False,
+        box=None,
+        padding=(0, 2),
+        pad_edge=False,
+    )
+    table.add_column("Icon", style=brand, no_wrap=True, width=2)
+    table.add_column("Usage", style=primary, no_wrap=True)
+    table.add_column("Description", style=secondary)
+
+    for cmd in cmds:
+        table.add_row(cmd.icon, cmd.usage, cmd.help_text)
+    return table
+
+
+# --------------------------------------------------------------------------- #
 #  Handler implementations
 # --------------------------------------------------------------------------- #
 
 def _cmd_help(console: Console, **_kw) -> None:  # type: ignore[no-untyped-def]
-    table = Table(show_header=True, header_style="bold #87CEEB", border_style="#3C73BD", expand=False)
-    table.add_column("Command", style="white")
-    table.add_column("Description", style="bright_black")
-    for cmd in COMMANDS.values():
-        if cmd.name == "quit":
-            continue  # don't duplicate /exit
-        table.add_row(cmd.usage, cmd.help_text)
-    console.print(table)
+    """Grouped, icon-prefixed help panel."""
+    tertiary = SEMANTIC.get("text.tertiary", "#5F6472")
+    border = SEMANTIC.get("border.subtle", "#2A2F38")
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+
+    buckets = _group_for_help(COMMANDS.values())
+    renderables: list = []
+    for i, cat in enumerate(_CATEGORY_ORDER):
+        cmds = buckets.get(cat) or []
+        if not cmds:
+            continue
+        if i > 0:
+            renderables.append(Text(""))  # blank line between groups
+        renderables.append(_render_category_table(_CATEGORY_LABELS[cat], cmds))
+
+    # Footer hint — fuzzy-match teaser + exit reminder.
+    renderables.append(Text(""))
+    footer = Text("  ")
+    footer.append("Type ", style=tertiary)
+    footer.append("/", style=cyan)
+    footer.append("<prefix> ", style=tertiary)
+    footer.append("to fuzzy-match  -  ", style=tertiary)
+    footer.append("ctrl+c", style=cyan)
+    footer.append(" cancels, ", style=tertiary)
+    footer.append("ctrl+d", style=cyan)
+    footer.append(" exits.", style=tertiary)
+    renderables.append(footer)
+
+    console.print(
+        Panel(
+            Group(*renderables),
+            title=Text("slash commands", style=f"bold {cyan}"),
+            title_align="left",
+            border_style=border,
+            padding=(1, 2),
+            expand=False,
+        )
+    )
 
 
 def _cmd_model(console: Console, config: KarnaConfig, args: str, conversation: Conversation, **_kw) -> None:
@@ -122,7 +257,7 @@ def _cmd_history(console: Console, conversation: Conversation, **_kw) -> None:
     for msg in conversation.messages:
         role_style = {
             "user": "white",
-            "assistant": "#87CEEB",
+            "assistant": SEMANTIC.get("accent.cyan", "#87CEEB"),
             "system": "yellow",
             "tool": "dim green",
         }.get(msg.role, "white")
@@ -134,7 +269,8 @@ def _cmd_history(console: Console, conversation: Conversation, **_kw) -> None:
 
 
 def _cmd_cost(console: Console, session_cost: SessionCost, cost_tracker: "CostTracker | None" = None, **_kw) -> None:
-    # Prefer the persistent CostTracker if available
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
     if cost_tracker is not None:
         summary = cost_tracker.get_session_summary()
         console.print(
@@ -142,8 +278,8 @@ def _cmd_cost(console: Console, session_cost: SessionCost, cost_tracker: "CostTr
                 f"[bright_black]Input tokens:[/]  {summary['input_tokens']:,}\n"
                 f"[bright_black]Output tokens:[/] {summary['output_tokens']:,}\n"
                 f"[bright_black]Session cost:[/]  ${summary['cost_usd']:.4f}",
-                title="[bold #87CEEB]Session Cost[/]",
-                border_style="#3C73BD",
+                title=f"[bold {cyan}]Session Cost[/]",
+                border_style=border,
                 expand=False,
             )
         )
@@ -153,8 +289,8 @@ def _cmd_cost(console: Console, session_cost: SessionCost, cost_tracker: "CostTr
                 f"[bright_black]Prompt tokens:[/]  {session_cost.prompt_tokens:,}\n"
                 f"[bright_black]Output tokens:[/] {session_cost.completion_tokens:,}\n"
                 f"[bright_black]Total cost:[/]    ${session_cost.total_usd:.4f}",
-                title="[bold #87CEEB]Session Cost[/]",
-                border_style="#3C73BD",
+                title=f"[bold {cyan}]Session Cost[/]",
+                border_style=border,
                 expand=False,
             )
         )
@@ -165,14 +301,16 @@ def _cmd_exit(**_kw) -> None:
 
 
 def _cmd_compact(console: Console, **_kw) -> None:
-    console.print("[yellow]Compaction not yet implemented — coming in Phase 4.[/yellow]")
+    console.print("[yellow]Compaction not yet implemented - coming in Phase 4.[/yellow]")
 
 
 def _cmd_tools(console: Console, tool_names: list[str], **_kw) -> None:
     if not tool_names:
         console.print("[bright_black]No tools loaded.[/bright_black]")
         return
-    table = Table(show_header=True, header_style="bold #87CEEB", border_style="#3C73BD", expand=False)
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+    table = Table(show_header=True, header_style=f"bold {cyan}", border_style=border, expand=False)
     table.add_column("#", style="bright_black", justify="right")
     table.add_column("Tool", style="white")
     for i, name in enumerate(sorted(tool_names), 1):
@@ -197,7 +335,9 @@ def _cmd_sessions(console: Console, session_db: "SessionDB | None" = None, **_kw
     if not sessions:
         console.print("[bright_black]No sessions found.[/bright_black]")
         return
-    table = Table(show_header=True, header_style="bold #87CEEB", border_style="#3C73BD", expand=False)
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+    table = Table(show_header=True, header_style=f"bold {cyan}", border_style=border, expand=False)
     table.add_column("ID", style="cyan")
     table.add_column("Started", style="green")
     table.add_column("Model", style="white")
@@ -218,8 +358,6 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # We're in a sync context called from an async REPL — use run_coroutine_threadsafe
-            import concurrent.futures
             future = asyncio.run_coroutine_threadsafe(tool.execute(action="read"), loop)
             result = future.result(timeout=10)
         else:
@@ -232,14 +370,10 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
         console.print(f"[bright_black]{result}[/bright_black]")
         return None
 
-    # Show a preview of what was pasted
     preview = result[:100]
     if len(result) > 100:
         preview += "..."
     console.print(f"[bright_black]Pasted from clipboard ({len(result)} chars): {preview}[/bright_black]")
-
-    # Return the clipboard content — the REPL should inject this as a user message.
-    # We store it on the conversation as a signal.
     return result
 
 
@@ -248,7 +382,6 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     import asyncio
     from karna.tools.clipboard import ClipboardTool
 
-    # Find the last assistant message
     last_assistant = None
     for msg in reversed(conversation.messages):
         if msg.role == "assistant" and msg.content:
@@ -263,7 +396,6 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            import concurrent.futures
             future = asyncio.run_coroutine_threadsafe(
                 tool.execute(action="write", content=last_assistant), loop
             )
@@ -292,6 +424,23 @@ def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = No
         console.print(f"[red]Session not found: {sid}[/red]")
         return
     console.print(f"[yellow]Use [bold]nellie resume {sid}[/bold] to resume a session with full context.[/yellow]")
+
+
+# --------------------------------------------------------------------------- #
+#  Fuzzy prefix matching (used by dispatcher before reporting "unknown")
+# --------------------------------------------------------------------------- #
+
+def _fuzzy_match(partial: str) -> str | None:
+    """Return the unique command whose name starts with *partial*, else None."""
+    if not partial:
+        return None
+    hits = [name for name in COMMANDS if name.startswith(partial)]
+    # Collapse exit/quit to a single hit (they're aliases).
+    if set(hits) == {"exit", "quit"}:
+        return "exit"
+    if len(hits) == 1:
+        return hits[0]
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -340,8 +489,15 @@ def handle_slash_command(
 
     handler = _HANDLERS.get(cmd_name)
     if handler is None:
-        console.print(f"[red]Unknown command: /{cmd_name}[/red]  (type [bold]/help[/bold] to list commands)")
-        return None
+        # Try a unique prefix match ("/m" -> "/model") before giving up.
+        resolved = _fuzzy_match(cmd_name)
+        if resolved is not None:
+            handler = _HANDLERS.get(resolved)
+        if handler is None:
+            console.print(
+                f"[red]Unknown command: /{cmd_name}[/red]  (type [bold]/help[/bold] to list commands)"
+            )
+            return None
 
     result = handler(
         console=console,
@@ -354,3 +510,11 @@ def handle_slash_command(
         cost_tracker=cost_tracker,
     )
     return result
+
+
+__all__ = [
+    "SessionCost",
+    "SlashCommand",
+    "COMMANDS",
+    "handle_slash_command",
+]
