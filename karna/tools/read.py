@@ -24,20 +24,55 @@ from karna.tools.base import BaseTool
 _DEFAULT_MAX_LINES = 2000
 
 # Common image extensions
-_IMAGE_EXTENSIONS = frozenset(
-    {"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "tiff", "tif"}
-)
+_IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "tiff", "tif"})
 
 # Binary extensions that should not be displayed as text
 _BINARY_EXTENSIONS = frozenset(
     {
-        "exe", "dll", "so", "dylib", "bin", "o", "a", "lib",
-        "pyc", "pyo", "class", "jar", "war",
-        "zip", "gz", "bz2", "xz", "tar", "7z", "rar",
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
-        "wasm", "dat", "db", "sqlite", "sqlite3",
-        "mp3", "mp4", "avi", "mov", "mkv", "wav", "flac",
-        "ttf", "otf", "woff", "woff2", "eot",
+        "exe",
+        "dll",
+        "so",
+        "dylib",
+        "bin",
+        "o",
+        "a",
+        "lib",
+        "pyc",
+        "pyo",
+        "class",
+        "jar",
+        "war",
+        "zip",
+        "gz",
+        "bz2",
+        "xz",
+        "tar",
+        "7z",
+        "rar",
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "wasm",
+        "dat",
+        "db",
+        "sqlite",
+        "sqlite3",
+        "mp3",
+        "mp4",
+        "avi",
+        "mov",
+        "mkv",
+        "wav",
+        "flac",
+        "ttf",
+        "otf",
+        "woff",
+        "woff2",
+        "eot",
     }
 )
 
@@ -86,17 +121,11 @@ class ReadTool(BaseTool):
             },
             "offset": {
                 "type": "integer",
-                "description": (
-                    "Line number to start reading from (1-based). "
-                    "Defaults to 1."
-                ),
+                "description": ("Line number to start reading from (1-based). Defaults to 1."),
             },
             "limit": {
                 "type": "integer",
-                "description": (
-                    "Maximum number of lines to return. "
-                    "Defaults to 2000."
-                ),
+                "description": ("Maximum number of lines to return. Defaults to 2000."),
             },
         },
         "required": ["file_path"],
@@ -129,17 +158,11 @@ class ReadTool(BaseTool):
         # Image detection
         if _is_image(file_path):
             size = file_path.stat().st_size
-            return (
-                f"[image file: {file_path.suffix.lstrip('.')} format, "
-                f"{size} bytes -- visual content not displayed]"
-            )
+            return f"[image file: {file_path.suffix.lstrip('.')} format, {size} bytes -- visual content not displayed]"
 
         # Binary detection
         if _is_binary(file_path):
-            return (
-                f"[binary file: {file_path.suffix.lstrip('.')} format "
-                f"-- cannot display]"
-            )
+            return f"[binary file: {file_path.suffix.lstrip('.')} format -- cannot display]"
 
         try:
             text = file_path.read_text(encoding="utf-8", errors="replace")
@@ -157,12 +180,7 @@ class ReadTool(BaseTool):
             return "(empty file)"
 
         if not selected:
-            return (
-                f"[warning] Offset {offset} is past end of file "
-                f"({total_lines} lines total)."
-            )
+            return f"[warning] Offset {offset} is past end of file ({total_lines} lines total)."
 
-        numbered = [
-            f"{i + start_idx + 1}\t{line}" for i, line in enumerate(selected)
-        ]
+        numbered = [f"{i + start_idx + 1}\t{line}" for i, line in enumerate(selected)]
         return "\n".join(numbered)

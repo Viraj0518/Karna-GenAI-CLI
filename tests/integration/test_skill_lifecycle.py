@@ -18,14 +18,7 @@ from karna.skills.loader import SkillManager
 def _write_skill(dir_: Path, name: str, body: str, *, triggers: list[str]) -> Path:
     """Write a well-formed skill file and return its path."""
     trigger_str = ", ".join(f'"{t}"' for t in triggers)
-    content = (
-        f"---\n"
-        f"name: {name}\n"
-        f"description: test skill {name}\n"
-        f"triggers: [{trigger_str}]\n"
-        f"---\n\n"
-        f"{body}\n"
-    )
+    content = f"---\nname: {name}\ndescription: test skill {name}\ntriggers: [{trigger_str}]\n---\n\n{body}\n"
     path = dir_ / f"{name}.md"
     path.write_text(content, encoding="utf-8")
     return path
@@ -87,9 +80,7 @@ def test_trigger_match_and_prompt_injection(tmp_path: Path) -> None:
     assert "pirate dialect" in section
 
 
-def test_invalid_frontmatter_rejected_other_skills_load(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_invalid_frontmatter_rejected_other_skills_load(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """A broken skill file must not prevent other skills from loading."""
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
@@ -105,8 +96,7 @@ def test_invalid_frontmatter_rejected_other_skills_load(
     # Invalid: truncated frontmatter (no closing ---)
     bad = skills_dir / "bad-skill.md"
     bad.write_text(
-        "---\nname: bad-skill\ndescription: broken\n\n"
-        "Body without a closing fence so frontmatter never terminates.\n",
+        "---\nname: bad-skill\ndescription: broken\n\nBody without a closing fence so frontmatter never terminates.\n",
         encoding="utf-8",
     )
 

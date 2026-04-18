@@ -110,16 +110,20 @@ class AnthropicProvider(BaseProvider):
                 if m.content:
                     content.append({"type": "text", "text": m.content})
                 for tc in m.tool_calls:
-                    content.append({
-                        "type": "tool_use",
-                        "id": tc.id,
-                        "name": tc.name,
-                        "input": tc.arguments,
-                    })
-                result.append({
-                    "role": "assistant",
-                    "content": content or [{"type": "text", "text": ""}],
-                })
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.name,
+                            "input": tc.arguments,
+                        }
+                    )
+                result.append(
+                    {
+                        "role": "assistant",
+                        "content": content or [{"type": "text", "text": ""}],
+                    }
+                )
                 continue
 
             if m.tool_results:
@@ -132,11 +136,7 @@ class AnthropicProvider(BaseProvider):
                     }
                     for tr in m.tool_results
                 ]
-                if (
-                    result
-                    and result[-1]["role"] == "user"
-                    and isinstance(result[-1]["content"], list)
-                ):
+                if result and result[-1]["role"] == "user" and isinstance(result[-1]["content"], list):
                     result[-1]["content"].extend(blocks)
                 else:
                     result.append({"role": "user", "content": blocks})
@@ -153,13 +153,13 @@ class AnthropicProvider(BaseProvider):
         anthropic_tools: list[dict[str, Any]] = []
         for t in tools:
             fn = t.get("function", {})
-            anthropic_tools.append({
-                "name": fn.get("name", ""),
-                "description": fn.get("description", ""),
-                "input_schema": fn.get(
-                    "parameters", {"type": "object", "properties": {}}
-                ),
-            })
+            anthropic_tools.append(
+                {
+                    "name": fn.get("name", ""),
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
         return anthropic_tools
 
     # ------------------------------------------------------------------ #
@@ -372,28 +372,20 @@ class AnthropicProvider(BaseProvider):
                         delta = data.get("delta", {})
                         if delta.get("type") == "text_delta":
                             # Regular text token — stream to caller immediately
-                            yield StreamEvent(
-                                type="text", text=delta.get("text", "")
-                            )
+                            yield StreamEvent(type="text", text=delta.get("text", ""))
                         elif delta.get("type") == "input_json_delta":
                             # Tool argument fragment — accumulate until block stops
                             partial = delta.get("partial_json", "")
                             if current_tool is not None and partial:
                                 current_tool["arguments"] += partial
-                                yield StreamEvent(
-                                    type="tool_call_delta", text=partial
-                                )
+                                yield StreamEvent(type="tool_call_delta", text=partial)
 
                     # --- content_block_stop: block complete ---
                     elif event_type == "content_block_stop":
                         if current_tool is not None:
                             # Parse accumulated JSON arguments into a dict
                             try:
-                                args = (
-                                    json.loads(current_tool["arguments"])
-                                    if current_tool["arguments"]
-                                    else {}
-                                )
+                                args = json.loads(current_tool["arguments"]) if current_tool["arguments"] else {}
                             except json.JSONDecodeError:
                                 args = {}
                             yield StreamEvent(

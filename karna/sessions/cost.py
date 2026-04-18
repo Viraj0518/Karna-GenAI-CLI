@@ -55,10 +55,7 @@ def compute_cost(model: str, provider: str, usage: Usage) -> float:
     composite = f"{provider}/{model}"
     for key, pricing in PRICING.items():
         if key in composite:
-            return (
-                usage.input_tokens * pricing["input"] / 1000
-                + usage.output_tokens * pricing["output"] / 1000
-            )
+            return usage.input_tokens * pricing["input"] / 1000 + usage.output_tokens * pricing["output"] / 1000
 
     # Fall back to models.py estimate_cost (per-1M tokens)
     est = estimate_cost(provider, model, usage.input_tokens, usage.output_tokens)
@@ -67,8 +64,7 @@ def compute_cost(model: str, provider: str, usage: Usage) -> float:
 
     # Unknown model — use conservative default
     return (
-        usage.input_tokens * _DEFAULT_PRICING["input"] / 1000
-        + usage.output_tokens * _DEFAULT_PRICING["output"] / 1000
+        usage.input_tokens * _DEFAULT_PRICING["input"] / 1000 + usage.output_tokens * _DEFAULT_PRICING["output"] / 1000
     )
 
 

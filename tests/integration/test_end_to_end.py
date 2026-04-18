@@ -9,7 +9,6 @@ compactor path.
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -22,16 +21,13 @@ from karna.tools.read import ReadTool
 
 from .conftest import MockProvider
 
-
 # --------------------------------------------------------------------------- #
 #  Full agent-loop pipeline
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
-async def test_full_pipeline_tool_call_then_final(
-    mock_karna_home: Path, tmp_path: Path
-) -> None:
+async def test_full_pipeline_tool_call_then_final(mock_karna_home: Path, tmp_path: Path) -> None:
     """nellie pipeline: user msg -> tool_call -> tool_result -> final text."""
     # Create a README to read inside an allowed root
     readme = tmp_path / "README.md"
@@ -42,23 +38,17 @@ async def test_full_pipeline_tool_call_then_final(
             Message(
                 role="assistant",
                 content="",
-                tool_calls=[
-                    ToolCall(id="tc_1", name="read", arguments={"file_path": str(readme)})
-                ],
+                tool_calls=[ToolCall(id="tc_1", name="read", arguments={"file_path": str(readme)})],
             ),
             Message(role="assistant", content="I read the file."),
         ]
     )
 
-    conv = Conversation(
-        messages=[Message(role="user", content="read the readme and summarize")]
-    )
+    conv = Conversation(messages=[Message(role="user", content="read the readme and summarize")])
 
     # ReadTool enforces a cwd/allow-list by default -- pass tmp_path as
     # the allowed root so the temp README resolves.
-    result = await agent_loop_sync(
-        provider, conv, [ReadTool(allowed_roots=[tmp_path])]
-    )
+    result = await agent_loop_sync(provider, conv, [ReadTool(allowed_roots=[tmp_path])])
 
     # Final assistant message
     assert result.role == "assistant"
@@ -82,13 +72,9 @@ async def test_full_pipeline_tool_call_then_final(
 
 
 @pytest.mark.asyncio
-async def test_session_persisted_to_sqlite(
-    mock_karna_home: Path, tmp_path: Path
-) -> None:
+async def test_session_persisted_to_sqlite(mock_karna_home: Path, tmp_path: Path) -> None:
     """After running the loop, the conversation round-trips through SessionDB."""
-    provider = MockProvider(
-        [Message(role="assistant", content="Hello from the mock.")]
-    )
+    provider = MockProvider([Message(role="assistant", content="Hello from the mock.")])
     conv = Conversation(
         messages=[Message(role="user", content="hi")],
         model="mock-1",
@@ -100,9 +86,7 @@ async def test_session_persisted_to_sqlite(
 
     db_path = tmp_path / "sessions.db"
     db = SessionDB(db_path=db_path)
-    session_id = db.create_session(
-        model=conv.model, provider=conv.provider, cwd=str(tmp_path)
-    )
+    session_id = db.create_session(model=conv.model, provider=conv.provider, cwd=str(tmp_path))
     for msg in conv.messages:
         db.add_message(session_id, msg)
     db.end_session(session_id, summary="integration-test")
@@ -143,16 +127,11 @@ async def test_compaction_triggered_by_long_input(mock_karna_home: Path) -> None
     # Each message ~800 chars = ~200 tokens after the /4 estimate.
     # 30 messages => ~6000 estimated tokens, well past a 1000-token window
     # at the default 0.93 threshold.
-    long_msgs = [
-        Message(role="user" if i % 2 == 0 else "assistant", content="x" * 800)
-        for i in range(30)
-    ]
+    long_msgs = [Message(role="user" if i % 2 == 0 else "assistant", content="x" * 800) for i in range(30)]
     original_len = len(long_msgs)
     conv = Conversation(messages=long_msgs)
 
-    summarizer = MockProvider(
-        [Message(role="assistant", content="SUMMARY: earlier conversation compacted.")]
-    )
+    summarizer = MockProvider([Message(role="assistant", content="SUMMARY: earlier conversation compacted.")])
     compactor = Compactor(summarizer, threshold=0.5)
 
     context_window = 1000
@@ -215,9 +194,7 @@ async def test_401_error_surfaced_to_user(mock_karna_home: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_streaming_pipeline_emits_all_event_types(
-    mock_karna_home: Path, tmp_path: Path
-) -> None:
+async def test_streaming_pipeline_emits_all_event_types(mock_karna_home: Path, tmp_path: Path) -> None:
     """The streaming loop emits text, tool_call, and done events in order."""
     readme = tmp_path / "README.md"
     readme.write_text("readme body\n", encoding="utf-8")
@@ -227,16 +204,12 @@ async def test_streaming_pipeline_emits_all_event_types(
             Message(
                 role="assistant",
                 content="",
-                tool_calls=[
-                    ToolCall(id="tc_1", name="read", arguments={"file_path": str(readme)})
-                ],
+                tool_calls=[ToolCall(id="tc_1", name="read", arguments={"file_path": str(readme)})],
             ),
             Message(role="assistant", content="done."),
         ]
     )
-    conv = Conversation(
-        messages=[Message(role="user", content="summarize the readme")]
-    )
+    conv = Conversation(messages=[Message(role="user", content="summarize the readme")])
 
     events: list[str] = []
     async for event in agent_loop(provider, conv, [ReadTool()]):

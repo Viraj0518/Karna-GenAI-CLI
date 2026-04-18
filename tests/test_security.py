@@ -11,10 +11,8 @@ Covers:
 
 from __future__ import annotations
 
-import json
 import os
-import stat
-import tempfile
+import sys
 from pathlib import Path
 
 import pytest
@@ -26,7 +24,6 @@ from karna.security.guards import (
     scrub_secrets,
 )
 from karna.security.scrub import scrub_for_memory
-
 
 # ------------------------------------------------------------------ #
 #  is_safe_path
@@ -322,6 +319,10 @@ class TestScrubForMemory:
 # ------------------------------------------------------------------ #
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX chmod modes don't apply on Windows (no 0600/0700 semantics).",
+)
 class TestCredentialPermissions:
     """Tests for credential file permission enforcement."""
 

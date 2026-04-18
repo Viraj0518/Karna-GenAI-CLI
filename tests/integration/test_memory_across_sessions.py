@@ -40,12 +40,8 @@ async def test_memory_survives_across_sessions(tmp_path: Path) -> None:
     # tool; here we call the manager directly, which is the same
     # on-disk surface.)
     # ------------------------------------------------------------------
-    session_1_provider = MockProvider(
-        [Message(role="assistant", content="Got it -- I'll remember that.")]
-    )
-    session_1_conv = Conversation(
-        messages=[Message(role="user", content="my favorite color is blue")]
-    )
+    session_1_provider = MockProvider([Message(role="assistant", content="Got it -- I'll remember that.")])
+    session_1_conv = Conversation(messages=[Message(role="user", content="my favorite color is blue")])
     await agent_loop_sync(session_1_provider, session_1_conv, [])
 
     mgr.save_memory(
@@ -74,12 +70,8 @@ async def test_memory_survives_across_sessions(tmp_path: Path) -> None:
     # The agent loop for session 2 uses the memory context as part of
     # the system prompt. We simulate that injection and assert the
     # provider can produce a grounded answer.
-    session_2_provider = MockProvider(
-        [_memory_aware_responder(memory_prompt)]
-    )
-    session_2_conv = Conversation(
-        messages=[Message(role="user", content="what's my favorite color?")]
-    )
+    session_2_provider = MockProvider([_memory_aware_responder(memory_prompt)])
+    session_2_conv = Conversation(messages=[Message(role="user", content="what's my favorite color?")])
 
     result = await agent_loop_sync(
         session_2_provider,

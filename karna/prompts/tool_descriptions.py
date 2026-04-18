@@ -35,16 +35,13 @@ _TOOL_GUIDANCE: dict[str, tuple[str, str]] = {
         "searching across many files (use grep/glob instead)",
     ),
     "write": (
-        "creating new files, completely rewriting file contents. "
-        "Creates parent directories automatically",
-        "modifying existing files (use edit instead), "
-        "appending to files (use edit instead)",
+        "creating new files, completely rewriting file contents. Creates parent directories automatically",
+        "modifying existing files (use edit instead), appending to files (use edit instead)",
     ),
     "edit": (
         "modifying existing files via exact string replacement. "
         "Must read the file first. Supports replace_all for renaming",
-        "creating new files from scratch (use write), "
-        "replacing content you haven't verified exists in the file",
+        "creating new files from scratch (use write), replacing content you haven't verified exists in the file",
     ),
     "grep": (
         "searching file contents with regex patterns, finding usages, "
@@ -52,8 +49,7 @@ _TOOL_GUIDANCE: dict[str, tuple[str, str]] = {
         "finding files by name (use glob instead)",
     ),
     "glob": (
-        "finding files by name pattern (e.g., '**/*.py', 'src/**/*.ts'). "
-        "Results sorted by modification time",
+        "finding files by name pattern (e.g., '**/*.py', 'src/**/*.ts'). Results sorted by modification time",
         "searching file contents (use grep instead)",
     ),
 }

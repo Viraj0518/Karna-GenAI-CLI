@@ -26,7 +26,13 @@ def test_config_show() -> None:
     assert "active_model" in result.output
 
 
-def test_auth_login_stub() -> None:
-    result = runner.invoke(app, ["auth", "login", "openrouter"])
-    assert result.exit_code == 0
-    assert "not yet implemented" in result.output.lower()
+def test_auth_login_accepts_key_flag(tmp_path, monkeypatch) -> None:
+    """`auth login <provider> --key <key>` stores the credential without prompting."""
+    # Redirect the credentials dir to a temp path so we don't clobber real creds.
+    from karna.auth import credentials
+
+    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "credentials")
+
+    result = runner.invoke(app, ["auth", "login", "openrouter", "--key", "sk-fake-test"])
+    assert result.exit_code == 0, result.output
+    assert "saved openrouter credential" in result.output.lower()

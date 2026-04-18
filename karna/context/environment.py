@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import platform
-import sys
 from datetime import date
 from pathlib import Path
 

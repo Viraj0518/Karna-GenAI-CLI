@@ -15,11 +15,10 @@ from __future__ import annotations
 import pytest
 
 from karna.config import KarnaConfig
-from karna.prompts import build_system_prompt, generate_tool_docs, adapt_for_model, get_adaptation
-from karna.prompts.system import _is_weak_model, _estimate_tokens, MODEL_ADAPTATIONS
+from karna.prompts import adapt_for_model, build_system_prompt, generate_tool_docs, get_adaptation
+from karna.prompts.system import MODEL_ADAPTATIONS, _estimate_tokens, _is_weak_model
 from karna.tools import get_all_tools
 from karna.tools.base import BaseTool
-
 
 # ------------------------------------------------------------------ #
 #  Fixtures

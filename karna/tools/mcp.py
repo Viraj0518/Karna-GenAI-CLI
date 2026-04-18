@@ -25,7 +25,7 @@ else:
 
 import tomli_w
 
-from karna.config import KARNA_DIR, CONFIG_PATH
+from karna.config import CONFIG_PATH, KARNA_DIR
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -137,9 +137,7 @@ class MCPServerConnection:
     async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Send a JSON-RPC request and wait for the response."""
         if self._dead:
-            raise MCPClientError(
-                f"MCP server {self.name} is dead: {self._dead_reason}"
-            )
+            raise MCPClientError(f"MCP server {self.name} is dead: {self._dead_reason}")
         self._request_id += 1
         req_id = self._request_id
 
@@ -451,14 +449,16 @@ class MCPClientTool(BaseTool):
             for tool in conn.tools:
                 prefixed_name = f"mcp__{server_name}__{tool.get('name', 'unknown')}"
                 schema = tool.get("inputSchema", tool.get("input_schema", {"type": "object", "properties": {}}))
-                all_tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": prefixed_name,
-                        "description": tool.get("description", ""),
-                        "parameters": schema,
-                    },
-                })
+                all_tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": prefixed_name,
+                            "description": tool.get("description", ""),
+                            "parameters": schema,
+                        },
+                    }
+                )
         return all_tools
 
     def get_mcp_proxy_tools(self) -> list["MCPProxyTool"]:

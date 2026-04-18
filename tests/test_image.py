@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -16,7 +14,6 @@ from karna.tools.image import (
     make_image_content_block,
     parse_image_marker,
 )
-
 
 # ======================================================================= #
 #  ImageTool tests

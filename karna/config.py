@@ -16,7 +16,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -45,7 +44,9 @@ class ConfigError(RuntimeError):
 class KarnaConfig(BaseModel):
     """Top-level configuration persisted to ``~/.karna/config.toml``."""
 
-    active_model: str = Field(default="openrouter/auto", description="Currently active model identifier (<provider>/<model>)")
+    active_model: str = Field(
+        default="openrouter/auto", description="Currently active model identifier (<provider>/<model>)"
+    )
     active_provider: str = Field(default="openrouter", description="Provider name for the active model")
     system_prompt: str = Field(
         default="You are Nellie, Karna's AI assistant.",
@@ -86,8 +87,7 @@ def load_config() -> KarnaConfig:
             data = tomllib.loads(raw.decode())
         except tomllib.TOMLDecodeError as exc:
             raise ConfigError(
-                f"Failed to parse {CONFIG_PATH}: {exc}\n"
-                f"Fix the file or run 'nellie config reset' to restore defaults."
+                f"Failed to parse {CONFIG_PATH}: {exc}\nFix the file or run 'nellie config reset' to restore defaults."
             ) from exc
         except OSError as exc:
             # File vanished between exists() and read_bytes() — treat as missing.
@@ -96,9 +96,7 @@ def load_config() -> KarnaConfig:
                 save_config(cfg)
                 _check_permissions()
                 return cfg
-            raise ConfigError(
-                f"Failed to read {CONFIG_PATH}: {exc}"
-            ) from exc
+            raise ConfigError(f"Failed to read {CONFIG_PATH}: {exc}") from exc
 
         try:
             cfg = KarnaConfig(**data)

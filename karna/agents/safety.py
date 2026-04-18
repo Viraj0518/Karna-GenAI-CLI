@@ -100,12 +100,18 @@ _SENSITIVE_PATHS: list[str] = [
 ]
 
 # Filename suffix / substring patterns that are always sensitive regardless
-# of their parent directory (e.g. a stray id_rsa in /tmp).
+# of their parent directory (e.g. a stray id_rsa in /tmp). These also act
+# as a Windows-safe fallback when path resolution collapses POSIX roots
+# into a drive letter and makes ``is_relative_to`` miss.
 _SENSITIVE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\.pem$"),
     re.compile(r"\.key$"),
     re.compile(r"id_rsa"),
     re.compile(r"id_ed25519"),
+    re.compile(r"(^|/)\.env(\.|$)"),
+    re.compile(r"(^|/)\.karna/credentials(/|$)"),
+    re.compile(r"(^|/)\.ssh(/|$)"),
+    re.compile(r"(^|/)\.aws/(credentials|config)(\.|$)"),
 ]
 
 
@@ -218,6 +224,7 @@ def is_safe_url(url: str) -> bool:
 # ----------------------------------------------------------------------- #
 #  Main pre-execution check
 # ----------------------------------------------------------------------- #
+
 
 async def pre_tool_check(
     tool: "BaseTool",

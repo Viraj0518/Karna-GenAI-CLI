@@ -10,15 +10,14 @@ import os
 
 from rich.console import Console
 
+from karna.agents.loop import agent_loop
 from karna.config import KarnaConfig
 from karna.models import Conversation, Message
-from karna.sessions.db import SessionDB
-from karna.sessions.cost import CostTracker
-from karna.tools import TOOLS, get_all_tools
-from karna.providers import get_provider, resolve_model
-from karna.agents.loop import agent_loop
 from karna.prompts import build_system_prompt
-from karna.context.manager import ContextManager
+from karna.providers import get_provider, resolve_model
+from karna.sessions.cost import CostTracker
+from karna.sessions.db import SessionDB
+from karna.tools import TOOLS, get_all_tools
 from karna.tui.banner import print_banner
 from karna.tui.input import get_multiline_input
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
@@ -37,7 +36,6 @@ async def _agent_loop(
     tool_names: list[str],
 ) -> list[StreamEvent]:
     """Run a single turn of the agent loop — LIVE provider + tool execution."""
-    import json as _json
 
     events: list[StreamEvent] = []
 
@@ -58,7 +56,6 @@ async def _agent_loop(
         system_prompt = build_system_prompt(config, tools)
 
         # Run the real agent loop
-        from karna.models import StreamEvent as AgentStreamEvent
         async for event in agent_loop(
             provider=provider,
             conversation=conversation,
@@ -71,30 +68,36 @@ async def _agent_loop(
                 events.append(StreamEvent(kind=EventKind.TEXT_DELTA, data=event.text or ""))
             elif event.type == "tool_call_start":
                 tc = event.tool_call
-                events.append(StreamEvent(
-                    kind=EventKind.TOOL_CALL_START,
-                    data={"name": tc.name if tc else "?", "arguments": tc.arguments if tc else "{}"},
-                ))
+                events.append(
+                    StreamEvent(
+                        kind=EventKind.TOOL_CALL_START,
+                        data={"name": tc.name if tc else "?", "arguments": tc.arguments if tc else "{}"},
+                    )
+                )
             elif event.type == "tool_call_end":
                 tc = event.tool_call
-                events.append(StreamEvent(
-                    kind=EventKind.TOOL_RESULT,
-                    data={"content": event.text or (tc.arguments if tc else ""), "is_error": False},
-                ))
+                events.append(
+                    StreamEvent(
+                        kind=EventKind.TOOL_RESULT,
+                        data={"content": event.text or (tc.arguments if tc else ""), "is_error": False},
+                    )
+                )
             elif event.type == "tool_call_delta":
                 pass  # accumulating, not rendered until tool_call_end
             elif event.type == "error":
                 events.append(StreamEvent(kind=EventKind.ERROR, data=event.text or "Unknown error"))
             elif event.type == "done":
                 if event.usage:
-                    events.append(StreamEvent(
-                        kind=EventKind.USAGE,
-                        data={
-                            "prompt_tokens": event.usage.input_tokens,
-                            "completion_tokens": event.usage.output_tokens,
-                            "total_usd": event.usage.cost_usd or 0.0,
-                        },
-                    ))
+                    events.append(
+                        StreamEvent(
+                            kind=EventKind.USAGE,
+                            data={
+                                "prompt_tokens": event.usage.input_tokens,
+                                "completion_tokens": event.usage.output_tokens,
+                                "total_usd": event.usage.cost_usd or 0.0,
+                            },
+                        )
+                    )
                 events.append(StreamEvent(kind=EventKind.DONE))
 
     except Exception as e:
@@ -134,9 +137,12 @@ async def run_repl(
         git_branch: str | None = None
         try:
             import subprocess
+
             result = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True, text=True, timeout=2,
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             if result.returncode == 0:
                 git_branch = result.stdout.strip()
@@ -223,9 +229,7 @@ async def run_repl(
             renderer.finish()
 
         # Append assistant reply to conversation and persist
-        full_reply = "".join(
-            e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str)
-        )
+        full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
         if full_reply:
             assistant_msg = Message(role="assistant", content=full_reply)
             conversation.messages.append(assistant_msg)
@@ -242,7 +246,10 @@ async def run_repl(
             # Display per-turn cost in dim text
             if turn_tokens or turn_cost:
                 from rich.text import Text as RichText
-                console.print(RichText(
-                    f"  [{turn_tokens:,} tokens, ${turn_cost:.4f}]",
-                    style="bright_black",
-                ))
+
+                console.print(
+                    RichText(
+                        f"  [{turn_tokens:,} tokens, ${turn_cost:.4f}]",
+                        style="bright_black",
+                    )
+                )

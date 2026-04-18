@@ -91,18 +91,8 @@ class VertexProvider(BaseProvider):
         self.publisher = publisher
 
         cred = self._load_credential()
-        self.project_id = (
-            project_id
-            or cred.get("project_id")
-            or os.environ.get("GOOGLE_CLOUD_PROJECT")
-            or ""
-        )
-        self.region = (
-            region
-            or cred.get("region")
-            or os.environ.get("GOOGLE_CLOUD_REGION")
-            or "us-central1"
-        )
+        self.project_id = project_id or cred.get("project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT") or ""
+        self.region = region or cred.get("region") or os.environ.get("GOOGLE_CLOUD_REGION") or "us-central1"
 
         # Bearer token is fetched lazily on first use. Cached here between
         # calls; refreshed on 401 or when google-auth reports expiry.
@@ -119,9 +109,7 @@ class VertexProvider(BaseProvider):
         if self._google_credentials is None:
             # ``google.auth.default()`` honours GOOGLE_APPLICATION_CREDENTIALS,
             # metadata server, gcloud user creds — full ADC chain.
-            creds, project = google_auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
-            )
+            creds, project = google_auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
             if not self.project_id and project:
                 self.project_id = project
             self._google_credentials = creds
@@ -184,9 +172,7 @@ class VertexProvider(BaseProvider):
             if m.content:
                 parts.append({"text": m.content})
             for tc in m.tool_calls:
-                parts.append(
-                    {"functionCall": {"name": tc.name, "args": tc.arguments}}
-                )
+                parts.append({"functionCall": {"name": tc.name, "args": tc.arguments}})
             for tr in m.tool_results:
                 parts.append(
                     {
@@ -211,9 +197,7 @@ class VertexProvider(BaseProvider):
                 {
                     "name": fn.get("name", ""),
                     "description": fn.get("description", ""),
-                    "parameters": fn.get(
-                        "parameters", {"type": "object", "properties": {}}
-                    ),
+                    "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
                 }
             )
         return [{"function_declarations": fns}]
@@ -290,9 +274,7 @@ class VertexProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> Message:
-        payload = self._build_payload(
-            messages, tools, system_prompt, max_tokens, temperature
-        )
+        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
         url = self._endpoint(streaming=False)
 
         async with self._make_client() as client:
@@ -300,9 +282,7 @@ class VertexProvider(BaseProvider):
             resp = await client.post(url, headers=headers, json=payload)
             # One-shot refresh on 401 (expired token).
             if resp.status_code == 401:
-                resp = await client.post(
-                    url, headers=self._headers(force_refresh=True), json=payload
-                )
+                resp = await client.post(url, headers=self._headers(force_refresh=True), json=payload)
             resp.raise_for_status()
             data = resp.json()
 
@@ -320,25 +300,19 @@ class VertexProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        payload = self._build_payload(
-            messages, tools, system_prompt, max_tokens, temperature
-        )
+        payload = self._build_payload(messages, tools, system_prompt, max_tokens, temperature)
         # Vertex REST supports SSE via ``?alt=sse``.
         url = self._endpoint(streaming=True) + "?alt=sse"
 
         cumulative_usage = Usage()
         async with self._make_client() as client:
             headers = self._headers()
-            async with client.stream(
-                "POST", url, headers=headers, json=payload
-            ) as resp:
+            async with client.stream("POST", url, headers=headers, json=payload) as resp:
                 if resp.status_code == 401:
                     # Retry once with a refreshed token.
                     await resp.aclose()
                     headers = self._headers(force_refresh=True)
-                    async with client.stream(
-                        "POST", url, headers=headers, json=payload
-                    ) as resp2:
+                    async with client.stream("POST", url, headers=headers, json=payload) as resp2:
                         async for ev in self._iter_sse(resp2, cumulative_usage):
                             yield ev
                 else:
@@ -349,9 +323,7 @@ class VertexProvider(BaseProvider):
         self._track_usage(cumulative_usage)
         yield StreamEvent(type="done", usage=cumulative_usage)
 
-    async def _iter_sse(
-        self, resp: httpx.Response, cumulative_usage: Usage
-    ) -> AsyncIterator[StreamEvent]:
+    async def _iter_sse(self, resp: httpx.Response, cumulative_usage: Usage) -> AsyncIterator[StreamEvent]:
         """Parse SSE stream. Each ``data:`` line is a JSON chunk containing
         a partial ``candidates`` / ``usageMetadata`` payload."""
         async for line in resp.aiter_lines():
@@ -396,10 +368,7 @@ class VertexProvider(BaseProvider):
             return fallback
         try:
             # Publisher model listing is a global (not regional) endpoint.
-            url = (
-                "https://aiplatform.googleapis.com/v1/"
-                f"publishers/{self.publisher}/models"
-            )
+            url = f"https://aiplatform.googleapis.com/v1/publishers/{self.publisher}/models"
             async with self._make_client() as client:
                 resp = await client.get(url, headers=self._headers())
                 if resp.status_code != 200:
@@ -415,7 +384,5 @@ class VertexProvider(BaseProvider):
             model_id = name.rsplit("/", 1)[-1] if "/" in name else name
             if not model_id:
                 continue
-            models.append(
-                ModelInfo(id=model_id, name=model_id, provider="vertex")
-            )
+            models.append(ModelInfo(id=model_id, name=model_id, provider="vertex"))
         return models or fallback

@@ -19,9 +19,7 @@ _SENSITIVE_PATH_RE = re.compile(
 )
 
 # Base64-encoded blobs >100 chars (likely keys or certs)
-_BASE64_BLOB_RE = re.compile(
-    r"[A-Za-z0-9+/]{100,}={0,3}"
-)
+_BASE64_BLOB_RE = re.compile(r"[A-Za-z0-9+/]{100,}={0,3}")
 
 
 def scrub_for_memory(text: str) -> str:

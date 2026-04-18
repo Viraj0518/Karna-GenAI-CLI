@@ -187,4 +187,4 @@ pytest tests/ -q          # 415 tests, ~15s
 
 ## License
 
-See [license.md](license.md) for usage terms. Third-party attributions in [NOTICES.md](NOTICES.md).
+**Proprietary — Karna Internal Use Only.** See [LICENSE.md](LICENSE.md) for usage terms. This project may only be used by Viraj and by organizations explicitly authorized in writing. Third-party attributions (MIT-licensed portions from Hermes Agent and OpenClaw) are in [NOTICES.md](NOTICES.md).

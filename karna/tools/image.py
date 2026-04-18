@@ -11,8 +11,6 @@ user's configured provider endpoint.
 from __future__ import annotations
 
 import base64
-import mimetypes
-import os
 from pathlib import Path
 from typing import Any
 
@@ -70,10 +68,7 @@ class ImageTool(BaseTool):
         suffix = path.suffix.lower()
         media_type = _SUPPORTED_TYPES.get(suffix)
         if media_type is None:
-            return (
-                f"[error] Unsupported image format: {suffix}. "
-                f"Supported: {', '.join(sorted(_SUPPORTED_TYPES))}"
-            )
+            return f"[error] Unsupported image format: {suffix}. Supported: {', '.join(sorted(_SUPPORTED_TYPES))}"
 
         # Size check
         file_size = path.stat().st_size

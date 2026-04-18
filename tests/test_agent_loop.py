@@ -8,9 +8,7 @@ Uses a mock provider to verify:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, AsyncIterator
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,11 +19,9 @@ from karna.models import (
     ModelInfo,
     StreamEvent,
     ToolCall,
-    Usage,
 )
 from karna.providers.base import BaseProvider
 from karna.tools.base import BaseTool
-
 
 # ======================================================================= #
 #  Mock provider
@@ -130,12 +126,16 @@ class TestAgentLoopStreaming:
     @pytest.mark.asyncio
     async def test_simple_text_response(self):
         """Provider returns text with no tool calls -> loop terminates."""
-        provider = MockProvider([
-            Message(role="assistant", content="Hello, I'm done."),
-        ])
-        conv = Conversation(messages=[
-            Message(role="user", content="Hi"),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="Hello, I'm done."),
+            ]
+        )
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Hi"),
+            ]
+        )
 
         events = []
         async for event in agent_loop(provider, conv, []):
@@ -157,22 +157,24 @@ class TestAgentLoopStreaming:
         """Provider makes a tool call, then responds with text."""
         tool = MockTool(return_value="tool output here")
 
-        provider = MockProvider([
-            # First response: tool call
-            Message(
-                role="assistant",
-                content="",
-                tool_calls=[
-                    ToolCall(id="tc_1", name="mock_tool", arguments={"input": "test"})
-                ],
-            ),
-            # Second response: final text
-            Message(role="assistant", content="Done using the tool."),
-        ])
+        provider = MockProvider(
+            [
+                # First response: tool call
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[ToolCall(id="tc_1", name="mock_tool", arguments={"input": "test"})],
+                ),
+                # Second response: final text
+                Message(role="assistant", content="Done using the tool."),
+            ]
+        )
 
-        conv = Conversation(messages=[
-            Message(role="user", content="Use the tool"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Use the tool"),
+            ]
+        )
 
         events = []
         async for event in agent_loop(provider, conv, [tool]):
@@ -197,20 +199,22 @@ class TestAgentLoopStreaming:
     @pytest.mark.asyncio
     async def test_unknown_tool(self):
         """Provider requests an unknown tool -> error result appended."""
-        provider = MockProvider([
-            Message(
-                role="assistant",
-                content="",
-                tool_calls=[
-                    ToolCall(id="tc_1", name="nonexistent", arguments={})
-                ],
-            ),
-            Message(role="assistant", content="Sorry about that."),
-        ])
+        provider = MockProvider(
+            [
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[ToolCall(id="tc_1", name="nonexistent", arguments={})],
+                ),
+                Message(role="assistant", content="Sorry about that."),
+            ]
+        )
 
-        conv = Conversation(messages=[
-            Message(role="user", content="Try unknown tool"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Try unknown tool"),
+            ]
+        )
 
         events = []
         async for event in agent_loop(provider, conv, []):
@@ -231,18 +235,18 @@ class TestAgentLoopStreaming:
             Message(
                 role="assistant",
                 content="",
-                tool_calls=[
-                    ToolCall(id=f"tc_{i}", name="mock_tool", arguments={"input": f"iter_{i}"})
-                ],
+                tool_calls=[ToolCall(id=f"tc_{i}", name="mock_tool", arguments={"input": f"iter_{i}"})],
             )
             for i in range(10)
         ]
 
         provider = MockProvider(tc_messages)
 
-        conv = Conversation(messages=[
-            Message(role="user", content="Loop forever"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Loop forever"),
+            ]
+        )
 
         events = []
         async for event in agent_loop(provider, conv, [tool], max_iterations=3):
@@ -260,12 +264,16 @@ class TestAgentLoopStreaming:
 class TestAgentLoopSync:
     @pytest.mark.asyncio
     async def test_simple_completion(self):
-        provider = MockProvider([
-            Message(role="assistant", content="Done."),
-        ])
-        conv = Conversation(messages=[
-            Message(role="user", content="Hi"),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="Done."),
+            ]
+        )
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Hi"),
+            ]
+        )
 
         result = await agent_loop_sync(provider, conv, [])
         assert result.content == "Done."
@@ -274,20 +282,22 @@ class TestAgentLoopSync:
     async def test_tool_call_cycle(self):
         tool = MockTool(return_value="42")
 
-        provider = MockProvider([
-            Message(
-                role="assistant",
-                content="",
-                tool_calls=[
-                    ToolCall(id="tc_1", name="mock_tool", arguments={"input": "calc"})
-                ],
-            ),
-            Message(role="assistant", content="The answer is 42."),
-        ])
+        provider = MockProvider(
+            [
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[ToolCall(id="tc_1", name="mock_tool", arguments={"input": "calc"})],
+                ),
+                Message(role="assistant", content="The answer is 42."),
+            ]
+        )
 
-        conv = Conversation(messages=[
-            Message(role="user", content="What is 6*7?"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="What is 6*7?"),
+            ]
+        )
 
         result = await agent_loop_sync(provider, conv, [tool])
         assert result.content == "The answer is 42."

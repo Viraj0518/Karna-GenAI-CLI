@@ -51,10 +51,7 @@ async def cost_warning_hook(tool_name: str = "", **kwargs: Any) -> HookResult:
     if _session_cost_usd >= _COST_THRESHOLD_USD:
         return HookResult(
             proceed=True,
-            message=(
-                f"[cost] Session spend ${_session_cost_usd:.2f} "
-                f"exceeds ${_COST_THRESHOLD_USD:.2f} threshold."
-            ),
+            message=(f"[cost] Session spend ${_session_cost_usd:.2f} exceeds ${_COST_THRESHOLD_USD:.2f} threshold."),
         )
     return HookResult()
 
@@ -62,6 +59,7 @@ async def cost_warning_hook(tool_name: str = "", **kwargs: Any) -> HookResult:
 # ----------------------------------------------------------------------- #
 #  Git dirty-tree warning
 # ----------------------------------------------------------------------- #
+
 
 async def git_dirty_warning_hook(**kwargs: Any) -> HookResult:
     """On ``SESSION_START``, warn if the working tree has uncommitted changes.
@@ -76,7 +74,9 @@ async def git_dirty_warning_hook(**kwargs: Any) -> HookResult:
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            "git", "status", "--porcelain",
+            "git",
+            "status",
+            "--porcelain",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -101,6 +101,7 @@ async def git_dirty_warning_hook(**kwargs: Any) -> HookResult:
 # ----------------------------------------------------------------------- #
 #  Auto-save memory (stub)
 # ----------------------------------------------------------------------- #
+
 
 async def auto_save_memory_hook(response: str = "", **kwargs: Any) -> HookResult:
     """After each assistant response, check if something should be memorized.

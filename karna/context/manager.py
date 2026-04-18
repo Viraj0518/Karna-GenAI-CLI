@@ -87,27 +87,33 @@ class ContextManager:
             self._project_context_loaded = True
 
         if self._project_context:
-            sections.append((
-                "project-context",
-                f"<project-context>\n{self._project_context}\n</project-context>",
-                2,
-            ))
+            sections.append(
+                (
+                    "project-context",
+                    f"<project-context>\n{self._project_context}\n</project-context>",
+                    2,
+                )
+            )
 
         # -- 3. Git + environment ------------------------------------- #
         git_ctx_str = await self.git_ctx.get_context(self.cwd)
         if git_ctx_str:
-            sections.append((
-                "git-context",
-                f"<git-context>\n{git_ctx_str}\n</git-context>",
-                3,
-            ))
+            sections.append(
+                (
+                    "git-context",
+                    f"<git-context>\n{git_ctx_str}\n</git-context>",
+                    3,
+                )
+            )
 
         env_ctx_str = self.env_ctx.get_context(self.cwd)
-        sections.append((
-            "environment",
-            f"<environment>\n{env_ctx_str}\n</environment>",
-            1,  # environment is cheap + always useful, so keep ahead of others
-        ))
+        sections.append(
+            (
+                "environment",
+                f"<environment>\n{env_ctx_str}\n</environment>",
+                1,  # environment is cheap + always useful, so keep ahead of others
+            )
+        )
 
         # -- 1. System prompt + fit injected sections ----------------- #
         system_budget = int(self.max_tokens * self.system_budget_ratio)
@@ -165,8 +171,7 @@ class ContextManager:
             cost = self.estimate_tokens(content)
             if used + cost > budget:
                 logger.info(
-                    "Context: dropping %s section (%d tok) — would exceed "
-                    "system budget (%d/%d tok used).",
+                    "Context: dropping %s section (%d tok) — would exceed system budget (%d/%d tok used).",
                     name,
                     cost,
                     used,

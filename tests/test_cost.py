@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from karna.models import Usage
-from karna.sessions.cost import CostTracker, PRICING, compute_cost, _DEFAULT_PRICING
+from karna.sessions.cost import _DEFAULT_PRICING, PRICING, CostTracker, compute_cost
 from karna.sessions.db import SessionDB
 
 
@@ -65,10 +65,7 @@ def test_compute_cost_unknown_model() -> None:
     """Unknown model should fall back to default pricing."""
     usage = Usage(input_tokens=1000, output_tokens=1000)
     cost = compute_cost("totally-unknown-model", "unknown-provider", usage)
-    expected = (
-        1000 * _DEFAULT_PRICING["input"] / 1000
-        + 1000 * _DEFAULT_PRICING["output"] / 1000
-    )
+    expected = 1000 * _DEFAULT_PRICING["input"] / 1000 + 1000 * _DEFAULT_PRICING["output"] / 1000
     assert abs(cost - expected) < 1e-6
 
 

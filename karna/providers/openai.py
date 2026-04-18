@@ -83,11 +83,13 @@ class OpenAIProvider(BaseProvider):
                 ]
             if m.tool_results:
                 for tr in m.tool_results:
-                    result.append({
-                        "role": "tool",
-                        "tool_call_id": tr.tool_call_id,
-                        "content": tr.content,
-                    })
+                    result.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tr.tool_call_id,
+                            "content": tr.content,
+                        }
+                    )
                 continue
             result.append(msg)
         return result
@@ -224,9 +226,7 @@ class OpenAIProvider(BaseProvider):
                             if idx not in tool_call_buffers:
                                 tool_call_buffers[idx] = {
                                     "id": tc_delta.get("id", ""),
-                                    "name": tc_delta.get("function", {}).get(
-                                        "name", ""
-                                    ),
+                                    "name": tc_delta.get("function", {}).get("name", ""),
                                     "arguments": "",
                                 }
                                 yield StreamEvent(
@@ -237,14 +237,10 @@ class OpenAIProvider(BaseProvider):
                                         arguments={},
                                     ),
                                 )
-                            arg_delta = tc_delta.get("function", {}).get(
-                                "arguments", ""
-                            )
+                            arg_delta = tc_delta.get("function", {}).get("arguments", "")
                             if arg_delta:
                                 tool_call_buffers[idx]["arguments"] += arg_delta
-                                yield StreamEvent(
-                                    type="tool_call_delta", text=arg_delta
-                                )
+                                yield StreamEvent(type="tool_call_delta", text=arg_delta)
 
                     # Usage in final chunk
                     if "usage" in chunk and chunk["usage"]:

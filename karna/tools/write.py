@@ -34,19 +34,13 @@ class WriteTool(BaseTool):
 
     name = "write"
     sequential = True  # File writes must not run concurrently
-    description = (
-        "Write content to a file. Creates parent directories if needed. "
-        "Overwrites existing files."
-    )
+    description = "Write content to a file. Creates parent directories if needed. Overwrites existing files."
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
             "file_path": {
                 "type": "string",
-                "description": (
-                    "The absolute path to the file to write "
-                    "(must be absolute, not relative)."
-                ),
+                "description": ("The absolute path to the file to write (must be absolute, not relative)."),
             },
             "content": {
                 "type": "string",

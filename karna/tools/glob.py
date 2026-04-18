@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -27,10 +26,7 @@ class GlobTool(BaseTool):
     """Find files matching glob patterns, sorted by modification time."""
 
     name = "glob"
-    description = (
-        "Find files matching a glob pattern. "
-        "Results sorted by modification time (most recent first)."
-    )
+    description = "Find files matching a glob pattern. Results sorted by modification time (most recent first)."
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -40,10 +36,7 @@ class GlobTool(BaseTool):
             },
             "path": {
                 "type": "string",
-                "description": (
-                    "Root directory to search from. "
-                    "Defaults to current working directory."
-                ),
+                "description": ("Root directory to search from. Defaults to current working directory."),
             },
         },
         "required": ["pattern"],
@@ -66,11 +59,7 @@ class GlobTool(BaseTool):
         else:
             # Fallback: plain pathlib glob
             try:
-                files = [
-                    str(p)
-                    for p in root_path.glob(pattern)
-                    if p.is_file()
-                ]
+                files = [str(p) for p in root_path.glob(pattern) if p.is_file()]
             except Exception as exc:
                 return f"[error] {exc}"
 
@@ -91,10 +80,7 @@ class GlobTool(BaseTool):
 
         result = "\n".join(files)
         if truncated:
-            result += (
-                "\n(Results are truncated. "
-                "Consider using a more specific path or pattern.)"
-            )
+            result += "\n(Results are truncated. Consider using a more specific path or pattern.)"
 
         return result
 
@@ -103,17 +89,19 @@ class GlobTool(BaseTool):
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    async def _git_ls_files(
-        root: Path, pattern: str
-    ) -> list[str] | None:
+    async def _git_ls_files(root: Path, pattern: str) -> list[str] | None:
         """Use ``git ls-files`` filtered by *pattern* if inside a repo.
 
         Returns ``None`` if not in a git repo or git is not available.
         """
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "ls-files", "--cached", "--others",
-                "--exclude-standard", root.as_posix(),
+                "git",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                root.as_posix(),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(root),

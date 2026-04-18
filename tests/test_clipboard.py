@@ -7,8 +7,6 @@ is available (headless CI environments).
 
 from __future__ import annotations
 
-import asyncio
-import platform
 import shutil
 from unittest.mock import patch
 
@@ -21,7 +19,6 @@ from karna.tools.clipboard import (
     _get_paste_cmd,
 )
 
-
 # ======================================================================= #
 #  Platform detection
 # ======================================================================= #
@@ -33,28 +30,34 @@ class TestPlatformDetection:
             assert _detect_platform() == "macos"
 
     def test_wayland_detection(self):
-        with patch("karna.tools.clipboard.platform.system", return_value="Linux"), \
-             patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-0"}, clear=False), \
-             patch("builtins.open", side_effect=OSError):
+        with (
+            patch("karna.tools.clipboard.platform.system", return_value="Linux"),
+            patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-0"}, clear=False),
+            patch("builtins.open", side_effect=OSError),
+        ):
             assert _detect_platform() == "wayland"
 
     def test_x11_detection(self):
-        with patch("karna.tools.clipboard.platform.system", return_value="Linux"), \
-             patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True), \
-             patch("builtins.open", side_effect=OSError):
+        with (
+            patch("karna.tools.clipboard.platform.system", return_value="Linux"),
+            patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True),
+            patch("builtins.open", side_effect=OSError),
+        ):
             # Remove WAYLAND_DISPLAY to ensure x11 path
             import os
+
             env = dict(os.environ)
             env.pop("WAYLAND_DISPLAY", None)
             env["DISPLAY"] = ":0"
-            with patch.dict("os.environ", env, clear=True), \
-                 patch("builtins.open", side_effect=OSError):
+            with patch.dict("os.environ", env, clear=True), patch("builtins.open", side_effect=OSError):
                 result = _detect_platform()
                 assert result in ("x11", "wsl")  # WSL might be detected first
 
     def test_wsl_detection(self):
-        with patch("karna.tools.clipboard.platform.system", return_value="Linux"), \
-             patch("builtins.open", return_value=__import__("io").StringIO("Linux version 5.15.0-microsoft")):
+        with (
+            patch("karna.tools.clipboard.platform.system", return_value="Linux"),
+            patch("builtins.open", return_value=__import__("io").StringIO("Linux version 5.15.0-microsoft")),
+        ):
             assert _detect_platform() == "wsl"
 
     def test_copy_paste_cmds_macos(self):

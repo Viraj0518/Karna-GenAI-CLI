@@ -37,7 +37,7 @@ _DDG_URL = "https://html.duckduckgo.com/html/"
 # "result__snippet" for the snippet, etc.
 _DDG_RESULT_RE = re.compile(
     r'<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>'
-    r'.*?'
+    r".*?"
     r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>',
     re.DOTALL,
 )
@@ -62,6 +62,7 @@ def _extract_ddg_url(raw_url: str) -> str:
     match = re.search(r"uddg=([^&]+)", raw_url)
     if match:
         from urllib.parse import unquote
+
         return unquote(match.group(1))
     return raw_url
 
@@ -127,11 +128,13 @@ async def _search_brave(query: str, num_results: int, api_key: str) -> list[dict
 
     results: list[dict[str, str]] = []
     for item in data.get("web", {}).get("results", []):
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "snippet": item.get("description", ""),
-        })
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "snippet": item.get("description", ""),
+            }
+        )
         if len(results) >= num_results:
             break
 
@@ -158,11 +161,13 @@ async def _search_searxng(query: str, num_results: int, base_url: str) -> list[d
 
     results: list[dict[str, str]] = []
     for item in data.get("results", []):
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "snippet": item.get("content", ""),
-        })
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "snippet": item.get("content", ""),
+            }
+        )
         if len(results) >= num_results:
             break
 

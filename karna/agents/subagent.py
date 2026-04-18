@@ -18,7 +18,6 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Literal
-from uuid import uuid4
 
 from karna.agents.loop import agent_loop_sync
 from karna.models import Conversation, Message
@@ -77,9 +76,7 @@ class SubAgent:
         without stepping on each other's checkouts.
         """
         unique = uuid.uuid4().hex[:8]
-        worktree_path = str(
-            Path(tempfile.gettempdir()) / f"karna-worktree-{self.name}-{unique}"
-        )
+        worktree_path = str(Path(tempfile.gettempdir()) / f"karna-worktree-{self.name}-{unique}")
         branch_name = f"subagent/{self.name}-{unique}"
 
         try:
@@ -94,13 +91,13 @@ class SubAgent:
             self.worktree_branch = branch_name
             logger.info(
                 "Created worktree for subagent %s at %s (branch %s)",
-                self.name, worktree_path, branch_name,
+                self.name,
+                worktree_path,
+                branch_name,
             )
             return worktree_path
         except subprocess.CalledProcessError as exc:
-            raise RuntimeError(
-                f"Failed to create worktree for subagent {self.name}: {exc.stderr}"
-            ) from exc
+            raise RuntimeError(f"Failed to create worktree for subagent {self.name}: {exc.stderr}") from exc
 
     def _cleanup_worktree(self) -> None:
         """Remove the git worktree and its branch.
@@ -133,7 +130,8 @@ class SubAgent:
         except Exception as exc:
             logger.warning(
                 "git worktree remove failed for %s: %s",
-                self.worktree_path, exc,
+                self.worktree_path,
+                exc,
             )
 
         # Fallback: if git didn't clean it up, force-remove the directory.
@@ -147,7 +145,8 @@ class SubAgent:
             except Exception as exc:
                 logger.error(
                     "Failed to rmtree worktree dir %s: %s",
-                    self.worktree_path, exc,
+                    self.worktree_path,
+                    exc,
                 )
 
         if self.worktree_branch:
@@ -168,7 +167,8 @@ class SubAgent:
             except Exception as exc:
                 logger.warning(
                     "Failed to delete worktree branch %s: %s",
-                    self.worktree_branch, exc,
+                    self.worktree_branch,
+                    exc,
                 )
 
     # ------------------------------------------------------------------ #
@@ -193,9 +193,7 @@ class SubAgent:
                 return f"[error] {exc}"
 
         # Seed the conversation with the user prompt
-        self.conversation.messages.append(
-            Message(role="user", content=prompt)
-        )
+        self.conversation.messages.append(Message(role="user", content=prompt))
 
         try:
             final_message = await agent_loop_sync(
@@ -219,9 +217,7 @@ class SubAgent:
 
     async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""
-        self._task = asyncio.create_task(
-            self.run(prompt), name=f"subagent-{self.name}"
-        )
+        self._task = asyncio.create_task(self.run(prompt), name=f"subagent-{self.name}")
         return self._task
 
     # ------------------------------------------------------------------ #

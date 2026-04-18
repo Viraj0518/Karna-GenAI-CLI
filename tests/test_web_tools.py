@@ -6,21 +6,17 @@ Covers SSRF guard, robots.txt parser, basic extraction, and
 
 from __future__ import annotations
 
-import asyncio
-import os
-
 import pytest
 
+from karna.tools import get_all_tools, get_tool
 from karna.tools.web_fetch import (
     WebFetchTool,
-    is_safe_url,
     _extract_text_basic,
     _is_path_allowed,
     _truncate_at_boundary,
+    is_safe_url,
 )
 from karna.tools.web_search import WebSearchTool
-from karna.tools import get_tool, get_all_tools
-
 
 # ======================================================================= #
 #  SSRF Guard
@@ -83,31 +79,17 @@ class TestRobotsTxtParser:
         assert _is_path_allowed(robots, "/public/page") is True
 
     def test_allow_overrides_disallow(self):
-        robots = (
-            "User-agent: *\n"
-            "Disallow: /private/\n"
-            "Allow: /private/public-page\n"
-        )
+        robots = "User-agent: *\nDisallow: /private/\nAllow: /private/public-page\n"
         assert _is_path_allowed(robots, "/private/public-page") is True
         assert _is_path_allowed(robots, "/private/secret") is False
 
     def test_specific_user_agent(self):
-        robots = (
-            "User-agent: Karna\n"
-            "Disallow: /no-karna/\n"
-            "\n"
-            "User-agent: *\n"
-            "Disallow: /no-bots/\n"
-        )
+        robots = "User-agent: Karna\nDisallow: /no-karna/\n\nUser-agent: *\nDisallow: /no-bots/\n"
         assert _is_path_allowed(robots, "/no-karna/page", "Karna/0.1.0") is False
         assert _is_path_allowed(robots, "/no-bots/page", "Karna/0.1.0") is False
 
     def test_comments_ignored(self):
-        robots = (
-            "# This is a comment\n"
-            "User-agent: * # all bots\n"
-            "Disallow: /admin/ # admin area\n"
-        )
+        robots = "# This is a comment\nUser-agent: * # all bots\nDisallow: /admin/ # admin area\n"
         assert _is_path_allowed(robots, "/admin/panel") is False
         assert _is_path_allowed(robots, "/public") is True
 
@@ -240,6 +222,7 @@ class TestWebToolsRegistry:
 def _has_network() -> bool:
     """Check if we have network connectivity."""
     import socket
+
     try:
         socket.create_connection(("1.1.1.1", 53), timeout=3)
         return True
