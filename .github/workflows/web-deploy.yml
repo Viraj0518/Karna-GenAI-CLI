@@ -1,0 +1,61 @@
+name: web-deploy
+
+# Builds web/ as a Next.js static export and ships to Cloudflare Pages
+# (project: nellie-karna). Production on push to main, ephemeral preview
+# on PRs. Requires repo secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-deploy.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-deploy.yml"
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+concurrency:
+  group: web-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (static export)
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: nellie-karna
+          directory: web/out
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.head_ref || github.ref_name }}
