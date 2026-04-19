@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from karna.compaction.compactor import Compactor
 
 from rich.console import Console
 
@@ -110,8 +114,10 @@ async def _agent_loop(
     conversation: Conversation,
     tool_names: list[str],
     skill_manager: SkillManager | None = None,
+    compactor: "Compactor | None" = None,
 ) -> list[StreamEvent]:
     """Run a single turn of the agent loop — LIVE provider + tool execution."""
+    from karna.compaction.compactor import Compactor
 
     events: list[StreamEvent] = []
 
@@ -131,10 +137,10 @@ async def _agent_loop(
         # Build system prompt (with skills if available)
         system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager)
 
-        # Create a per-turn compactor using the active provider
-        from karna.compaction.compactor import Compactor
-
-        turn_compactor = Compactor(provider, threshold=0.80)
+        # Re-use the caller-supplied compactor so the circuit breaker
+        # persists across REPL turns.  Fall back to creating one if
+        # the caller didn't supply it (e.g. non-REPL callers).
+        turn_compactor = compactor or Compactor(provider, threshold=0.80)
 
         # Default context window (128k tokens)
         context_window = 128_000
@@ -162,6 +168,9 @@ async def _agent_loop(
                 )
             elif event.type == "tool_call_end":
                 tc = event.tool_call
+                # Emit TOOL_CALL_END so the renderer closes the live
+                # spinner before we send the result.
+                events.append(StreamEvent(kind=EventKind.TOOL_CALL_END))
                 events.append(
                     StreamEvent(
                         kind=EventKind.TOOL_RESULT,
@@ -262,6 +271,22 @@ async def run_repl(
                 skill_manager.skills.append(skill)
 
     print_banner(console, config, tool_names)
+
+    # Create a single Compactor that persists across REPL turns so the
+    # circuit breaker's consecutive_failures counter is not reset each turn.
+    from karna.compaction.compactor import Compactor
+
+    # Resolve provider once for the compactor — it will be re-resolved
+    # per-turn inside _agent_loop, but the Compactor only needs a
+    # provider for its summarisation calls.
+    _init_prov_name, _init_model = resolve_model(
+        f"{config.active_provider}:{config.active_model}"
+        if ":" not in (config.active_model or "")
+        else config.active_model
+    )
+    _init_provider = get_provider(_init_prov_name)
+    _init_provider.model = _init_model
+    repl_compactor = Compactor(_init_provider, threshold=0.80)
 
     # Build the display prompt from the model name
     model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
@@ -369,7 +394,13 @@ async def run_repl(
         renderer.show_spinner()
 
         try:
-            events = await _agent_loop(config, conversation, tool_names, skill_manager=skill_manager)
+            events = await _agent_loop(
+                config,
+                conversation,
+                tool_names,
+                skill_manager=skill_manager,
+                compactor=repl_compactor,
+            )
             for event in events:
                 renderer.handle(event)
 

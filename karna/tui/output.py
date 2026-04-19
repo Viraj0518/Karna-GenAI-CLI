@@ -331,10 +331,15 @@ class OutputRenderer:
             self._stop_live()
 
         self._text_buffer.append(delta)
-        # Flush to scrollback at sentence boundaries so we avoid flicker on
-        # Windows (Live redraws are expensive here) but still feel live.
+        # Buffer output and only flush on complete blocks to avoid flicker:
+        # - Double newline (paragraph break / blank line between blocks)
+        # - End of a fenced code block (closing ```)
+        # - Sentence boundary followed by whitespace
+        # Single newlines are NOT flushed — they cause mid-paragraph
+        # re-renders that flicker, especially on Windows where Live
+        # redraws are expensive.
         joined = "".join(self._text_buffer)
-        if _SENTENCE_RE.search(joined[-3:]) or joined.endswith("\n"):
+        if "\n\n" in joined[-3:] or joined.rstrip().endswith("```") or _SENTENCE_RE.search(joined[-3:]):
             self._flush_text()
 
     def _flush_text(self) -> None:
