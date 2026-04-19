@@ -12,11 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-import tempfile
 
 import pytest
 
-from karna.tools.bash import BashTool, _MAX_TIMEOUT
+from karna.tools.bash import BashTool
 from karna.tools.task_registry import (
     TaskStatus,
     TaskType,

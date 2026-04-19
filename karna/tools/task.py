@@ -12,11 +12,12 @@ attribution to the Anthropic Claude Code codebase.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Literal
 
-from karna.agents.subagent import SubAgentManager, spawn_subagent
+from karna.agents.subagent import SubAgentManager
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,23 @@ class TaskTool(BaseTool):
                 "minimum": 1,
                 "maximum": 100,
             },
+            "run_in_background": {
+                "type": "boolean",
+                "description": "Run the subagent in the background. Default True.",
+            },
+            "action": {
+                "type": "string",
+                "enum": ["spawn", "stop", "send_message"],
+                "description": "Action to perform. Default 'spawn'.",
+            },
+            "agent_id": {
+                "type": "string",
+                "description": "Agent ID for stop/send_message actions.",
+            },
+            "message": {
+                "type": "string",
+                "description": "Message to send (for send_message action).",
+            },
         },
         "required": ["description", "prompt"],
     }
@@ -145,13 +163,42 @@ class TaskTool(BaseTool):
         self._system_prompt = system_prompt
 
     async def execute(self, **kwargs: Any) -> str:
+        action: str = kwargs.get("action", "spawn")
+
+        # --- Non-spawn actions -------------------------------------------
+        if action == "stop":
+            agent_id = kwargs.get("agent_id")
+            if not agent_id:
+                return "[error] action 'stop' requires agent_id"
+            agent = _manager._resolve_agent(agent_id)
+            if agent is None:
+                return f"[error] No agent found with id or name {agent_id!r}"
+            if agent.status in ("completed", "failed"):
+                return f"[error] Agent {agent_id!r} already {agent.status}"
+            if agent._task is not None:
+                agent._task.cancel()
+            agent.status = "failed"
+            agent.error = "Stopped by user"
+            return f"Agent {agent_id!r} stopped."
+
+        if action == "send_message":
+            agent_id = kwargs.get("agent_id")
+            if not agent_id:
+                return "[error] action 'send_message' requires agent_id"
+            message = kwargs.get("message")
+            if not message:
+                return "[error] action 'send_message' requires message"
+            return await _manager.send_message(agent_id, message)
+
+        # --- Spawn action ------------------------------------------------
         description: str = kwargs["description"]
         prompt: str = kwargs["prompt"]
         subagent_type: str = kwargs.get("subagent_type", "general")
         tool_names: list[str] | None = kwargs.get("tools")
         isolation: Literal["none", "worktree"] = kwargs.get("isolation", "none")
-        model: str | None = kwargs.get("model")
+        _model: str | None = kwargs.get("model")  # noqa: F841 — reserved for model override
         max_iterations: int = int(kwargs.get("max_iterations", 20))
+        run_in_background: bool = kwargs.get("run_in_background", True)
 
         # --- Validation --------------------------------------------------
         if subagent_type not in _VALID_SUBAGENT_TYPES:
@@ -176,24 +223,42 @@ class TaskTool(BaseTool):
         )
 
         logger.info(
-            "TaskTool spawning subagent: %s (type=%s, tools=%d, isolation=%s)",
+            "TaskTool spawning subagent: %s (type=%s, tools=%d, isolation=%s, bg=%s)",
             description,
             subagent_type,
             len(selected_tools),
             isolation,
+            run_in_background,
         )
 
-        # --- Run the subagent -------------------------------------------
-        result = await spawn_subagent(
-            prompt,
-            parent_config=self._parent_config,
-            parent_provider=self._provider,
+        if not run_in_background:
+            # --- Foreground: use the legacy manager API -------------------
+            agent_name = description.replace(" ", "_")
+            agent = _manager.spawn(
+                name=agent_name,
+                provider=self._provider,
+                tools=selected_tools,
+                system_prompt=self._system_prompt or "You are a helpful assistant.",
+                isolation=isolation,
+                max_iterations=max_iterations,
+            )
+            result = await agent.run(prompt)
+            return result
+
+        # --- Background: spawn and return immediately -------------------
+        agent_name = description.replace(" ", "_")
+        agent = _manager.spawn(
+            name=agent_name,
+            provider=self._provider,
             tools=selected_tools,
-            model=model,
-            max_iterations=max_iterations,
+            system_prompt=self._system_prompt or "You are a helpful assistant.",
             isolation=isolation,
-            worktree_base=self._worktree_base,
-            system_prompt=self._system_prompt,
+            max_iterations=max_iterations,
         )
+        await agent.run_in_background(prompt)
 
-        return result
+        return json.dumps({
+            "status": "started",
+            "agent_id": agent.agent_id,
+            "agent_name": agent_name,
+        })

@@ -117,6 +117,22 @@ def _git_worktree_remove(parent_cwd: Path, worktree_path: Path) -> None:
             logger.error("Failed to rmtree worktree dir %s: %s", worktree_path, exc)
 
 
+def _has_worktree_changes(path: Path) -> bool:
+    """Return True if *path* is a git repo with uncommitted changes (staged, unstaged, or untracked)."""
+    if not _is_git_repo(path):
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "status", "--porcelain"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
+    except (FileNotFoundError, OSError):
+        return False
+
+
 @asynccontextmanager
 async def _isolation_context(
     isolation: Literal["none", "worktree"],
@@ -287,22 +303,56 @@ class SubAgent:
         tools: list[BaseTool],
         system_prompt: str,
         isolation: str = "none",
+        max_iterations: int = 25,
     ) -> None:
         self.name = name
         self.provider = provider
         self.tools = tools
         self.system_prompt = system_prompt
         self.isolation = isolation
+        self.max_iterations = max_iterations
 
         self.conversation = Conversation()
         self.status: Literal["pending", "running", "completed", "failed"] = "pending"
         self.result: str = ""
         self.error: str = ""
         self._task: asyncio.Task[str] | None = None
+        self.agent_id: str = uuid4().hex[:12]
+        self._completion_callbacks: list = []
+        self._queued_messages: list[str] = []
+        self._parent_cwd: str = os.getcwd()
 
         # Worktree state (populated when isolation="worktree")
         self.worktree_path: str | None = None
         self.worktree_branch: str | None = None
+        self.worktree_preserved: bool = False
+
+    async def continue_with(self, message: str) -> str:
+        """Send a follow-up message to this agent.
+
+        If the agent is running, the message is queued and will be processed
+        after the current turn. Returns a "[queued]" acknowledgement.
+
+        If the agent is completed or failed, re-runs with the new message.
+        """
+        if self.status == "running":
+            self._queued_messages.append(message)
+            return f"[queued] Message queued for agent {self.name!r}"
+        # Re-run with new message
+        self.conversation.messages.append(Message(role="user", content=message))
+        return await self.run(message)
+
+    def on_complete(self, callback) -> None:
+        """Register a callback to fire when the agent completes (success or failure)."""
+        self._completion_callbacks.append(callback)
+
+    def _fire_completion_callbacks(self) -> None:
+        """Invoke all registered completion callbacks."""
+        for cb in self._completion_callbacks:
+            try:
+                cb(self)
+            except Exception:  # noqa: BLE001
+                logger.warning("Completion callback failed for %s", self.name, exc_info=True)
 
     # ------------------------------------------------------------------ #
     #  Worktree lifecycle
@@ -341,8 +391,13 @@ class SubAgent:
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(f"Failed to create worktree for subagent {self.name}: {exc.stderr}") from exc
 
-    def _cleanup_worktree(self) -> None:
+    def _cleanup_worktree(self, force: bool = False) -> None:
         """Remove the git worktree and its branch.
+
+        If the agent completed successfully and there are uncommitted
+        changes, the worktree is preserved (``worktree_preserved`` is
+        set to ``True``).  On failure or when *force* is ``True``, the
+        worktree is always removed.
 
         Failures are logged explicitly — never silently ignored.  Tries
         ``git worktree remove`` first, then falls back to
@@ -351,6 +406,16 @@ class SubAgent:
         if not self.worktree_path:
             return
 
+        # Preserve worktree if agent succeeded and there are changes
+        if not force and self.status == "completed" and _has_worktree_changes(Path(self.worktree_path)):
+            self.worktree_preserved = True
+            logger.info(
+                "Preserving worktree at %s (has uncommitted changes)",
+                self.worktree_path,
+            )
+            return
+
+        self.worktree_preserved = False
         removed_by_git = False
         try:
             result = subprocess.run(
@@ -428,8 +493,16 @@ class SubAgent:
         # Set up worktree isolation if requested
         if self.isolation == "worktree":
             try:
-                self._setup_worktree()
+                wt_path = self._setup_worktree()
+                # Record the parent cwd for restoration; use _parent_cwd
+                # (set at __init__ time) to avoid saving another agent's
+                # worktree as the "original" when tasks run concurrently.
+                os.chdir(wt_path)
             except RuntimeError as exc:
+                try:
+                    os.chdir(self._parent_cwd)
+                except OSError:
+                    pass
                 self.status = "failed"
                 self.error = str(exc)
                 return f"[error] {exc}"
@@ -443,10 +516,26 @@ class SubAgent:
                 self.conversation,
                 self.tools,
                 system_prompt=self.system_prompt,
-                max_iterations=25,
+                max_iterations=self.max_iterations,
             )
             self.result = final_message.content
             self.status = "completed"
+
+            # Process any queued messages that arrived while running
+            while self._queued_messages:
+                queued = self._queued_messages.pop(0)
+                self.status = "running"
+                self.conversation.messages.append(Message(role="user", content=queued))
+                final_message = await agent_loop_sync(
+                    self.provider,
+                    self.conversation,
+                    self.tools,
+                    system_prompt=self.system_prompt,
+                    max_iterations=25,
+                )
+                self.result = final_message.content
+                self.status = "completed"
+
             return self.result
         except Exception as exc:
             self.status = "failed"
@@ -455,7 +544,12 @@ class SubAgent:
             return f"[error] Subagent {self.name} failed: {exc}"
         finally:
             if self.isolation == "worktree":
-                self._cleanup_worktree()
+                try:
+                    os.chdir(self._parent_cwd)
+                except OSError:
+                    pass
+                self._cleanup_worktree(force=(self.status == "failed"))
+            self._fire_completion_callbacks()
 
     async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""
@@ -468,14 +562,18 @@ class SubAgent:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise agent state for status reporting."""
-        return {
+        d: dict[str, Any] = {
             "name": self.name,
+            "agent_id": self.agent_id,
             "status": self.status,
             "isolation": self.isolation,
             "worktree_path": self.worktree_path,
+            "worktree_branch": self.worktree_branch,
+            "worktree_preserved": self.worktree_preserved,
             "result_preview": self.result[:200] if self.result else None,
             "error": self.error or None,
         }
+        return d
 
 
 class SubAgentManager:
@@ -487,6 +585,7 @@ class SubAgentManager:
 
     def __init__(self) -> None:
         self.agents: dict[str, SubAgent] = {}
+        self._notifications: list[dict[str, Any]] = []
 
     def spawn(
         self,
@@ -495,6 +594,7 @@ class SubAgentManager:
         tools: list[BaseTool],
         system_prompt: str,
         isolation: str = "none",
+        max_iterations: int = 25,
     ) -> SubAgent:
         """Create and register a new SubAgent.
 
@@ -517,13 +617,107 @@ class SubAgentManager:
             tools=tools,
             system_prompt=system_prompt,
             isolation=isolation,
+            max_iterations=max_iterations,
         )
+        agent.on_complete(self._on_agent_complete)
         self.agents[name] = agent
         return agent
+
+    def _on_agent_complete(self, agent: SubAgent) -> None:
+        """Record a notification when a managed agent completes."""
+        notification: dict[str, Any] = {
+            "agent_name": agent.name,
+            "agent_id": agent.agent_id,
+            "status": agent.status,
+            "summary": agent.result if agent.status == "completed" else agent.error,
+        }
+        if agent.worktree_path:
+            notification["worktree_path"] = agent.worktree_path
+        if agent.worktree_branch:
+            notification["worktree_branch"] = agent.worktree_branch
+        self._notifications.append(notification)
+
+    def drain_notifications(self) -> list[dict[str, Any]]:
+        """Return and clear all pending completion notifications."""
+        notifications = list(self._notifications)
+        self._notifications.clear()
+        return notifications
+
+    @staticmethod
+    def format_notification(notification: dict[str, Any]) -> str:
+        """Format a notification dict as an XML-like string."""
+        agent_id = notification.get("agent_id", "unknown")
+        agent_name = notification.get("agent_name", "unknown")
+        status = notification.get("status", "unknown")
+        summary_text = notification.get("summary", "")
+
+        parts = [
+            "<task-notification>",
+            f"<task-id>{agent_id}</task-id>",
+            f"<summary>{agent_name} {status}</summary>",
+            f"<event>{summary_text}</event>",
+        ]
+
+        wt_path = notification.get("worktree_path")
+        wt_branch = notification.get("worktree_branch")
+        if wt_path or wt_branch:
+            attrs = []
+            if wt_path:
+                attrs.append(f'path="{wt_path}"')
+            if wt_branch:
+                attrs.append(f'branch="{wt_branch}"')
+            parts.append(f"<worktree {' '.join(attrs)} />")
+
+        parts.append("</task-notification>")
+        return "\n".join(parts)
 
     def get(self, name: str) -> SubAgent | None:
         """Look up a subagent by name."""
         return self.agents.get(name)
+
+    def get_by_id(self, agent_id: str) -> SubAgent | None:
+        """Look up a subagent by its unique ID."""
+        for agent in self.agents.values():
+            if agent.agent_id == agent_id:
+                return agent
+        return None
+
+    def _resolve_agent(self, name_or_id: str) -> SubAgent | None:
+        """Resolve an agent by name or ID."""
+        agent = self.get(name_or_id)
+        if agent is not None:
+            return agent
+        return self.get_by_id(name_or_id)
+
+    async def send_message(self, name_or_id: str, message: str) -> str:
+        """Send a follow-up message to an agent by name or ID.
+
+        If the agent is completed or failed, re-runs it with the new
+        message.  If running, queues the message.  Returns ``[error]``
+        if the agent doesn't exist.
+        """
+        agent = self._resolve_agent(name_or_id)
+        if agent is None:
+            return f"[error] No agent found with name or id {name_or_id!r}"
+        return await agent.continue_with(message)
+
+    def get_result(self, name_or_id: str) -> dict[str, Any] | None:
+        """Return the result dict for an agent, or ``None``."""
+        agent = self._resolve_agent(name_or_id)
+        if agent is None:
+            return None
+        d: dict[str, Any] = {
+            "name": agent.name,
+            "agent_id": agent.agent_id,
+            "status": agent.status,
+            "result": agent.result,
+            "error": agent.error or None,
+        }
+        if agent.worktree_path:
+            d["worktree_path"] = agent.worktree_path
+        if agent.worktree_branch:
+            d["worktree_branch"] = agent.worktree_branch
+        return d
 
     def list_active(self) -> list[SubAgent]:
         """Return all agents that are pending or running."""

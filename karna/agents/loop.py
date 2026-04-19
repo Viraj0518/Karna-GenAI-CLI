@@ -36,6 +36,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.agents.safety import pre_tool_check
+from karna.compaction.compactor import Compactor
 from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResult
 from karna.permissions.manager import PermissionLevel, PermissionManager
 from karna.providers.base import BaseProvider
@@ -434,6 +435,7 @@ async def agent_loop(
     provider_max_retries: int = 3,
     thinking: bool = False,
     thinking_budget: int | None = None,
+    compactor: Compactor | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Run the tool-use agent loop (streaming variant).
 
@@ -468,16 +470,28 @@ async def agent_loop(
         _notifications = _task_registry.get_pending_notifications()
         if _notifications:
             _combined = "\n\n".join(_notifications)
-            conversation.messages.append(
-                Message(role="user", content=_combined)
-            )
+            conversation.messages.append(Message(role="user", content=_combined))
             yield StreamEvent(
                 type="text",
                 text=f"[{len(_notifications)} task notification(s) injected]\n",
             )
 
-        # ---- Context overflow check --------------------------------
-        if context_window is not None:
+        # ---- Auto-compaction / context overflow ----------------------
+        _compaction_ran = False
+        if compactor is not None and context_window is not None:
+            if await compactor.should_compact(conversation.messages, context_window):
+                try:
+                    await compactor.compact(conversation, context_window)
+                    _compaction_ran = True
+                    yield StreamEvent(
+                        type="text",
+                        text="[Auto-compaction applied]\n",
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("Auto-compaction failed", exc_info=True)
+
+        # Fallback hard-truncation when compaction didn't run (or isn't configured)
+        if not _compaction_ran and context_window is not None:
             estimated = _estimate_message_tokens(conversation.messages)
             if estimated > int(context_window * 0.95):
                 target = int(context_window * 0.8)
@@ -654,6 +668,7 @@ async def agent_loop_sync(
     context_window: int | None = None,
     thinking: bool = False,
     thinking_budget: int | None = None,
+    compactor: Compactor | None = None,
 ) -> Message:
     """Run the tool-use agent loop (non-streaming variant).
 
@@ -677,12 +692,19 @@ async def agent_loop_sync(
         _notifications = _task_registry.get_pending_notifications()
         if _notifications:
             _combined = "\n\n".join(_notifications)
-            conversation.messages.append(
-                Message(role="user", content=_combined)
-            )
+            conversation.messages.append(Message(role="user", content=_combined))
 
-        # ---- Context overflow check --------------------------------
-        if context_window is not None:
+        # ---- Auto-compaction / context overflow ----------------------
+        _compaction_ran = False
+        if compactor is not None and context_window is not None:
+            if await compactor.should_compact(conversation.messages, context_window):
+                try:
+                    await compactor.compact(conversation, context_window)
+                    _compaction_ran = True
+                except Exception:  # noqa: BLE001
+                    logger.warning("Auto-compaction failed", exc_info=True)
+
+        if not _compaction_ran and context_window is not None:
             estimated = _estimate_message_tokens(conversation.messages)
             if estimated > int(context_window * 0.95):
                 target = int(context_window * 0.8)

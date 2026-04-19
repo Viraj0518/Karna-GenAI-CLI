@@ -215,7 +215,12 @@ class BashTool(BaseTool):
 
         async_task = asyncio.create_task(
             self._run_background_process(
-                command, task_id, timeout, description, output_file, warning,
+                command,
+                task_id,
+                timeout,
+                description,
+                output_file,
+                warning,
             ),
             name=f"bg-bash-{task_id}",
         )
@@ -230,7 +235,9 @@ class BashTool(BaseTool):
 
         logger.info(
             "Background bash %s started: %s (timeout=%ds)",
-            task_id, description, timeout,
+            task_id,
+            description,
+            timeout,
         )
 
         return (

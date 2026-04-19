@@ -118,6 +118,7 @@ async def test_task_tool_simple_prompt_returns_final_message(tmp_path, monkeypat
         description="compute",
         prompt="what is 6*7?",
         isolation="none",
+        run_in_background=False,
     )
 
     assert result == "the answer is 42"
@@ -147,6 +148,7 @@ async def test_task_tool_respects_max_iterations(tmp_path, monkeypatch):
         subagent_type="code",  # code includes all tools, ensures echo is exposed
         tools=["echo"],  # explicit override so echo flows through
         max_iterations=3,
+        run_in_background=False,
     )
 
     # The loop should have capped executions; echo called at most max_iterations.
@@ -176,6 +178,7 @@ async def test_task_tool_worktree_isolation_creates_and_cleans(tmp_path, monkeyp
         description="work in worktree",
         prompt="do the thing",
         isolation="worktree",
+        run_in_background=False,
     )
 
     assert result == "done in wt"
@@ -197,6 +200,7 @@ async def test_task_tool_invalid_subagent_type_raises(tmp_path, monkeypatch):
             description="bad",
             prompt="x",
             subagent_type="nonexistent_type",
+            run_in_background=False,
         )
 
 
@@ -205,7 +209,7 @@ async def test_task_tool_without_provider_returns_error(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     tool = TaskTool()  # no provider
 
-    result = await tool.execute(description="x", prompt="x")
+    result = await tool.execute(description="x", prompt="x", run_in_background=False)
     assert result.startswith("[error]")
     assert "provider" in result.lower()
 
@@ -240,7 +244,7 @@ async def test_task_tool_default_filter_excludes_dangerous_tools(tmp_path, monke
         tools=[_EchoTool(), _FakeBash()],
     )
 
-    await tool.execute(description="d", prompt="p")  # defaults to subagent_type=general
+    await tool.execute(description="d", prompt="p", run_in_background=False)  # defaults to subagent_type=general
 
     tool_names = [t.get("function", {}).get("name") for t in captured["tools"]]
     assert "echo" in tool_names

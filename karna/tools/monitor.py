@@ -65,8 +65,7 @@ class MonitorTool(BaseTool):
                 "type": "boolean",
                 "default": False,
                 "description": (
-                    "When true, the monitor has no timeout and survives "
-                    "across turns until explicitly cancelled."
+                    "When true, the monitor has no timeout and survives across turns until explicitly cancelled."
                 ),
             },
         },

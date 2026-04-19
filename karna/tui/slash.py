@@ -39,6 +39,7 @@ from rich.text import Text
 
 from karna.config import KarnaConfig, save_config
 from karna.models import Conversation
+from karna.providers import get_provider, resolve_model
 from karna.tui.design_tokens import SEMANTIC
 
 if TYPE_CHECKING:
@@ -149,7 +150,7 @@ def _build_commands() -> dict[str, SlashCommand]:
         SlashCommand("system", "/system <prompt>", "Set the system prompt", category="context", icon=ic_system),
         SlashCommand("cost", "/cost", "Show total token usage and cost", category="context", icon=ic_cost),
         SlashCommand(
-            "compact", "/compact", "Trigger conversation compaction (stub)", category="context", icon=ic_compact
+            "compact", "/compact", "Trigger conversation compaction", category="context", icon=ic_compact
         ),
         SlashCommand("tools", "/tools", "List available tools", category="context", icon=ic_tools),
         # ── Advanced ───────────────────────────────────────────────────
@@ -352,8 +353,51 @@ def _cmd_exit(**_kw) -> None:
     raise SystemExit(0)
 
 
-def _cmd_compact(console: Console, **_kw) -> None:
-    console.print("[yellow]Compaction not yet implemented - coming in Phase 4.[/yellow]")
+def _cmd_compact(console: Console, conversation: Conversation, config: KarnaConfig, **_kw) -> None:
+    """Run conversation compaction via /compact slash command."""
+    import asyncio
+
+    from karna.compaction.compactor import CompactionError, auto_compact
+
+    messages = conversation.messages
+    # Need at least head(2) + tail(8) + some middle to compact
+    _MIN_MESSAGES = 6
+    if len(messages) < _MIN_MESSAGES:
+        console.print("[yellow]Not enough messages to compact.[/yellow]")
+        return
+
+    model_str = conversation.model or config.model or "anthropic/claude-sonnet-4-20250514"
+    provider_name, model_name = resolve_model(model_str)
+    provider = get_provider(provider_name)
+    before = len(messages)
+
+    # Use budget_tokens=1 to force compaction (user explicitly requested it)
+    coro = auto_compact(
+        conversation,
+        provider,
+        model_name,
+        budget_tokens=1,
+    )
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    try:
+        if loop and loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                pool.submit(asyncio.run, coro).result()
+        else:
+            asyncio.run(coro)
+    except CompactionError as exc:
+        console.print(f"[red]Compaction failed: {exc}[/red]")
+        return
+
+    after = len(conversation.messages)
+    console.print(f"[green]Compacted {before} messages to {after} messages.[/green]")
 
 
 def _cmd_tools(console: Console, tool_names: list[str], **_kw) -> None:

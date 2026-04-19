@@ -190,10 +190,7 @@ class TaskRegistry:
 
     def clear_completed(self) -> int:
         """Remove all completed/failed/cancelled tasks. Returns count removed."""
-        to_remove = [
-            tid for tid, t in self._tasks.items()
-            if t.status != TaskStatus.RUNNING
-        ]
+        to_remove = [tid for tid, t in self._tasks.items() if t.status != TaskStatus.RUNNING]
         for tid in to_remove:
             del self._tasks[tid]
         return len(to_remove)
@@ -217,7 +214,7 @@ def format_task_notification(
     return (
         f"<task-notification>\n"
         f"<task-id>{task_id}</task-id>\n"
-        f"<summary>Monitor event: \"{description}\"</summary>\n"
+        f'<summary>Monitor event: "{description}"</summary>\n'
         f"<event>{event_text}</event>\n"
         f"</task-notification>"
     )
