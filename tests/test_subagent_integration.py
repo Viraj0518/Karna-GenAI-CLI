@@ -31,7 +31,6 @@ from karna.providers.base import BaseProvider
 from karna.tools.base import BaseTool
 from karna.tools.task import TaskTool, get_subagent_manager
 
-
 # --------------------------------------------------------------------------- #
 #  Mock provider
 # --------------------------------------------------------------------------- #

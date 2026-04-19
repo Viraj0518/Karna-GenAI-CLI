@@ -269,13 +269,14 @@ class TaskTool(BaseTool):
 
         await agent.run_in_background(prompt)
 
-        return json.dumps({
-            "status": "started",
-            "agent_id": agent.agent_id,
-            "agent_name": agent.name,
-            "message": f"Subagent '{agent.name}' started in background. "
-                       f"You will be notified when it completes.",
-        })
+        return json.dumps(
+            {
+                "status": "started",
+                "agent_id": agent.agent_id,
+                "agent_name": agent.name,
+                "message": f"Subagent '{agent.name}' started in background. You will be notified when it completes.",
+            }
+        )
 
     async def _handle_send_message(self, **kwargs: Any) -> str:
         """Send a message to an existing subagent (E4)."""

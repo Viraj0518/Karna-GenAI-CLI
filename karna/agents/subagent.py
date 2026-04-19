@@ -551,9 +551,7 @@ class SubAgent:
             # E4: Process any queued messages (SendMessage while running)
             while self._message_queue:
                 queued_msg = self._message_queue.popleft()
-                self.conversation.messages.append(
-                    Message(role="user", content=queued_msg)
-                )
+                self.conversation.messages.append(Message(role="user", content=queued_msg))
                 final_message = await agent_loop_sync(
                     self.provider,
                     self.conversation,
@@ -605,9 +603,7 @@ class SubAgent:
         self.status = "running"
         self.error = ""
 
-        self.conversation.messages.append(
-            Message(role="user", content=message)
-        )
+        self.conversation.messages.append(Message(role="user", content=message))
 
         try:
             final_message = await agent_loop_sync(
@@ -804,8 +800,7 @@ class SubAgentManager:
         ]
         if notification.get("worktree_path"):
             parts.append(
-                f"<worktree path=\"{notification['worktree_path']}\" "
-                f"branch=\"{notification.get('worktree_branch', '')}\"/>"
+                f'<worktree path="{notification["worktree_path"]}" branch="{notification.get("worktree_branch", "")}"/>'
             )
         parts.append("</task-notification>")
         return "\n".join(parts)
