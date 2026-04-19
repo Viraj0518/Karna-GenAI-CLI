@@ -174,6 +174,14 @@ def _build_commands() -> dict[str, SlashCommand]:
             category="advanced",
             icon=ic_running,
         ),
+        # ── Context (continued) ────────────────────────────────────────
+        SlashCommand(
+            "memory",
+            "/memory [search|show|forget] [args]",
+            "View, search, show, or forget memories",
+            category="context",
+            icon=ic_history,
+        ),
         # ── Utility ────────────────────────────────────────────────────
         SlashCommand("copy", "/copy", "Copy last assistant response", category="utility", icon=ic_copy),
         SlashCommand("paste", "/paste", "Read clipboard and send as message", category="utility", icon=ic_paste),
@@ -540,6 +548,127 @@ def _cmd_do(console: Console, conversation: Conversation, **_kw) -> str | None:
     return f"__DO__{plan}"
 
 
+def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-untyped-def]
+    """``/memory`` — list, search, show, or forget memories.
+
+    Sub-commands:
+        /memory            — list all memories in a Rich table
+        /memory search <q> — full-text search across memories
+        /memory show <n>   — display full content of a memory by name
+        /memory forget <n> — delete a memory by name
+    """
+    from karna.memory import MemoryManager
+    from karna.memory.manager import _memory_age_text
+
+    mm = MemoryManager()
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+
+    parts = args.strip().split(None, 1) if args.strip() else []
+    subcmd = parts[0].lower() if parts else ""
+    subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "search":
+        if not subargs:
+            console.print("[red]Usage: /memory search <query>[/red]")
+            return
+        results = mm.search(subargs)
+        if not results:
+            console.print(f"[bright_black]No memories matching: {subargs}[/bright_black]")
+            return
+        table = Table(
+            show_header=True,
+            header_style=f"bold {cyan}",
+            border_style=border,
+            expand=False,
+            title=f"Memory search: \"{subargs}\"",
+        )
+        table.add_column("Name", style="white")
+        table.add_column("Type", style="cyan")
+        table.add_column("Description", style="bright_black", max_width=50)
+        table.add_column("Age", style="bright_black")
+        for entry in results[:20]:
+            age = _memory_age_text(entry.updated_at.timestamp())
+            table.add_row(entry.name, entry.type, entry.description[:50], age)
+        console.print(table)
+
+    elif subcmd == "show":
+        if not subargs:
+            console.print("[red]Usage: /memory show <name>[/red]")
+            return
+        entries = mm.load_all()
+        found = None
+        for entry in entries:
+            if entry.name.lower() == subargs.lower() or entry.file_path.stem == subargs:
+                found = entry
+                break
+        if not found:
+            # Try partial match
+            for entry in entries:
+                if subargs.lower() in entry.name.lower():
+                    found = entry
+                    break
+        if not found:
+            console.print(f"[red]Memory not found: {subargs}[/red]")
+            return
+        age = _memory_age_text(found.updated_at.timestamp())
+        console.print(
+            Panel(
+                f"[bright_black]Type:[/] {found.type}\n"
+                f"[bright_black]Description:[/] {found.description}\n"
+                f"[bright_black]Age:[/] {age}\n"
+                f"[bright_black]File:[/] {found.file_path}\n\n"
+                f"{found.content}",
+                title=f"[bold {cyan}]{found.name}[/]",
+                border_style=border,
+                expand=False,
+            )
+        )
+
+    elif subcmd == "forget":
+        if not subargs:
+            console.print("[red]Usage: /memory forget <name>[/red]")
+            return
+        entries = mm.load_all()
+        found = None
+        for entry in entries:
+            if entry.name.lower() == subargs.lower() or entry.file_path.stem == subargs:
+                found = entry
+                break
+        if not found:
+            for entry in entries:
+                if subargs.lower() in entry.name.lower():
+                    found = entry
+                    break
+        if not found:
+            console.print(f"[red]Memory not found: {subargs}[/red]")
+            return
+        mm.delete_memory(found.file_path)
+        console.print(f"[green]Forgotten: {found.name}[/green]")
+
+    else:
+        # Default: list all memories
+        entries = mm.load_all()
+        if not entries:
+            console.print("[bright_black]No memories stored.[/bright_black]")
+            return
+        table = Table(
+            show_header=True,
+            header_style=f"bold {cyan}",
+            border_style=border,
+            expand=False,
+            title="Memories",
+        )
+        table.add_column("Name", style="white")
+        table.add_column("Type", style="cyan")
+        table.add_column("Description", style="bright_black", max_width=50)
+        table.add_column("Age", style="bright_black")
+        for entry in entries:
+            age = _memory_age_text(entry.updated_at.timestamp())
+            table.add_row(entry.name, entry.type, entry.description[:50], age)
+        console.print(table)
+
+
 def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = None, **_kw) -> None:
     if session_db is None:
         console.print("[bright_black]Session database not available.[/bright_black]")
@@ -591,6 +720,7 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "tools": _cmd_tools,
     "system": _cmd_system,
     "sessions": _cmd_sessions,
+    "memory": _cmd_memory,
     "resume": _cmd_resume,
     "paste": _cmd_paste,
     "copy": _cmd_copy,
