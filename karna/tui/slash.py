@@ -185,8 +185,8 @@ def _build_commands() -> dict[str, SlashCommand]:
         # ── Context (continued) ────────────────────────────────────────
         SlashCommand(
             "memory",
-            "/memory [search|show|forget] [args]",
-            "View, search, show, or forget memories",
+            "/memory [search|show|forget|types] [args]",
+            "View, search, show, forget, or list memory types",
             category="context",
             icon=ic_history,
         ),
@@ -707,6 +707,26 @@ def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-
     parts = args.strip().split(None, 1) if args.strip() else []
     subcmd = parts[0].lower() if parts else ""
     subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "types":
+        from karna.config import _BUILTIN_MEMORY_TYPES, load_config
+
+        cfg = load_config()
+        mem_cfg = cfg.memory
+        table = Table(
+            show_header=True,
+            header_style=f"bold {cyan}",
+            border_style=border,
+            expand=False,
+            title="Memory Types",
+        )
+        table.add_column("Type", style="white")
+        table.add_column("Origin", style="bright_black")
+        for t in mem_cfg.types:
+            origin = "built-in" if t in _BUILTIN_MEMORY_TYPES else "custom"
+            table.add_row(t, origin)
+        console.print(table)
+        return
 
     if subcmd == "search":
         if not subargs:

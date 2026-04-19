@@ -22,9 +22,13 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from karna.memory.types import MEMORY_TYPES, MemoryEntry, parse_memory_type
 from karna.security.guards import scrub_secrets
+
+if TYPE_CHECKING:
+    from karna.config import MemoryConfig
 
 # --------------------------------------------------------------------------- #
 #  Frontmatter parser (lightweight, no PyYAML dependency)
@@ -137,10 +141,29 @@ class MemoryManager:
     ----------
     memory_dir : Path, optional
         Root directory for memory files.  Defaults to ``~/.karna/memory``.
+    memory_config : MemoryConfig, optional
+        Memory configuration from ``config.toml``.  When provided, *memory_dir*
+        and *index_file* are derived from the config and the explicit
+        ``memory_dir`` parameter is ignored.
     """
 
-    def __init__(self, memory_dir: Path | None = None) -> None:
-        self.memory_dir = memory_dir or Path.home() / ".karna" / "memory"
+    # Class-level defaults so instances survive __init__ patching in tests.
+    _index_name: str = _INDEX_NAME
+    _allowed_types: list[str] = list(MEMORY_TYPES)
+
+    def __init__(
+        self,
+        memory_dir: Path | None = None,
+        memory_config: MemoryConfig | None = None,
+    ) -> None:
+        if memory_config is not None:
+            self.memory_dir = Path(memory_config.directory).expanduser()
+            self._index_name = memory_config.index_file
+            self._allowed_types = list(memory_config.types)
+        else:
+            self.memory_dir = memory_dir or Path.home() / ".karna" / "memory"
+            self._index_name = _INDEX_NAME
+            self._allowed_types = list(MEMORY_TYPES)
 
     def _ensure_dir(self) -> None:
         """Create the memory directory if it doesn't exist."""
@@ -148,7 +171,7 @@ class MemoryManager:
 
     @property
     def _index_path(self) -> Path:
-        return self.memory_dir / _INDEX_NAME
+        return self.memory_dir / self._index_name
 
     # ------------------------------------------------------------------ #
     #  Index
@@ -198,7 +221,7 @@ class MemoryManager:
             return []
 
         entries: list[MemoryEntry] = []
-        md_files = [f for f in self.memory_dir.rglob("*.md") if f.name != _INDEX_NAME]
+        md_files = [f for f in self.memory_dir.rglob("*.md") if f.name != self._index_name]
 
         for fp in md_files:
             try:
@@ -241,8 +264,8 @@ class MemoryManager:
 
         Returns the path of the new memory file.
         """
-        if type not in MEMORY_TYPES:
-            raise ValueError(f"Invalid memory type: {type!r}. Must be one of {MEMORY_TYPES}")
+        if type not in self._allowed_types:
+            raise ValueError(f"Invalid memory type: {type!r}. Must be one of {self._allowed_types}")
 
         self._ensure_dir()
 
