@@ -53,15 +53,9 @@ class AzureOpenAIProvider(BaseProvider):
 
         cred = self._load_credential()
         self._api_key = cred.get("api_key") or os.environ.get("AZURE_OPENAI_API_KEY")
-        self.endpoint = (
-            cred.get("endpoint") or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-        ).rstrip("/")
-        self.api_version = cred.get("api_version") or os.environ.get(
-            "AZURE_OPENAI_API_VERSION", DEFAULT_API_VERSION
-        )
-        self.deployment = cred.get("deployment") or os.environ.get(
-            "AZURE_OPENAI_DEPLOYMENT", model
-        )
+        self.endpoint = (cred.get("endpoint") or os.environ.get("AZURE_OPENAI_ENDPOINT", "")).rstrip("/")
+        self.api_version = cred.get("api_version") or os.environ.get("AZURE_OPENAI_API_VERSION", DEFAULT_API_VERSION)
+        self.deployment = cred.get("deployment") or os.environ.get("AZURE_OPENAI_DEPLOYMENT", model)
 
     # ------------------------------------------------------------------ #
     #  URL and Headers
@@ -73,10 +67,7 @@ class AzureOpenAIProvider(BaseProvider):
                 "No Azure endpoint configured. Set $AZURE_OPENAI_ENDPOINT or "
                 "add 'endpoint' to ~/.karna/credentials/azure.token.json"
             )
-        return (
-            f"{self.endpoint}/openai/deployments/{self.deployment}"
-            f"/chat/completions?api-version={self.api_version}"
-        )
+        return f"{self.endpoint}/openai/deployments/{self.deployment}/chat/completions?api-version={self.api_version}"
 
     def _headers(self) -> dict[str, str]:
         key = self._require_api_key()
@@ -114,11 +105,13 @@ class AzureOpenAIProvider(BaseProvider):
                 ]
             if m.tool_results:
                 for tr in m.tool_results:
-                    result.append({
-                        "role": "tool",
-                        "tool_call_id": tr.tool_call_id,
-                        "content": tr.content,
-                    })
+                    result.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tr.tool_call_id,
+                            "content": tr.content,
+                        }
+                    )
                 continue
             result.append(msg)
         return result

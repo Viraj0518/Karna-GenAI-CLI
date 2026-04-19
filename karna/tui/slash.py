@@ -8,13 +8,11 @@ sent to the LLM.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-
-from typing import TYPE_CHECKING
 
 from karna.config import KarnaConfig, save_config
 from karna.models import Conversation
@@ -26,6 +24,7 @@ if TYPE_CHECKING:
 # --------------------------------------------------------------------------- #
 #  Session-level cost tracking (populated by output.py)
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class SessionCost:
@@ -44,6 +43,7 @@ class SessionCost:
 # --------------------------------------------------------------------------- #
 #  Command definitions
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class SlashCommand:
@@ -82,6 +82,7 @@ COMMANDS = _build_commands()
 # --------------------------------------------------------------------------- #
 #  Handler implementations
 # --------------------------------------------------------------------------- #
+
 
 def _cmd_help(console: Console, **_kw) -> None:  # type: ignore[no-untyped-def]
     table = Table(show_header=True, header_style="bold #87CEEB", border_style="#3C73BD", expand=False)
@@ -275,6 +276,7 @@ def _cmd_sessions(console: Console, session_db: "SessionDB | None" = None, **_kw
 def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
     """Read clipboard and return content to be injected as user message."""
     import asyncio
+
     from karna.tools.clipboard import ClipboardTool
 
     tool = ClipboardTool()
@@ -282,7 +284,6 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # We're in a sync context called from an async REPL — use run_coroutine_threadsafe
-            import concurrent.futures
             future = asyncio.run_coroutine_threadsafe(tool.execute(action="read"), loop)
             result = future.result(timeout=10)
         else:
@@ -309,6 +310,7 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
 def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     """Copy the last assistant response to clipboard."""
     import asyncio
+
     from karna.tools.clipboard import ClipboardTool
 
     # Find the last assistant message
@@ -326,10 +328,7 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            import concurrent.futures
-            future = asyncio.run_coroutine_threadsafe(
-                tool.execute(action="write", content=last_assistant), loop
-            )
+            future = asyncio.run_coroutine_threadsafe(tool.execute(action="write", content=last_assistant), loop)
             result = future.result(timeout=10)
         else:
             result = asyncio.run(tool.execute(action="write", content=last_assistant))

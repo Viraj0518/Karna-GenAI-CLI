@@ -69,7 +69,7 @@ def load_credential(provider: str) -> dict[str, Any]:
     return data
 
 
-def load_credential_pool(provider: str) -> "CredentialPool":
+def load_credential_pool(provider: str) -> "CredentialPool":  # noqa: F821
     """Load credentials for *provider* and wrap them in a ``CredentialPool``.
 
     Handles both single-key (``{"api_key": "..."}`) and multi-key
@@ -86,11 +86,7 @@ def load_credential_pool(provider: str) -> "CredentialPool":
 def list_credentials() -> list[str]:
     """Return a list of provider names that have saved credentials."""
     _ensure_dir()
-    return [
-        p.stem.removesuffix(".token")
-        for p in CREDENTIALS_DIR.glob("*.token.json")
-        if p.is_file()
-    ]
+    return [p.stem.removesuffix(".token") for p in CREDENTIALS_DIR.glob("*.token.json") if p.is_file()]
 
 
 def check_credential_permissions() -> list[str]:
@@ -116,8 +112,7 @@ def check_credential_permissions() -> list[str]:
         file_mode = cred_file.stat().st_mode & 0o777
         if file_mode != 0o600:
             warnings.append(
-                f"Credential file {cred_file} has mode "
-                f"{oct(file_mode)} (expected 0600). Run: chmod 600 {cred_file}"
+                f"Credential file {cred_file} has mode {oct(file_mode)} (expected 0600). Run: chmod 600 {cred_file}"
             )
 
     return warnings

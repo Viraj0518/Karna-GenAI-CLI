@@ -6,7 +6,6 @@ real project history.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import subprocess
 import tempfile
@@ -16,7 +15,6 @@ import pytest
 
 from karna.tools.git_ops import GitTool
 
-
 # ======================================================================= #
 #  Helpers
 # ======================================================================= #
@@ -24,16 +22,18 @@ from karna.tools.git_ops import GitTool
 
 def _make_repo(tmp: str) -> str:
     """Initialise a git repo in *tmp* with one commit and return the path."""
-    env = {**os.environ, "GIT_AUTHOR_NAME": "Test", "GIT_COMMITTER_NAME": "Test",
-           "GIT_AUTHOR_EMAIL": "test@test.com", "GIT_COMMITTER_EMAIL": "test@test.com"}
-    subprocess.run(["git", "init", "-b", "main"], cwd=tmp, check=True,
-                   capture_output=True, env=env)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp, check=True, capture_output=True, env=env)
     readme = Path(tmp) / "README.md"
     readme.write_text("# test repo\n")
-    subprocess.run(["git", "add", "README.md"], cwd=tmp, check=True,
-                   capture_output=True, env=env)
-    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=tmp,
-                   check=True, capture_output=True, env=env)
+    subprocess.run(["git", "add", "README.md"], cwd=tmp, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=tmp, check=True, capture_output=True, env=env)
     return tmp
 
 
@@ -86,8 +86,7 @@ class TestDiff:
             _make_repo(td)
             readme = Path(td) / "README.md"
             readme.write_text("# staged change\n")
-            subprocess.run(["git", "add", "README.md"], cwd=td, check=True,
-                           capture_output=True)
+            subprocess.run(["git", "add", "README.md"], cwd=td, check=True, capture_output=True)
             result = await _tool(td).execute(action="diff")
             assert "staged" in result.lower()
 
@@ -117,7 +116,7 @@ class TestLog:
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
             result = await _tool(td).execute(action="log", args="-1")
-            lines = [l for l in result.strip().splitlines() if l.strip()]
+            lines = [line for line in result.strip().splitlines() if line.strip()]
             assert len(lines) == 1
 
 
@@ -138,7 +137,9 @@ class TestAdd:
             # Verify only a.txt is staged
             proc = subprocess.run(
                 ["git", "diff", "--cached", "--name-only"],
-                cwd=td, capture_output=True, text=True,
+                cwd=td,
+                capture_output=True,
+                text=True,
             )
             assert "a.txt" in proc.stdout
             assert "b.txt" not in proc.stdout
@@ -162,16 +163,15 @@ class TestCommit:
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
             (Path(td) / "x.txt").write_text("x")
-            subprocess.run(["git", "add", "x.txt"], cwd=td, check=True,
-                           capture_output=True)
-            result = await _tool(td).execute(
-                action="commit", message="add x file"
-            )
+            subprocess.run(["git", "add", "x.txt"], cwd=td, check=True, capture_output=True)
+            result = await _tool(td).execute(action="commit", message="add x file")
             assert "x.txt" in result or "add x file" in result
             # Verify co-author trailer
             proc = subprocess.run(
                 ["git", "log", "-1", "--format=%B"],
-                cwd=td, capture_output=True, text=True,
+                cwd=td,
+                capture_output=True,
+                text=True,
             )
             assert "Co-Authored-By:" in proc.stdout
 
@@ -186,9 +186,7 @@ class TestCommit:
     async def test_commit_amend_blocked(self):
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
-            result = await _tool(td).execute(
-                action="commit", message="amend", args="--amend"
-            )
+            result = await _tool(td).execute(action="commit", message="amend", args="--amend")
             assert "[BLOCKED]" in result
 
 
@@ -203,27 +201,21 @@ class TestSafetyGuards:
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
             # Attempt via args smuggling
-            result = await _tool(td).execute(
-                action="checkout", args="main && git push --force"
-            )
+            result = await _tool(td).execute(action="checkout", args="main && git push --force")
             assert "[BLOCKED]" in result
 
     @pytest.mark.asyncio
     async def test_force_push_short_flag_blocked(self):
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
-            result = await _tool(td).execute(
-                action="checkout", args="main && git push -f origin main"
-            )
+            result = await _tool(td).execute(action="checkout", args="main && git push -f origin main")
             assert "[BLOCKED]" in result
 
     @pytest.mark.asyncio
     async def test_reset_hard_blocked(self):
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
-            result = await _tool(td).execute(
-                action="checkout", args="main && git reset --hard HEAD~1"
-            )
+            result = await _tool(td).execute(action="checkout", args="main && git reset --hard HEAD~1")
             assert "[BLOCKED]" in result
 
 
@@ -297,12 +289,14 @@ class TestCheckout:
     async def test_checkout_branch(self):
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
-            env = {**os.environ, "GIT_AUTHOR_NAME": "Test",
-                   "GIT_COMMITTER_NAME": "Test",
-                   "GIT_AUTHOR_EMAIL": "test@test.com",
-                   "GIT_COMMITTER_EMAIL": "test@test.com"}
-            subprocess.run(["git", "branch", "other"], cwd=td, check=True,
-                           capture_output=True, env=env)
+            env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "Test",
+                "GIT_COMMITTER_NAME": "Test",
+                "GIT_AUTHOR_EMAIL": "test@test.com",
+                "GIT_COMMITTER_EMAIL": "test@test.com",
+            }
+            subprocess.run(["git", "branch", "other"], cwd=td, check=True, capture_output=True, env=env)
             result = await _tool(td).execute(action="checkout", args="other")
             assert "other" in result.lower() or "switched" in result.lower()
 
@@ -317,12 +311,14 @@ class TestCheckout:
     async def test_checkout_dirty_tree_warning(self):
         with tempfile.TemporaryDirectory() as td:
             _make_repo(td)
-            env = {**os.environ, "GIT_AUTHOR_NAME": "Test",
-                   "GIT_COMMITTER_NAME": "Test",
-                   "GIT_AUTHOR_EMAIL": "test@test.com",
-                   "GIT_COMMITTER_EMAIL": "test@test.com"}
-            subprocess.run(["git", "branch", "other"], cwd=td, check=True,
-                           capture_output=True, env=env)
+            env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "Test",
+                "GIT_COMMITTER_NAME": "Test",
+                "GIT_AUTHOR_EMAIL": "test@test.com",
+                "GIT_COMMITTER_EMAIL": "test@test.com",
+            }
+            subprocess.run(["git", "branch", "other"], cwd=td, check=True, capture_output=True, env=env)
             (Path(td) / "dirty.txt").write_text("uncommitted")
             result = await _tool(td).execute(action="checkout", args="other")
             assert "[warning]" in result

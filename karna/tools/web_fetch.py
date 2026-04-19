@@ -115,7 +115,7 @@ def _is_path_allowed(robots_txt: str, path: str, user_agent: str = "*") -> bool:
         line = line.strip()
         # Strip comments
         if "#" in line:
-            line = line[:line.index("#")].strip()
+            line = line[: line.index("#")].strip()
         if not line:
             continue
 
@@ -201,6 +201,7 @@ def _extract_text(html_content: str) -> str:
     """Extract readable text from HTML. Uses trafilatura if available."""
     try:
         import trafilatura
+
         result = trafilatura.extract(html_content)
         if result:
             return result
@@ -253,8 +254,7 @@ class WebFetchTool(BaseTool):
 
     name = "web_fetch"
     description = (
-        "Fetch a web page and extract its readable text content. "
-        "Use after web_search to read a specific result."
+        "Fetch a web page and extract its readable text content. Use after web_search to read a specific result."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -325,7 +325,10 @@ class WebFetchTool(BaseTool):
         mime = content_type.split(";")[0].strip().lower()
 
         if mime not in _ALLOWED_CONTENT_TYPES:
-            return f"[error] Unsupported content type: {mime}. Only text/html, text/plain, and application/json are supported."
+            return (
+                f"[error] Unsupported content type: {mime}. "
+                "Only text/html, text/plain, and application/json are supported."
+            )
 
         # Size guard
         raw_bytes = resp.content

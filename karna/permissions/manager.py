@@ -196,7 +196,7 @@ class PermissionManager:
 
         if console is not None:
             try:
-                console.print(f"\n[bold yellow]Permission required[/bold yellow]")
+                console.print("\n[bold yellow]Permission required[/bold yellow]")
                 console.print(f"  Tool:  [cyan]{tool_name}[/cyan]")
                 console.print(f"  Args:  {summary}")
                 response = console.input("[bold]Allow? [y/N/always] [/bold]").strip().lower()
@@ -204,7 +204,7 @@ class PermissionManager:
                 return False
         else:
             try:
-                print(f"\nPermission required")
+                print("\nPermission required")
                 print(f"  Tool:  {tool_name}")
                 print(f"  Args:  {summary}")
                 response = input("Allow? [y/N/always] ").strip().lower()

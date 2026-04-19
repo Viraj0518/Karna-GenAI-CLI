@@ -5,21 +5,19 @@ Covers BashTool, ReadTool, WriteTool, EditTool, GrepTool, GlobTool.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
+from karna.tools import get_all_tools, get_tool
 from karna.tools.bash import BashTool
+from karna.tools.edit import EditTool
+from karna.tools.glob import GlobTool
+from karna.tools.grep import GrepTool
 from karna.tools.read import ReadTool
 from karna.tools.write import WriteTool
-from karna.tools.edit import EditTool
-from karna.tools.grep import GrepTool
-from karna.tools.glob import GlobTool
-from karna.tools import get_tool, get_all_tools
-
 
 # ======================================================================= #
 #  BaseTool format converters
@@ -341,9 +339,7 @@ class TestGrepTool:
             p = Path(td) / "data.txt"
             p.write_text("alpha\nbeta\ngamma\n")
 
-            result = await tool.execute(
-                pattern="beta", path=td, output_mode="content"
-            )
+            result = await tool.execute(pattern="beta", path=td, output_mode="content")
             assert "beta" in result
 
 
@@ -381,7 +377,19 @@ class TestGlobTool:
 
 class TestRegistry:
     def test_get_tool_known(self):
-        for name in ("bash", "read", "write", "edit", "grep", "glob", "web_search", "web_fetch", "clipboard", "image", "git"):
+        for name in (
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "grep",
+            "glob",
+            "web_search",
+            "web_fetch",
+            "clipboard",
+            "image",
+            "git",
+        ):
             tool = get_tool(name)
             assert tool.name == name
 
@@ -392,4 +400,16 @@ class TestRegistry:
     def test_get_all_tools(self):
         tools = get_all_tools()
         names = {t.name for t in tools}
-        assert names == {"bash", "read", "write", "edit", "grep", "glob", "web_search", "web_fetch", "clipboard", "image", "git"}
+        assert names == {
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "grep",
+            "glob",
+            "web_search",
+            "web_fetch",
+            "clipboard",
+            "image",
+            "git",
+        }

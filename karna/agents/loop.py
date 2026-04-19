@@ -40,7 +40,6 @@ from karna.compaction.compactor import Compactor
 from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResult
 from karna.permissions.manager import PermissionLevel, PermissionManager
 from karna.providers.base import BaseProvider
-from karna.tools import get_tool
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -109,6 +108,7 @@ async def _maybe_auto_compact(
 #  Tool execution helper
 # ----------------------------------------------------------------------- #
 
+
 async def _execute_tool(
     tool: BaseTool,
     arguments: dict[str, Any],
@@ -140,7 +140,9 @@ async def _execute_tool(
             )
         if level == PermissionLevel.ASK:
             approved = await permission_manager.request_approval(
-                tool.name, arguments, console,
+                tool.name,
+                arguments,
+                console,
             )
             if not approved:
                 return ToolResult(
@@ -185,6 +187,7 @@ async def _execute_tool(
 # ----------------------------------------------------------------------- #
 #  Parallel / sequential tool dispatch
 # ----------------------------------------------------------------------- #
+
 
 async def _execute_tool_calls(
     tool_calls: list[ToolCall],
@@ -264,6 +267,7 @@ async def _execute_tool_calls(
     # Read-only tools (read, grep, glob) are safe to run concurrently.
     # Each coroutine catches its own exceptions via _execute_tool.
     if parallel_indices:
+
         async def _run_parallel(idx: int) -> tuple[int, ToolResult]:
             tc, tool, _ = resolved[idx]
             assert tool is not None
@@ -295,6 +299,7 @@ async def _execute_tool_calls(
 #  Tool definitions builder
 # ----------------------------------------------------------------------- #
 
+
 def _build_tool_defs(
     tools: list[BaseTool],
     *,
@@ -309,6 +314,7 @@ def _build_tool_defs(
 # ----------------------------------------------------------------------- #
 #  Malformed JSON recovery
 # ----------------------------------------------------------------------- #
+
 
 def _parse_tool_arguments(raw: str) -> dict[str, Any]:
     """Parse tool call arguments with fallback for common JSON issues.
@@ -336,6 +342,7 @@ def _parse_tool_arguments(raw: str) -> dict[str, Any]:
 #  Infinite-loop detection
 # ----------------------------------------------------------------------- #
 
+
 def _detect_tool_loop(
     recent_calls: list[ToolCall],
     threshold: int = _LOOP_DETECTION_THRESHOLD,
@@ -351,6 +358,7 @@ def _detect_tool_loop(
 # ----------------------------------------------------------------------- #
 #  Context overflow guard
 # ----------------------------------------------------------------------- #
+
 
 def _estimate_message_tokens(messages: list[Message]) -> int:
     """Rough token estimate: ~4 chars per token for English text."""
@@ -385,6 +393,7 @@ def _truncate_messages_to_fit(
 #  Provider call with retry
 # ----------------------------------------------------------------------- #
 
+
 async def _call_provider_with_retry(
     provider: BaseProvider,
     messages: list[Message],
@@ -413,14 +422,14 @@ async def _call_provider_with_retry(
             return  # Stream completed successfully
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
-                wait = (2 ** attempt) + random.random()
+                wait = (2**attempt) + random.random()
                 yield StreamEvent(
                     type="error",
                     error=f"Rate limited (429). Retrying in {wait:.0f}s...",
                 )
                 await asyncio.sleep(wait)
             elif exc.response.status_code >= 500:
-                wait = 2 ** attempt
+                wait = 2**attempt
                 yield StreamEvent(
                     type="error",
                     error=f"Server error ({exc.response.status_code}). Retry {attempt + 1}/{max_retries}...",
@@ -430,7 +439,7 @@ async def _call_provider_with_retry(
                 # 4xx (except 429) — don't retry
                 raise
         except (httpx.ConnectError, httpx.ReadTimeout) as exc:
-            wait = 2 ** attempt
+            wait = 2**attempt
             yield StreamEvent(
                 type="error",
                 error=f"Connection error: {exc}. Retry {attempt + 1}/{max_retries}...",
@@ -447,6 +456,7 @@ async def _call_provider_with_retry(
 # ----------------------------------------------------------------------- #
 #  Streaming agent loop
 # ----------------------------------------------------------------------- #
+
 
 async def agent_loop(
     provider: BaseProvider,
@@ -495,7 +505,9 @@ async def agent_loop(
         # ---- Auto-compaction before provider call --------------------
         if compactor is not None and context_window is not None:
             compacted = await _maybe_auto_compact(
-                conversation, context_window, compactor,
+                conversation,
+                context_window,
+                compactor,
             )
             if compacted:
                 yield StreamEvent(
@@ -509,7 +521,8 @@ async def agent_loop(
             if estimated > int(context_window * 0.95):
                 target = int(context_window * 0.8)
                 conversation.messages = _truncate_messages_to_fit(
-                    conversation.messages, target,
+                    conversation.messages,
+                    target,
                 )
                 yield StreamEvent(
                     type="text",
@@ -599,9 +612,7 @@ async def agent_loop(
         # ---- If no tool calls, conversation is complete ----------------
         if not pending_tool_calls:
             if assistant_text:
-                conversation.messages.append(
-                    Message(role="assistant", content=assistant_text)
-                )
+                conversation.messages.append(Message(role="assistant", content=assistant_text))
             return
 
         # ---- Infinite loop detection ---------------------------------
@@ -667,6 +678,7 @@ async def agent_loop(
 #  Non-streaming agent loop (uses provider.complete)
 # ----------------------------------------------------------------------- #
 
+
 async def agent_loop_sync(
     provider: BaseProvider,
     conversation: Conversation,
@@ -697,7 +709,9 @@ async def agent_loop_sync(
         # ---- Auto-compaction before provider call --------------------
         if compactor is not None and context_window is not None:
             await _maybe_auto_compact(
-                conversation, context_window, compactor,
+                conversation,
+                context_window,
+                compactor,
             )
 
         # ---- Context overflow check --------------------------------
@@ -706,7 +720,8 @@ async def agent_loop_sync(
             if estimated > int(context_window * 0.95):
                 target = int(context_window * 0.8)
                 conversation.messages = _truncate_messages_to_fit(
-                    conversation.messages, target,
+                    conversation.messages,
+                    target,
                 )
 
         # ---- Call provider with retry on transient errors -----------
@@ -725,12 +740,12 @@ async def agent_loop_sync(
             except httpx.HTTPStatusError as exc:
                 last_exc = exc
                 if exc.response.status_code == 429 or exc.response.status_code >= 500:
-                    await asyncio.sleep(2 ** attempt + random.random())
+                    await asyncio.sleep(2**attempt + random.random())
                 else:
                     raise
             except (httpx.ConnectError, httpx.ReadTimeout) as exc:
                 last_exc = exc
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
 
         if response is None:
             return Message(

@@ -13,16 +13,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import shlex
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Sequence
 
 if sys.version_info >= (3, 11):
-    import tomllib
+    pass
 else:
-    import tomli as tomllib  # type: ignore[no-redef]
+    pass  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +32,7 @@ _DEFAULT_HOOK_TIMEOUT = 30
 # ----------------------------------------------------------------------- #
 #  Public types
 # ----------------------------------------------------------------------- #
+
 
 class HookType(Enum):
     """Well-known lifecycle points where hooks can fire."""
@@ -64,6 +64,7 @@ class HookResult:
 #  Shell-command hook wrapper
 # ----------------------------------------------------------------------- #
 
+
 def _make_shell_hook(
     command: str,
     *,
@@ -88,9 +89,7 @@ def _make_shell_hook(
 
         # Substitute placeholders.
         try:
-            rendered = command.format_map({
-                k: str(v) for k, v in kwargs.items()
-            })
+            rendered = command.format_map({k: str(v) for k, v in kwargs.items()})
         except KeyError:
             rendered = command
 
@@ -114,7 +113,10 @@ def _make_shell_hook(
         if proc.returncode != 0:
             err_text = (stderr or stdout or b"").decode(errors="replace").strip()
             logger.info(
-                "Shell hook exited %d: %s — %s", proc.returncode, rendered, err_text,
+                "Shell hook exited %d: %s — %s",
+                proc.returncode,
+                rendered,
+                err_text,
             )
             return HookResult(
                 proceed=False,
@@ -130,6 +132,7 @@ def _make_shell_hook(
 #  Dispatcher
 # ----------------------------------------------------------------------- #
 
+
 class HookDispatcher:
     """Central registry and executor for lifecycle hooks.
 
@@ -143,9 +146,7 @@ class HookDispatcher:
     """
 
     def __init__(self, config: Any | None = None) -> None:
-        self.hooks: dict[HookType, list[Callable[..., Any]]] = {
-            t: [] for t in HookType
-        }
+        self.hooks: dict[HookType, list[Callable[..., Any]]] = {t: [] for t in HookType}
         if config is not None:
             self._load_hooks(config)
 
@@ -184,7 +185,10 @@ class HookDispatcher:
                     result = await result
             except Exception as exc:
                 logger.warning(
-                    "Hook %s for %s raised: %s", fn, hook_type.value, exc,
+                    "Hook %s for %s raised: %s",
+                    fn,
+                    hook_type.value,
+                    exc,
                 )
                 continue
 
@@ -194,7 +198,8 @@ class HookDispatcher:
             if not isinstance(result, HookResult):
                 logger.warning(
                     "Hook %s returned non-HookResult: %r — ignoring",
-                    fn, result,
+                    fn,
+                    result,
                 )
                 continue
 

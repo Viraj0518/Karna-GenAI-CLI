@@ -16,6 +16,7 @@ from karna.tui.slash import COMMANDS, SessionCost, handle_slash_command
 #  Banner
 # --------------------------------------------------------------------------- #
 
+
 def test_banner_renders_without_error() -> None:
     """print_banner should complete without raising."""
     buf = StringIO()
@@ -23,7 +24,7 @@ def test_banner_renders_without_error() -> None:
     config = KarnaConfig(active_provider="openrouter", active_model="test-model")
     print_banner(console, config, tool_names=["bash", "read", "edit"])
     output = buf.getvalue()
-    assert "karna" in output.lower()
+    assert "nellie" in output.lower()
     assert "test-model" in output
 
 
@@ -39,9 +40,25 @@ def test_banner_shows_tool_count() -> None:
 #  Slash commands — parsing
 # --------------------------------------------------------------------------- #
 
+
 def test_slash_commands_registered() -> None:
     """All expected commands should be present in the COMMANDS table."""
-    expected = {"help", "model", "clear", "history", "cost", "exit", "quit", "compact", "tools", "system", "resume", "paste", "copy", "sessions"}
+    expected = {
+        "help",
+        "model",
+        "clear",
+        "history",
+        "cost",
+        "exit",
+        "quit",
+        "compact",
+        "tools",
+        "system",
+        "resume",
+        "paste",
+        "copy",
+        "sessions",
+    }
     assert expected == set(COMMANDS.keys())
 
 
@@ -145,6 +162,7 @@ def test_system_shows_and_sets_prompt() -> None:
 # --------------------------------------------------------------------------- #
 #  Output renderer
 # --------------------------------------------------------------------------- #
+
 
 def test_renderer_handles_text_deltas() -> None:
     buf = StringIO()

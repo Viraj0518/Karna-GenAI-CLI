@@ -21,7 +21,6 @@ from typing import Any
 
 from karna.tools.base import BaseTool
 
-
 # ----------------------------------------------------------------------- #
 #  Platform detection
 # ----------------------------------------------------------------------- #
@@ -145,10 +144,7 @@ class ClipboardTool(BaseTool):
 
         plat = _detect_platform()
         if plat == "unsupported":
-            return (
-                "[error] No clipboard utility found. "
-                "Install xclip, xsel, wl-clipboard, or run on macOS/WSL."
-            )
+            return "[error] No clipboard utility found. Install xclip, xsel, wl-clipboard, or run on macOS/WSL."
 
         if action == "read":
             return await self._read(plat)

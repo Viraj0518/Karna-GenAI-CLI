@@ -35,10 +35,7 @@ def get_provider(name: str, **kwargs: Any) -> BaseProvider:
     """
     key = name.lower()
     if key not in _PROVIDER_PATHS:
-        raise KeyError(
-            f"Unknown provider: {name!r}. "
-            f"Available: {', '.join(_PROVIDER_PATHS)}"
-        )
+        raise KeyError(f"Unknown provider: {name!r}. Available: {', '.join(_PROVIDER_PATHS)}")
     module_path, class_name = _PROVIDER_PATHS[key]
     mod = importlib.import_module(module_path)
     cls = getattr(mod, class_name)
@@ -52,10 +49,7 @@ def get_provider_class(name: str) -> type[BaseProvider]:
     """
     key = name.lower()
     if key not in _PROVIDER_PATHS:
-        raise KeyError(
-            f"Unknown provider: {name!r}. "
-            f"Available: {', '.join(_PROVIDER_PATHS)}"
-        )
+        raise KeyError(f"Unknown provider: {name!r}. Available: {', '.join(_PROVIDER_PATHS)}")
     module_path, class_name = _PROVIDER_PATHS[key]
     mod = importlib.import_module(module_path)
     return getattr(mod, class_name)

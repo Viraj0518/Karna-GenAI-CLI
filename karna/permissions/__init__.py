@@ -8,10 +8,10 @@ Anthropic Claude Code codebase.
 """
 
 from karna.permissions.manager import (
+    PROFILES,
     PermissionLevel,
     PermissionManager,
     PermissionRule,
-    PROFILES,
 )
 
 __all__ = [

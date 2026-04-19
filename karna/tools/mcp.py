@@ -25,7 +25,7 @@ else:
 
 import tomli_w
 
-from karna.config import KARNA_DIR, CONFIG_PATH
+from karna.config import CONFIG_PATH, KARNA_DIR
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -383,14 +383,16 @@ class MCPClientTool(BaseTool):
             for tool in conn.tools:
                 prefixed_name = f"mcp__{server_name}__{tool.get('name', 'unknown')}"
                 schema = tool.get("inputSchema", tool.get("input_schema", {"type": "object", "properties": {}}))
-                all_tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": prefixed_name,
-                        "description": tool.get("description", ""),
-                        "parameters": schema,
-                    },
-                })
+                all_tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": prefixed_name,
+                            "description": tool.get("description", ""),
+                            "parameters": schema,
+                        },
+                    }
+                )
         return all_tools
 
     def get_mcp_proxy_tools(self) -> list["MCPProxyTool"]:

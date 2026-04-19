@@ -15,7 +15,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -35,7 +34,9 @@ CONFIG_PATH = KARNA_DIR / "config.toml"
 class KarnaConfig(BaseModel):
     """Top-level configuration persisted to ``~/.karna/config.toml``."""
 
-    active_model: str = Field(default="openrouter/auto", description="Currently active model identifier (<provider>/<model>)")
+    active_model: str = Field(
+        default="openrouter/auto", description="Currently active model identifier (<provider>/<model>)"
+    )
     active_provider: str = Field(default="openrouter", description="Provider name for the active model")
     system_prompt: str = Field(
         default="You are Nellie, Karna's AI assistant.",

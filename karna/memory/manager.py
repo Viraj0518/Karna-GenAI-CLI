@@ -22,9 +22,8 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence
 
-from karna.memory.types import MEMORY_TYPES, MemoryEntry, MemoryType, parse_memory_type
+from karna.memory.types import MEMORY_TYPES, MemoryEntry, parse_memory_type
 
 # --------------------------------------------------------------------------- #
 #  Frontmatter parser (lightweight, no PyYAML dependency)
@@ -113,6 +112,7 @@ def _staleness_warning(mtime: float, threshold_days: int = 7) -> str | None:
 #  Filename helper
 # --------------------------------------------------------------------------- #
 
+
 def _slugify(text: str) -> str:
     """Convert a title to a filesystem-safe slug."""
     slug = re.sub(r"[^a-z0-9]+", "_", text.lower().strip())
@@ -197,11 +197,7 @@ class MemoryManager:
             return []
 
         entries: list[MemoryEntry] = []
-        md_files = [
-            f
-            for f in self.memory_dir.rglob("*.md")
-            if f.name != _INDEX_NAME
-        ]
+        md_files = [f for f in self.memory_dir.rglob("*.md") if f.name != _INDEX_NAME]
 
         for fp in md_files:
             try:

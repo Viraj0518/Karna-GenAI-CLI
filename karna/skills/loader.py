@@ -44,6 +44,7 @@ _FRONTMATTER_RE = re.compile(
 #  Skill model
 # --------------------------------------------------------------------------- #
 
+
 class Skill(BaseModel):
     """A single loaded skill parsed from a ``.md`` file."""
 
@@ -60,6 +61,7 @@ class Skill(BaseModel):
 # --------------------------------------------------------------------------- #
 #  Frontmatter parser (minimal YAML subset — no PyYAML dependency)
 # --------------------------------------------------------------------------- #
+
 
 def _parse_yaml_value(raw: str) -> str | list[str] | bool:
     """Parse a single YAML value (string, list, or bool).
@@ -89,8 +91,7 @@ def _parse_yaml_value(raw: str) -> str | list[str] | bool:
         return False
 
     # Quoted string
-    if (stripped.startswith('"') and stripped.endswith('"')) or \
-       (stripped.startswith("'") and stripped.endswith("'")):
+    if (stripped.startswith('"') and stripped.endswith('"')) or (stripped.startswith("'") and stripped.endswith("'")):
         return stripped[1:-1]
 
     return stripped
@@ -106,7 +107,7 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         return {}, text
 
     yaml_block = match.group(1)
-    body = text[match.end():]
+    body = text[match.end() :]
 
     data: dict[str, Any] = {}
     current_key: str | None = None
@@ -192,6 +193,7 @@ def parse_skill_file(path: Path) -> Skill:
 # --------------------------------------------------------------------------- #
 #  SkillManager
 # --------------------------------------------------------------------------- #
+
 
 class SkillManager:
     """Load, manage, and query skills from ``.md`` files.
@@ -301,11 +303,7 @@ class SkillManager:
         parts.append(header)
 
         for skill in active:
-            section = (
-                f"\n## {skill.name}\n"
-                f"_{skill.description}_\n\n"
-                f"{skill.instructions}\n"
-            )
+            section = f"\n## {skill.name}\n_{skill.description}_\n\n{skill.instructions}\n"
             section_len = len(section)
             if used + section_len > budget_chars:
                 # Add a note that some skills were truncated
@@ -351,7 +349,7 @@ class SkillManager:
                 return
 
             yaml_block = match.group(1)
-            body = text[match.end():]
+            body = text[match.end() :]
 
             # Check if enabled: already exists
             enabled_re = re.compile(r"^enabled:\s*\S+", re.MULTILINE)
@@ -444,14 +442,7 @@ class SkillManager:
         triggers = triggers or [f"/{name}"]
         triggers_str = ", ".join(f'"{t}"' for t in triggers)
 
-        content = (
-            f"---\n"
-            f"name: {name}\n"
-            f"description: {description}\n"
-            f"triggers: [{triggers_str}]\n"
-            f"---\n\n"
-            f"{instructions}\n"
-        )
+        content = f"---\nname: {name}\ndescription: {description}\ntriggers: [{triggers_str}]\n---\n\n{instructions}\n"
 
         dest = self.skills_dir / f"{name}.md"
         dest.write_text(content, encoding="utf-8")

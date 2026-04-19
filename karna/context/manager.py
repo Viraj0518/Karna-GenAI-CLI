@@ -74,21 +74,15 @@ class ContextManager:
             self._project_context_loaded = True
 
         if self._project_context:
-            system_parts.append(
-                f"\n<project-context>\n{self._project_context}\n</project-context>"
-            )
+            system_parts.append(f"\n<project-context>\n{self._project_context}\n</project-context>")
 
         # -- 3. Git + environment ------------------------------------- #
         git_ctx_str = await self.git_ctx.get_context(self.cwd)
         if git_ctx_str:
-            system_parts.append(
-                f"\n<git-context>\n{git_ctx_str}\n</git-context>"
-            )
+            system_parts.append(f"\n<git-context>\n{git_ctx_str}\n</git-context>")
 
         env_ctx_str = self.env_ctx.get_context(self.cwd)
-        system_parts.append(
-            f"\n<environment>\n{env_ctx_str}\n</environment>"
-        )
+        system_parts.append(f"\n<environment>\n{env_ctx_str}\n</environment>")
 
         # Assemble the full system message.
         system_message = Message(

@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -216,10 +215,7 @@ class NotebookTool(BaseTool):
 
         if cell_index is not None:
             if cell_index < 0 or cell_index >= len(cells):
-                return (
-                    f"[error] cell_index {cell_index} out of range "
-                    f"(notebook has {len(cells)} cells)."
-                )
+                return f"[error] cell_index {cell_index} out of range (notebook has {len(cells)} cells)."
             return _format_cell(cell_index, cells[cell_index])
 
         parts = [f"Notebook: {path.name} ({len(cells)} cells)\n"]
@@ -236,10 +232,7 @@ class NotebookTool(BaseTool):
         nb = _read_nb(path)
         cells = nb.get("cells", [])
         if cell_index < 0 or cell_index >= len(cells):
-            return (
-                f"[error] cell_index {cell_index} out of range "
-                f"(notebook has {len(cells)} cells)."
-            )
+            return f"[error] cell_index {cell_index} out of range (notebook has {len(cells)} cells)."
 
         cells[cell_index]["source"] = content
         # Clear outputs on edit for code cells
@@ -288,10 +281,13 @@ class NotebookTool(BaseTool):
         out_path = path.with_suffix(".out.ipynb")
         result = subprocess.run(  # noqa: S603
             [
-                "jupyter", "nbconvert",
-                "--to", "notebook",
+                "jupyter",
+                "nbconvert",
+                "--to",
+                "notebook",
                 "--execute",
-                "--output", str(out_path),
+                "--output",
+                str(out_path),
                 str(path),
             ],
             capture_output=True,
@@ -335,10 +331,7 @@ class NotebookTool(BaseTool):
         nb = _read_nb(path)
         cells = nb.get("cells", [])
         if cell_index < 0 or cell_index >= len(cells):
-            return (
-                f"[error] cell_index {cell_index} out of range "
-                f"(notebook has {len(cells)} cells)."
-            )
+            return f"[error] cell_index {cell_index} out of range (notebook has {len(cells)} cells)."
         cell = cells[cell_index]
         if cell.get("cell_type") != "code":
             return f"[error] Cell {cell_index} is not a code cell."
@@ -348,8 +341,8 @@ class NotebookTool(BaseTool):
             source = "".join(source)
 
         # Capture stdout via exec
-        import io
         import contextlib
+        import io
 
         stdout_buf = io.StringIO()
         local_ns: dict[str, Any] = {}

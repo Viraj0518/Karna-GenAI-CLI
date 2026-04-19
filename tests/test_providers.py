@@ -26,7 +26,6 @@ from karna.providers import (
 )
 from karna.providers.base import BaseProvider, _jittered_backoff
 
-
 # --------------------------------------------------------------------------- #
 #  Registry tests
 # --------------------------------------------------------------------------- #
@@ -107,8 +106,10 @@ def test_resolve_model_unknown_prefix_treated_as_default() -> None:
 
 
 def test_openrouter_constructs_with_env_key() -> None:
-    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
-         patch("karna.providers.openrouter.OpenRouterProvider._load_credential", return_value={}):
+    with (
+        patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}),
+        patch("karna.providers.openrouter.OpenRouterProvider._load_credential", return_value={}),
+    ):
         p = get_provider("openrouter", model="openrouter/auto")
     assert p.name == "openrouter"
     assert p._api_key == "test-key"
@@ -130,10 +131,13 @@ def test_openai_constructs_with_env_key() -> None:
 
 
 def test_azure_constructs_with_env() -> None:
-    with patch.dict(os.environ, {
-        "AZURE_OPENAI_API_KEY": "az-key",
-        "AZURE_OPENAI_ENDPOINT": "https://my-resource.openai.azure.com",
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "AZURE_OPENAI_API_KEY": "az-key",
+            "AZURE_OPENAI_ENDPOINT": "https://my-resource.openai.azure.com",
+        },
+    ):
         p = get_provider("azure", model="gpt-4o")
     assert p.name == "azure"
     assert p._api_key == "az-key"
@@ -343,10 +347,13 @@ def test_anthropic_output_limits() -> None:
 
 
 def test_azure_completions_url() -> None:
-    with patch.dict(os.environ, {
-        "AZURE_OPENAI_API_KEY": "key",
-        "AZURE_OPENAI_ENDPOINT": "https://myresource.openai.azure.com",
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "AZURE_OPENAI_API_KEY": "key",
+            "AZURE_OPENAI_ENDPOINT": "https://myresource.openai.azure.com",
+        },
+    ):
         p = get_provider("azure", model="gpt-4o")
     url = p._completions_url()
     assert "myresource.openai.azure.com" in url

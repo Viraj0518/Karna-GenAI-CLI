@@ -13,9 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
-import shutil
 from typing import Any, Literal
-from uuid import uuid4
 
 from karna.agents.loop import agent_loop_sync
 from karna.models import Conversation, Message
@@ -84,13 +82,13 @@ class SubAgent:
             self.worktree_branch = branch_name
             logger.info(
                 "Created worktree for subagent %s at %s (branch %s)",
-                self.name, worktree_path, branch_name,
+                self.name,
+                worktree_path,
+                branch_name,
             )
             return worktree_path
         except subprocess.CalledProcessError as exc:
-            raise RuntimeError(
-                f"Failed to create worktree for subagent {self.name}: {exc.stderr}"
-            ) from exc
+            raise RuntimeError(f"Failed to create worktree for subagent {self.name}: {exc.stderr}") from exc
 
     def _cleanup_worktree(self) -> None:
         """Remove the git worktree and its branch."""
@@ -114,9 +112,7 @@ class SubAgent:
                     capture_output=True,
                 )
             except Exception:
-                logger.warning(
-                    "Failed to delete worktree branch %s", self.worktree_branch
-                )
+                logger.warning("Failed to delete worktree branch %s", self.worktree_branch)
 
     # ------------------------------------------------------------------ #
     #  Execution
@@ -140,9 +136,7 @@ class SubAgent:
                 return f"[error] {exc}"
 
         # Seed the conversation with the user prompt
-        self.conversation.messages.append(
-            Message(role="user", content=prompt)
-        )
+        self.conversation.messages.append(Message(role="user", content=prompt))
 
         try:
             final_message = await agent_loop_sync(
@@ -166,9 +160,7 @@ class SubAgent:
 
     async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""
-        self._task = asyncio.create_task(
-            self.run(prompt), name=f"subagent-{self.name}"
-        )
+        self._task = asyncio.create_task(self.run(prompt), name=f"subagent-{self.name}")
         return self._task
 
     # ------------------------------------------------------------------ #

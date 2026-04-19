@@ -93,9 +93,7 @@ class SessionDB:
 
         # FTS5 virtual table — create only if it doesn't exist.
         # We check the sqlite_master table to avoid errors on re-init.
-        row = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'"
-        ).fetchone()
+        row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'").fetchone()
         if row is None:
             conn.executescript("""
                 CREATE VIRTUAL TABLE messages_fts USING fts5(
@@ -169,9 +167,7 @@ class SessionDB:
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         """Get a single session by id."""
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT * FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if row is None:
             return None
         return dict(row)
@@ -198,15 +194,9 @@ class SessionDB:
     ) -> int:
         """Persist a message and return its row id."""
         now = datetime.now(timezone.utc).isoformat()
-        tool_calls_json = (
-            json.dumps([tc.model_dump() for tc in message.tool_calls])
-            if message.tool_calls
-            else None
-        )
+        tool_calls_json = json.dumps([tc.model_dump() for tc in message.tool_calls]) if message.tool_calls else None
         tool_results_json = (
-            json.dumps([tr.model_dump() for tr in message.tool_results])
-            if message.tool_results
-            else None
+            json.dumps([tr.model_dump() for tr in message.tool_results]) if message.tool_results else None
         )
         conn = self._get_conn()
         cursor = conn.execute(
@@ -323,9 +313,7 @@ class SessionDB:
     def get_latest_session_id(self) -> str | None:
         """Return the id of the most recent session, or None."""
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1").fetchone()
         return row["id"] if row else None
 
     # ------------------------------------------------------------------ #
@@ -362,7 +350,7 @@ class SessionDB:
     def get_cost_by_model(self, days: int = 30) -> dict[str, dict[str, Any]]:
         """Cost breakdown by model over the last *days* days."""
         conn = self._get_conn()
-        cutoff = datetime.now(timezone.utc).isoformat()  # placeholder — computed below
+        datetime.now(timezone.utc).isoformat()  # placeholder — computed below
         rows = conn.execute(
             """SELECT
                 model,

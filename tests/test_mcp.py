@@ -8,10 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import sys
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,7 +20,6 @@ from karna.tools.mcp import (
     list_mcp_servers,
     remove_mcp_server,
 )
-
 
 # ======================================================================= #
 #  Helpers
@@ -213,11 +208,13 @@ class TestMCPServerConnection:
     async def test_call_error_handling(self):
         """Test that JSON-RPC errors are raised as RuntimeError."""
         error_response = (
-            json.dumps({
-                "jsonrpc": "2.0",
-                "error": {"code": -32601, "message": "Method not found"},
-                "id": 3,
-            })
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": "Method not found"},
+                    "id": 3,
+                }
+            )
             + "\n"
         ).encode()
 
@@ -337,9 +334,7 @@ class TestMCPConfigHelpers:
         """Test the full lifecycle of adding, listing, and removing servers."""
         config_path = tmp_path / "config.toml"
 
-        with patch("karna.tools.mcp.CONFIG_PATH", config_path), \
-             patch("karna.tools.mcp.KARNA_DIR", tmp_path):
-
+        with patch("karna.tools.mcp.CONFIG_PATH", config_path), patch("karna.tools.mcp.KARNA_DIR", tmp_path):
             # Add a server
             add_mcp_server("test-srv", "echo", ["hello"], {"FOO": "bar"})
 

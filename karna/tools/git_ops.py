@@ -37,9 +37,7 @@ async def _run(cmd: str, cwd: str) -> tuple[int, str]:
         },
     )
     try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=_TIMEOUT
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
@@ -59,10 +57,7 @@ class GitTool(BaseTool):
     """
 
     name = "git"
-    description = (
-        "Perform git operations with safety checks. "
-        "Prefer this over running git via bash."
-    )
+    description = "Perform git operations with safety checks. Prefer this over running git via bash."
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -112,10 +107,7 @@ class GitTool(BaseTool):
 
         # Block force-push
         if "push" in combined and ("--force" in combined or " -f" in combined):
-            return (
-                "[BLOCKED] Force-push is not allowed. "
-                "Use a regular push or rebase instead."
-            )
+            return "[BLOCKED] Force-push is not allowed. Use a regular push or rebase instead."
 
         # Block reset --hard
         if "reset" in combined and "--hard" in combined:
@@ -180,10 +172,7 @@ class GitTool(BaseTool):
     async def _add(self, args: str, files: list[str] | None) -> str:
         """Stage specific files. Refuses git add -A unless explicit."""
         if not files and not args:
-            return (
-                "[error] No files specified. "
-                "Provide a list of files to stage, or pass args='-A' explicitly."
-            )
+            return "[error] No files specified. Provide a list of files to stage, or pass args='-A' explicitly."
 
         if files:
             # Quote each path
@@ -203,8 +192,7 @@ class GitTool(BaseTool):
         """Commit with message validation and Co-Authored-By trailer."""
         if "--amend" in args:
             return (
-                "[BLOCKED] --amend is not allowed by default. "
-                "If you really need to amend, use the bash tool directly."
+                "[BLOCKED] --amend is not allowed by default. If you really need to amend, use the bash tool directly."
             )
 
         if not message:
@@ -239,10 +227,7 @@ class GitTool(BaseTool):
         _, status = await _run("git status --porcelain", self._cwd)
         warning = ""
         if status.strip():
-            warning = (
-                "[warning] Working tree has uncommitted changes. "
-                "Consider committing or stashing first.\n"
-            )
+            warning = "[warning] Working tree has uncommitted changes. Consider committing or stashing first.\n"
 
         # Try create-and-switch first; if branch exists, just switch
         rc, out = await _run(f"git checkout -b {args}", self._cwd)
@@ -276,10 +261,7 @@ class GitTool(BaseTool):
         _, status = await _run("git status --porcelain", self._cwd)
         warning = ""
         if status.strip():
-            warning = (
-                "[warning] Working tree has uncommitted changes. "
-                "Consider committing or stashing first.\n"
-            )
+            warning = "[warning] Working tree has uncommitted changes. Consider committing or stashing first.\n"
 
         rc, out = await _run(f"git checkout {args}", self._cwd)
         if rc != 0:

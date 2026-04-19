@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any, AsyncIterator
-from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -45,12 +44,9 @@ from karna.models import (
     ModelInfo,
     StreamEvent,
     ToolCall,
-    ToolResult,
-    Usage,
 )
 from karna.providers.base import BaseProvider
 from karna.tools.base import BaseTool
-
 
 # ======================================================================= #
 #  Mock provider
@@ -89,7 +85,8 @@ class MockProvider(BaseProvider):
         temperature: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
         msg = await self.complete(
-            messages, tools,
+            messages,
+            tools,
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -121,9 +118,7 @@ class ErrorProvider(BaseProvider):
         self._error = error
         self._fail_count = fail_count
         self._call_count = 0
-        self._success = success_response or Message(
-            role="assistant", content="Recovered."
-        )
+        self._success = success_response or Message(role="assistant", content="Recovered.")
 
     async def complete(self, messages, tools=None, **kwargs) -> Message:
         self._call_count += 1
@@ -247,14 +242,16 @@ class TestToolExecutionErrors:
     async def test_tool_error_sent_to_model(self):
         """When a tool fails, the error is appended so the model can adapt."""
         tool = GenericErrorTool()
-        provider = MockProvider([
-            Message(
-                role="assistant",
-                content="",
-                tool_calls=[ToolCall(id="tc1", name="err_tool", arguments={})],
-            ),
-            Message(role="assistant", content="I see the error, trying another way."),
-        ])
+        provider = MockProvider(
+            [
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[ToolCall(id="tc1", name="err_tool", arguments={})],
+                ),
+                Message(role="assistant", content="I see the error, trying another way."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="go")])
 
         events = []
@@ -357,20 +354,22 @@ class TestMalformedJSON:
         # Since MockProvider uses complete() which returns Message objects
         # with pre-parsed arguments, we test the __parse_error__ sentinel
         # path directly by checking tool results.
-        provider = MockProvider([
-            Message(
-                role="assistant",
-                content="",
-                tool_calls=[
-                    ToolCall(
-                        id="tc_bad",
-                        name="mock_tool",
-                        arguments={"__parse_error__": "{'bad: json"},
-                    )
-                ],
-            ),
-            Message(role="assistant", content="OK, I'll try differently."),
-        ])
+        provider = MockProvider(
+            [
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id="tc_bad",
+                            name="mock_tool",
+                            arguments={"__parse_error__": "{'bad: json"},
+                        )
+                    ],
+                ),
+                Message(role="assistant", content="OK, I'll try differently."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="go")])
 
         events = []
@@ -422,12 +421,14 @@ class TestLoopDetection:
         tool = MockTool()
         tc = ToolCall(id="tc_loop", name="mock_tool", arguments={"input": "same"})
 
-        provider = MockProvider([
-            Message(role="assistant", content="", tool_calls=[tc]),
-            Message(role="assistant", content="", tool_calls=[tc]),
-            Message(role="assistant", content="", tool_calls=[tc]),
-            Message(role="assistant", content="I'll try something else."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="", tool_calls=[tc]),
+                Message(role="assistant", content="", tool_calls=[tc]),
+                Message(role="assistant", content="", tool_calls=[tc]),
+                Message(role="assistant", content="I'll try something else."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="go")])
 
         events = []
@@ -452,12 +453,14 @@ class TestEmptyResponse:
     @pytest.mark.asyncio
     async def test_empty_response_retried(self):
         """Empty model response -> nudge appended, retry happens."""
-        provider = MockProvider([
-            # First: empty response
-            Message(role="assistant", content=""),
-            # Second: real response
-            Message(role="assistant", content="Here is my answer."),
-        ])
+        provider = MockProvider(
+            [
+                # First: empty response
+                Message(role="assistant", content=""),
+                # Second: real response
+                Message(role="assistant", content="Here is my answer."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="hi")])
 
         events = []
@@ -478,11 +481,13 @@ class TestEmptyResponse:
     @pytest.mark.asyncio
     async def test_repeated_empty_stops(self):
         """3 consecutive empty responses -> loop stops with error."""
-        provider = MockProvider([
-            Message(role="assistant", content=""),
-            Message(role="assistant", content=""),
-            Message(role="assistant", content=""),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content=""),
+                Message(role="assistant", content=""),
+                Message(role="assistant", content=""),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="hi")])
 
         events = []
@@ -495,10 +500,12 @@ class TestEmptyResponse:
     @pytest.mark.asyncio
     async def test_empty_response_sync_loop(self):
         """Non-streaming: empty response -> retry with nudge."""
-        provider = MockProvider([
-            Message(role="assistant", content=""),
-            Message(role="assistant", content="Recovered."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content=""),
+                Message(role="assistant", content="Recovered."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="hi")])
 
         result = await agent_loop_sync(provider, conv, [])
@@ -532,20 +539,27 @@ class TestContextOverflow:
     async def test_context_overflow_triggers_trim(self):
         """When messages exceed context window, older ones are dropped."""
         big_content = "x" * 8000  # ~2000 tokens
-        conv = Conversation(messages=[
-            Message(role="system", content="sys"),
-            Message(role="user", content=big_content),
-            Message(role="assistant", content=big_content),
-            Message(role="user", content="latest question"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="system", content="sys"),
+                Message(role="user", content=big_content),
+                Message(role="assistant", content=big_content),
+                Message(role="user", content="latest question"),
+            ]
+        )
 
-        provider = MockProvider([
-            Message(role="assistant", content="Answer."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="Answer."),
+            ]
+        )
 
         events = []
         async for event in agent_loop(
-            provider, conv, [], context_window=1000,
+            provider,
+            conv,
+            [],
+            context_window=1000,
         ):
             events.append(event)
 
@@ -640,6 +654,7 @@ class TestSafetyChecks:
     @pytest.mark.asyncio
     async def test_safety_blocks_tool_in_loop(self):
         """Dangerous command blocked at loop level -> error sent to model."""
+
         # Create a real BashTool-like mock
         class DangerousBashMock(BaseTool):
             name = "bash"
@@ -650,16 +665,18 @@ class TestSafetyChecks:
                 return "should not reach"
 
         tool = DangerousBashMock()
-        provider = MockProvider([
-            Message(
-                role="assistant",
-                content="",
-                tool_calls=[
-                    ToolCall(id="tc1", name="bash", arguments={"command": "rm -rf /"}),
-                ],
-            ),
-            Message(role="assistant", content="OK, I won't do that."),
-        ])
+        provider = MockProvider(
+            [
+                Message(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        ToolCall(id="tc1", name="bash", arguments={"command": "rm -rf /"}),
+                    ],
+                ),
+                Message(role="assistant", content="OK, I won't do that."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="go")])
 
         events = []
@@ -718,12 +735,14 @@ class TestSyncLoopErrorRecovery:
         tool = MockTool()
         tc = ToolCall(id="tc_loop", name="mock_tool", arguments={"input": "same"})
 
-        provider = MockProvider([
-            Message(role="assistant", content="", tool_calls=[tc]),
-            Message(role="assistant", content="", tool_calls=[tc]),
-            Message(role="assistant", content="", tool_calls=[tc]),
-            Message(role="assistant", content="Changed approach."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="", tool_calls=[tc]),
+                Message(role="assistant", content="", tool_calls=[tc]),
+                Message(role="assistant", content="", tool_calls=[tc]),
+                Message(role="assistant", content="Changed approach."),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="go")])
 
         result = await agent_loop_sync(provider, conv, [tool])
@@ -748,11 +767,13 @@ class TestSyncLoopErrorRecovery:
     @pytest.mark.asyncio
     async def test_sync_repeated_empty_stops(self):
         """Non-streaming: 3 empty responses -> error message returned."""
-        provider = MockProvider([
-            Message(role="assistant", content=""),
-            Message(role="assistant", content=""),
-            Message(role="assistant", content=""),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content=""),
+                Message(role="assistant", content=""),
+                Message(role="assistant", content=""),
+            ]
+        )
         conv = Conversation(messages=[Message(role="user", content="hi")])
 
         result = await agent_loop_sync(provider, conv, [])

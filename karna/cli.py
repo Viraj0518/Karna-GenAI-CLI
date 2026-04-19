@@ -51,6 +51,7 @@ app.add_typer(cost_app, name="cost")
 #  Version callback
 # --------------------------------------------------------------------------- #
 
+
 def _version_callback(value: bool) -> None:
     if value:
         rprint(f"nellie {__version__}")
@@ -60,6 +61,7 @@ def _version_callback(value: bool) -> None:
 # --------------------------------------------------------------------------- #
 #  Root command — REPL stub
 # --------------------------------------------------------------------------- #
+
 
 @app.callback(invoke_without_command=True)
 def root(
@@ -95,6 +97,7 @@ def repl() -> None:
 #  Auth commands
 # --------------------------------------------------------------------------- #
 
+
 @auth_app.command("login")
 def auth_login(
     provider: str = typer.Argument(..., help="Provider name (e.g. openrouter, openai, anthropic)"),
@@ -106,6 +109,7 @@ def auth_login(
 # --------------------------------------------------------------------------- #
 #  Model commands
 # --------------------------------------------------------------------------- #
+
 
 @model_app.callback()
 def model_root(
@@ -143,6 +147,7 @@ def model_set(
 #  Config commands
 # --------------------------------------------------------------------------- #
 
+
 @config_app.command("show")
 def config_show() -> None:
     """Dump the current Nellie configuration."""
@@ -158,6 +163,7 @@ def config_show() -> None:
 # --------------------------------------------------------------------------- #
 #  History commands
 # --------------------------------------------------------------------------- #
+
 
 @history_app.callback(invoke_without_command=True)
 def history_root(ctx: typer.Context) -> None:
@@ -285,6 +291,7 @@ def history_delete(
 #  Resume command
 # --------------------------------------------------------------------------- #
 
+
 @app.command()
 def resume(
     session_id: str = typer.Argument(None, help="Session ID to resume (default: most recent)"),
@@ -331,14 +338,15 @@ def resume(
 #  Cost command
 # --------------------------------------------------------------------------- #
 
+
 @cost_app.callback(invoke_without_command=True)
 def cost_root(ctx: typer.Context) -> None:
     """Show cost summary."""
     if ctx.invoked_subcommand is not None:
         return
 
-    from karna.sessions.db import SessionDB
     from karna.sessions.cost import CostTracker
+    from karna.sessions.db import SessionDB
 
     db = SessionDB()
     tracker = CostTracker(db, session_id="", model="", provider="")
@@ -390,6 +398,7 @@ def cost_root(ctx: typer.Context) -> None:
 # --------------------------------------------------------------------------- #
 #  MCP commands
 # --------------------------------------------------------------------------- #
+
 
 @mcp_app.command("add")
 def mcp_add(
@@ -493,7 +502,10 @@ def init(
     existing = [name for name in AI_CONFIG_FILES if (cwd / name).exists()]
     if existing:
         rprint(f"[bright_black]Found existing AI config: {', '.join(existing)}[/bright_black]")
-        rprint("[bright_black]Nellie will read these automatically. Creating KARNA.md for additional instructions.[/bright_black]")
+        rprint(
+            "[bright_black]Nellie will read these automatically."
+            " Creating KARNA.md for additional instructions.[/bright_black]"
+        )
 
     # Detect project type
     project_type = detect_project_type(cwd)
@@ -518,6 +530,7 @@ def init(
 # --------------------------------------------------------------------------- #
 #  Entry point
 # --------------------------------------------------------------------------- #
+
 
 def main() -> None:
     """Entry point for the ``nellie`` console script."""

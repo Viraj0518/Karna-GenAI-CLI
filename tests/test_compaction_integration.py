@@ -14,17 +14,15 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from karna.agents.loop import agent_loop, agent_loop_sync, _estimate_message_tokens
-from karna.compaction.compactor import Compactor, _PRESERVE_TAIL, _estimate_tokens
+from karna.agents.loop import _estimate_message_tokens, agent_loop, agent_loop_sync
+from karna.compaction.compactor import _PRESERVE_TAIL, Compactor, _estimate_tokens
 from karna.models import (
     Conversation,
     Message,
     ModelInfo,
     StreamEvent,
-    ToolCall,
 )
 from karna.providers.base import BaseProvider
-
 
 # ======================================================================= #
 #  Mock provider
@@ -96,20 +94,21 @@ class TestAutoCompactionTrigger:
         # Build a conversation with enough content to exceed 80% of a small window.
         # Each message ~400 chars = ~100 tokens. 10 messages = ~1000 tokens.
         # Context window = 1000. 80% threshold = 800.
-        messages = [
-            Message(role="user" if i % 2 == 0 else "assistant", content="x" * 400)
-            for i in range(10)
-        ]
+        messages = [Message(role="user" if i % 2 == 0 else "assistant", content="x" * 400) for i in range(10)]
 
         # The final assistant response from the agent loop
-        provider = MockProvider([
-            Message(role="assistant", content="Final answer."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="Final answer."),
+            ]
+        )
 
         # Summary response from the compactor's summarization call
-        summary_provider = MockProvider([
-            Message(role="assistant", content="COMPACTED: earlier conversation summary."),
-        ])
+        summary_provider = MockProvider(
+            [
+                Message(role="assistant", content="COMPACTED: earlier conversation summary."),
+            ]
+        )
 
         compactor = Compactor(summary_provider, threshold=0.80)
         conv = Conversation(messages=messages)
@@ -145,13 +144,17 @@ class TestAutoCompactionTrigger:
             Message(role="user", content="How are you?"),
         ]
 
-        provider = MockProvider([
-            Message(role="assistant", content="I'm fine."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="I'm fine."),
+            ]
+        )
 
-        summary_provider = MockProvider([
-            Message(role="assistant", content="SHOULD NOT APPEAR"),
-        ])
+        summary_provider = MockProvider(
+            [
+                Message(role="assistant", content="SHOULD NOT APPEAR"),
+            ]
+        )
 
         compactor = Compactor(summary_provider, threshold=0.80)
         conv = Conversation(messages=messages)
@@ -175,18 +178,19 @@ class TestAutoCompactionTrigger:
     @pytest.mark.asyncio
     async def test_compaction_in_sync_loop(self):
         """Auto-compaction also works in the non-streaming agent_loop_sync."""
-        messages = [
-            Message(role="user" if i % 2 == 0 else "assistant", content="y" * 400)
-            for i in range(10)
-        ]
+        messages = [Message(role="user" if i % 2 == 0 else "assistant", content="y" * 400) for i in range(10)]
 
-        provider = MockProvider([
-            Message(role="assistant", content="Sync final."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="Sync final."),
+            ]
+        )
 
-        summary_provider = MockProvider([
-            Message(role="assistant", content="SYNC COMPACTED summary."),
-        ])
+        summary_provider = MockProvider(
+            [
+                Message(role="assistant", content="SYNC COMPACTED summary."),
+            ]
+        )
 
         compactor = Compactor(summary_provider, threshold=0.80)
         conv = Conversation(messages=messages)
@@ -228,10 +232,7 @@ class TestCircuitBreaker:
         compactor = Compactor(failing_provider, threshold=0.50)
 
         # Build large conversation
-        messages = [
-            Message(role="user" if i % 2 == 0 else "assistant", content="z" * 400)
-            for i in range(10)
-        ]
+        messages = [Message(role="user" if i % 2 == 0 else "assistant", content="z" * 400) for i in range(10)]
         conv = Conversation(messages=messages)
 
         # Attempt compaction 3 times -- each should fail but not crash
@@ -246,14 +247,13 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_circuit_breaker_skips_compaction_in_loop(self):
         """When circuit breaker is tripped, agent loop skips compaction."""
-        messages = [
-            Message(role="user" if i % 2 == 0 else "assistant", content="w" * 400)
-            for i in range(10)
-        ]
+        messages = [Message(role="user" if i % 2 == 0 else "assistant", content="w" * 400) for i in range(10)]
 
-        provider = MockProvider([
-            Message(role="assistant", content="Answer."),
-        ])
+        provider = MockProvider(
+            [
+                Message(role="assistant", content="Answer."),
+            ]
+        )
 
         summary_provider = MockProvider([])
         compactor = Compactor(summary_provider, threshold=0.80)
@@ -293,9 +293,11 @@ class TestPreservedTail:
             role = "user" if i % 2 == 0 else "assistant"
             messages.append(Message(role=role, content=f"Message-{i} " + "x" * 300))
 
-        summary_provider = MockProvider([
-            Message(role="assistant", content="SUMMARY of old messages."),
-        ])
+        summary_provider = MockProvider(
+            [
+                Message(role="assistant", content="SUMMARY of old messages."),
+            ]
+        )
 
         compactor = Compactor(summary_provider, threshold=0.50)
         conv = Conversation(messages=messages)
@@ -320,9 +322,11 @@ class TestPreservedTail:
             role = "user" if i % 2 == 0 else "assistant"
             messages.append(Message(role=role, content=f"Msg-{i} " + "a" * 300))
 
-        summary_provider = MockProvider([
-            Message(role="assistant", content="SUMMARY."),
-        ])
+        summary_provider = MockProvider(
+            [
+                Message(role="assistant", content="SUMMARY."),
+            ]
+        )
 
         compactor = Compactor(summary_provider, threshold=0.50)
         conv = Conversation(messages=messages)
@@ -353,19 +357,18 @@ class TestCompactSlashCommand:
         from karna.tui.slash import handle_slash_command
 
         # Build a conversation large enough to compact (> 6 messages)
-        messages = [
-            Message(role="user" if i % 2 == 0 else "assistant", content="x" * 400)
-            for i in range(10)
-        ]
+        messages = [Message(role="user" if i % 2 == 0 else "assistant", content="x" * 400) for i in range(10)]
         conv = Conversation(messages=messages, model="mock-model", provider="mock")
 
         output = StringIO()
         console = Console(file=output, force_terminal=True, width=120)
         config = KarnaConfig()
 
-        mock_provider = MockProvider([
-            Message(role="assistant", content="COMPACT SUMMARY."),
-        ])
+        mock_provider = MockProvider(
+            [
+                Message(role="assistant", content="COMPACT SUMMARY."),
+            ]
+        )
 
         with mock_patch("karna.providers.get_provider", return_value=mock_provider):
             with mock_patch("karna.providers.resolve_model", return_value=("mock", "mock-model")):
@@ -462,10 +465,7 @@ class TestShouldCompact:
         compactor = Compactor(provider, threshold=0.50)
 
         # Large messages -- ~500 tokens each
-        messages = [
-            Message(role="user", content="x" * 2000)
-            for _ in range(5)
-        ]
+        messages = [Message(role="user", content="x" * 2000) for _ in range(5)]
 
         result = await compactor.should_compact(messages, context_window=1000)
         assert result is True

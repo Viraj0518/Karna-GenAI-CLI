@@ -81,10 +81,7 @@ class MonitorTool(BaseTool):
 
     def list_monitors(self) -> dict[str, bool]:
         """Return ``{monitor_id: is_active}`` for all monitors."""
-        return {
-            mid: not task.done()
-            for mid, task in self._active_monitors.items()
-        }
+        return {mid: not task.done() for mid, task in self._active_monitors.items()}
 
     async def cancel(self, monitor_id: str) -> bool:
         """Cancel a running monitor. Returns True if cancelled."""
@@ -119,7 +116,9 @@ class MonitorTool(BaseTool):
 
         logger.info(
             "Started monitor %s: %s (timeout=%ds)",
-            monitor_id, description, timeout,
+            monitor_id,
+            description,
+            timeout,
         )
 
         return (
@@ -158,9 +157,7 @@ class MonitorTool(BaseTool):
             except TimeoutError:
                 proc.kill()
                 await proc.wait()
-                self._emit_event(
-                    monitor_id, f"[Monitor {monitor_id} timed out after {timeout}s]"
-                )
+                self._emit_event(monitor_id, f"[Monitor {monitor_id} timed out after {timeout}s]")
                 return
 
             await proc.wait()
@@ -175,9 +172,7 @@ class MonitorTool(BaseTool):
                 await proc.wait()
             raise
         except Exception as exc:
-            self._emit_event(
-                monitor_id, f"[Monitor {monitor_id} error: {exc}]"
-            )
+            self._emit_event(monitor_id, f"[Monitor {monitor_id} error: {exc}]")
 
     def _emit_event(self, monitor_id: str, line: str) -> None:
         """Record an event and notify any registered handler."""
@@ -188,6 +183,4 @@ class MonitorTool(BaseTool):
             try:
                 self._on_event(monitor_id, line)
             except Exception:
-                logger.warning(
-                    "Event handler raised for monitor %s", monitor_id, exc_info=True
-                )
+                logger.warning("Event handler raised for monitor %s", monitor_id, exc_info=True)

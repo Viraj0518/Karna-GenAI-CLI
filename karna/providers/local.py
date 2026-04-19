@@ -48,11 +48,9 @@ class LocalProvider(BaseProvider):
         self.model = model
 
         cred = self._load_credential()
-        self.base_url = (
-            base_url
-            or cred.get("base_url")
-            or os.environ.get("LOCAL_BASE_URL", DEFAULT_BASE_URL)
-        ).rstrip("/")
+        self.base_url = (base_url or cred.get("base_url") or os.environ.get("LOCAL_BASE_URL", DEFAULT_BASE_URL)).rstrip(
+            "/"
+        )
         self._api_key = cred.get("api_key") or os.environ.get("LOCAL_API_KEY")
 
     # ------------------------------------------------------------------ #
@@ -96,11 +94,13 @@ class LocalProvider(BaseProvider):
                 ]
             if m.tool_results:
                 for tr in m.tool_results:
-                    result.append({
-                        "role": "tool",
-                        "tool_call_id": tr.tool_call_id,
-                        "content": tr.content,
-                    })
+                    result.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tr.tool_call_id,
+                            "content": tr.content,
+                        }
+                    )
                 continue
             result.append(msg)
         return result

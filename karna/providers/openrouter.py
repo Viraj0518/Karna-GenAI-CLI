@@ -25,7 +25,6 @@ import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
 from karna.providers.base import BaseProvider
-from karna.providers.caching import PromptCache
 
 # Model aliases: short names -> full OpenRouter model IDs
 MODEL_ALIASES: dict[str, str] = {
@@ -120,11 +119,13 @@ class OpenRouterProvider(BaseProvider):
             if m.tool_results:
                 # Tool results are sent as separate tool-role messages
                 for tr in m.tool_results:
-                    result.append({
-                        "role": "tool",
-                        "tool_call_id": tr.tool_call_id,
-                        "content": tr.content,
-                    })
+                    result.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tr.tool_call_id,
+                            "content": tr.content,
+                        }
+                    )
                 continue
             result.append(msg)
         return result

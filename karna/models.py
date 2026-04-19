@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, AsyncIterator, Literal, Optional, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
-
 
 # --------------------------------------------------------------------------- #
 #  Tool-use primitives
 # --------------------------------------------------------------------------- #
+
 
 class ToolCall(BaseModel):
     """A tool invocation requested by the model."""
@@ -40,6 +40,7 @@ class ToolResult(BaseModel):
 # --------------------------------------------------------------------------- #
 #  Message & Conversation
 # --------------------------------------------------------------------------- #
+
 
 class Message(BaseModel):
     """A single message in a conversation turn."""
@@ -62,6 +63,7 @@ class Conversation(BaseModel):
 # --------------------------------------------------------------------------- #
 #  Streaming events
 # --------------------------------------------------------------------------- #
+
 
 class StreamEvent(BaseModel):
     """A single event emitted during streaming completions.
@@ -93,6 +95,7 @@ class StreamEvent(BaseModel):
 #  Usage & cost tracking
 # --------------------------------------------------------------------------- #
 
+
 class Usage(BaseModel):
     """Token usage and cost for a single API call."""
 
@@ -110,6 +113,7 @@ class Usage(BaseModel):
 # --------------------------------------------------------------------------- #
 #  Model info
 # --------------------------------------------------------------------------- #
+
 
 class ModelInfo(BaseModel):
     """Metadata for a single model exposed by a provider."""
@@ -213,6 +217,7 @@ def estimate_cost(
 #  Provider protocol
 # --------------------------------------------------------------------------- #
 
+
 @runtime_checkable
 class Provider(Protocol):
     """Structural interface every model provider must satisfy."""
@@ -221,7 +226,9 @@ class Provider(Protocol):
         """Send messages and return an assistant response."""
         ...
 
-    async def stream(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> AsyncIterator[StreamEvent]:
+    async def stream(
+        self, messages: list[Message], tools: list[dict[str, Any]] | None = None
+    ) -> AsyncIterator[StreamEvent]:
         """Stream events from the model as an async iterator."""
         ...
 

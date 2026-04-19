@@ -10,7 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -21,7 +20,6 @@ from karna.context.git import GitContext
 from karna.context.manager import ContextManager
 from karna.context.project import ProjectContext
 from karna.models import Conversation, Message
-
 
 # -------------------------------------------------------------------- #
 #  Token estimation
@@ -82,7 +80,6 @@ class TestTruncation:
         ]
         # Budget only big enough for ~2 messages.
         result = mgr.truncate_to_fit(msgs, budget=200)
-        roles = [m.role for m in result]
         contents = [m.content for m in result]
         # The last user message must survive.
         assert "FINAL question" in contents[-1]
@@ -145,9 +142,7 @@ class TestProjectContext:
     def test_detects_karna_project_toml(self, tmp_path: Path) -> None:
         karna_dir = tmp_path / ".karna"
         karna_dir.mkdir()
-        (karna_dir / "project.toml").write_text(
-            'instructions = "Always run black."\nrules = ["no-print"]'
-        )
+        (karna_dir / "project.toml").write_text('instructions = "Always run black."\nrules = ["no-print"]')
         ctx = ProjectContext()
         result = ctx.detect(tmp_path)
         assert result is not None
@@ -260,9 +255,11 @@ class TestContextManagerBuild:
             max_context_tokens=128_000,
             cwd=tmp_path,
         )
-        conv = Conversation(messages=[
-            Message(role="user", content="Hello"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Hello"),
+            ]
+        )
         messages = await mgr.build_messages(conv, "You are a helpful assistant.")
         assert messages[0].role == "system"
         assert "You are a helpful assistant" in messages[0].content
@@ -274,9 +271,11 @@ class TestContextManagerBuild:
             max_context_tokens=128_000,
             cwd=tmp_path,
         )
-        conv = Conversation(messages=[
-            Message(role="user", content="Hi"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Hi"),
+            ]
+        )
         messages = await mgr.build_messages(conv, "System prompt.")
         system_content = messages[0].content
         assert "<environment>" in system_content
@@ -290,9 +289,11 @@ class TestContextManagerBuild:
             max_context_tokens=128_000,
             cwd=tmp_path,
         )
-        conv = Conversation(messages=[
-            Message(role="user", content="Hi"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Hi"),
+            ]
+        )
         messages = await mgr.build_messages(conv, "System prompt.")
         system_content = messages[0].content
         assert "<project-context>" in system_content
@@ -305,9 +306,11 @@ class TestContextManagerBuild:
             max_context_tokens=128_000,
             cwd=tmp_path,
         )
-        conv = Conversation(messages=[
-            Message(role="user", content="What is 2+2?"),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="What is 2+2?"),
+            ]
+        )
         messages = await mgr.build_messages(conv, "System.")
         user_msgs = [m for m in messages if m.role == "user"]
         assert len(user_msgs) == 1

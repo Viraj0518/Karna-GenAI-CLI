@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from karna.auth.pool import AllKeysExhaustedError, CredentialPool
+from karna.auth.pool import CredentialPool
 from karna.models import Message, ModelInfo, StreamEvent, Usage, estimate_cost
 
 logger = logging.getLogger(__name__)
@@ -239,7 +239,11 @@ class BaseProvider(ABC):
                     elapsed = time.monotonic() - t0
                     logger.debug(
                         "%s: %s %s -> %d (%.1fs)",
-                        self.name, method, url, resp.status_code, elapsed,
+                        self.name,
+                        method,
+                        url,
+                        resp.status_code,
+                        elapsed,
                     )
                     resp.raise_for_status()
                     return resp
@@ -253,13 +257,20 @@ class BaseProvider(ABC):
                     delay = _parse_retry_after(resp) or _jittered_backoff(attempt)
                     logger.warning(
                         "%s: rate limited (429), retrying in %.1fs (attempt %d/%d)",
-                        self.name, delay, attempt, self.max_retries,
+                        self.name,
+                        delay,
+                        attempt,
+                        self.max_retries,
                     )
                 else:
                     delay = _jittered_backoff(attempt)
                     logger.warning(
                         "%s: server error %d, retrying in %.1fs (attempt %d/%d)",
-                        self.name, resp.status_code, delay, attempt, self.max_retries,
+                        self.name,
+                        resp.status_code,
+                        delay,
+                        attempt,
+                        self.max_retries,
                     )
 
                 await asyncio.sleep(delay)
@@ -271,7 +282,10 @@ class BaseProvider(ABC):
                 delay = _jittered_backoff(attempt)
                 logger.warning(
                     "%s: timeout, retrying in %.1fs (attempt %d/%d)",
-                    self.name, delay, attempt, self.max_retries,
+                    self.name,
+                    delay,
+                    attempt,
+                    self.max_retries,
                 )
                 await asyncio.sleep(delay)
 

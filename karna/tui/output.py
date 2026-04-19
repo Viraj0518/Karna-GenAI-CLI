@@ -30,6 +30,7 @@ from karna.tui.themes import (
 #  Event protocol — provider layer yields these to the REPL
 # --------------------------------------------------------------------------- #
 
+
 class EventKind(Enum):
     TEXT_DELTA = auto()
     TOOL_CALL_START = auto()
@@ -37,7 +38,7 @@ class EventKind(Enum):
     TOOL_CALL_END = auto()
     TOOL_RESULT = auto()
     ERROR = auto()
-    USAGE = auto()          # token counts + cost
+    USAGE = auto()  # token counts + cost
     DONE = auto()
 
 
@@ -52,6 +53,7 @@ class StreamEvent:
 # --------------------------------------------------------------------------- #
 #  Renderer
 # --------------------------------------------------------------------------- #
+
 
 class OutputRenderer:
     """Stateful renderer that processes ``StreamEvent`` objects.
@@ -136,7 +138,7 @@ class OutputRenderer:
         self._tool_args_buffer = ""
 
     def _on_tool_call_args_delta(self, delta: str) -> None:
-        self._tool_args_buffer += (delta or "")
+        self._tool_args_buffer += delta or ""
 
     def _on_tool_call_end(self, _data: Any = None) -> None:
         # Pretty-print the tool invocation

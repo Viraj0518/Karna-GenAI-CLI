@@ -11,13 +11,8 @@ Covers:
 
 from __future__ import annotations
 
-import json
 import os
-import stat
-import tempfile
 from pathlib import Path
-
-import pytest
 
 from karna.security.guards import (
     check_dangerous_command,
@@ -26,7 +21,6 @@ from karna.security.guards import (
     scrub_secrets,
 )
 from karna.security.scrub import scrub_for_memory
-
 
 # ------------------------------------------------------------------ #
 #  is_safe_path
