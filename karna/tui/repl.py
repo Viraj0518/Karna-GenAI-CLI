@@ -17,6 +17,7 @@ from karna.sessions.cost import CostTracker
 from karna.tools import TOOLS, get_all_tools
 from karna.providers import get_provider, resolve_model
 from karna.agents.loop import agent_loop
+from karna.compaction.compactor import Compactor
 from karna.prompts import build_system_prompt
 from karna.context.manager import ContextManager
 from karna.tui.banner import print_banner
@@ -57,7 +58,13 @@ async def _agent_loop(
         # Build system prompt
         system_prompt = build_system_prompt(config, tools)
 
-        # Run the real agent loop
+        # Create a per-turn compactor using the active provider
+        turn_compactor = Compactor(provider, threshold=0.80)
+
+        # Default context window (128k tokens)
+        context_window = 128_000
+
+        # Run the real agent loop with auto-compaction
         from karna.models import StreamEvent as AgentStreamEvent
         async for event in agent_loop(
             provider=provider,
@@ -65,6 +72,8 @@ async def _agent_loop(
             tools=tools,
             system_prompt=system_prompt,
             max_iterations=25,
+            context_window=context_window,
+            compactor=turn_compactor,
         ):
             # Map agent StreamEvent → TUI StreamEvent
             if event.type == "text":

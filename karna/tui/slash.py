@@ -65,7 +65,7 @@ def _build_commands() -> dict[str, SlashCommand]:
         SlashCommand("cost", "/cost", "Show total token usage and cost this session"),
         SlashCommand("exit", "/exit", "Exit the REPL"),
         SlashCommand("quit", "/quit", "Exit the REPL"),
-        SlashCommand("compact", "/compact", "Trigger conversation compaction (stub)"),
+        SlashCommand("compact", "/compact", "Summarize older messages to free context space"),
         SlashCommand("tools", "/tools", "List available tools"),
         SlashCommand("system", "/system <prompt>", "Set the system prompt"),
         SlashCommand("sessions", "/sessions", "Show last 5 sessions from history"),
@@ -164,8 +164,71 @@ def _cmd_exit(**_kw) -> None:
     raise SystemExit(0)
 
 
-def _cmd_compact(console: Console, **_kw) -> None:
-    console.print("[yellow]Compaction not yet implemented — coming in Phase 4.[/yellow]")
+def _cmd_compact(
+    console: Console,
+    conversation: Conversation,
+    config: KarnaConfig,
+    **_kw,
+) -> None:
+    """Manually trigger conversation compaction."""
+    import asyncio
+
+    from karna.compaction.compactor import Compactor, _estimate_tokens
+    from karna.providers import get_provider, resolve_model
+
+    if len(conversation.messages) <= 6:
+        console.print("[bright_black]Not enough messages to compact.[/bright_black]")
+        return
+
+    # Estimate tokens before compaction
+    tokens_before = _estimate_tokens(conversation.messages)
+    msg_count_before = len(conversation.messages)
+
+    try:
+        # Resolve the current provider for summarization
+        model_spec = (
+            f"{config.active_provider}:{config.active_model}"
+            if ":" not in (config.active_model or "")
+            else config.active_model
+        )
+        provider_name, model_name = resolve_model(model_spec)
+        provider = get_provider(provider_name)
+        provider.model = model_name
+
+        compactor = Compactor(provider, threshold=0.0)  # threshold=0 forces compaction
+
+        # Default context window (generous)
+        context_window = 200_000
+
+        # Run the compaction
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                compactor.compact(conversation, context_window),
+                loop,
+            )
+            future.result(timeout=60)
+        else:
+            asyncio.run(compactor.compact(conversation, context_window))
+
+    except Exception as exc:
+        console.print(f"[red]Compaction failed: {type(exc).__name__}: {exc}[/red]")
+        return
+
+    tokens_after = _estimate_tokens(conversation.messages)
+    msg_count_after = len(conversation.messages)
+    saved = tokens_before - tokens_after
+
+    console.print(
+        Panel(
+            f"[bright_black]Messages:[/] {msg_count_before} -> {msg_count_after}\n"
+            f"[bright_black]Est. tokens:[/] ~{tokens_before:,} -> ~{tokens_after:,} "
+            f"([green]-{saved:,}[/green])",
+            title="[bold #87CEEB]Compaction Complete[/]",
+            border_style="#3C73BD",
+            expand=False,
+        )
+    )
 
 
 def _cmd_tools(console: Console, tool_names: list[str], **_kw) -> None:
