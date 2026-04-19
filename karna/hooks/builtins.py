@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
-from pathlib import Path
 from typing import Any
 
 from karna.hooks.dispatcher import HookResult
@@ -99,26 +98,53 @@ async def git_dirty_warning_hook(**kwargs: Any) -> HookResult:
 
 
 # ----------------------------------------------------------------------- #
-#  Auto-save memory (stub)
+#  Auto-save memory
 # ----------------------------------------------------------------------- #
 
+# Module-level extractor instance — persists across hook invocations so
+# the rate limiter and dedup state survive the full session.
+_extractor_instance: Any = None
 
-async def auto_save_memory_hook(response: str = "", **kwargs: Any) -> HookResult:
+
+def _get_extractor() -> Any:
+    """Lazy-init the MemoryExtractor singleton."""
+    global _extractor_instance
+    if _extractor_instance is None:
+        from karna.memory import MemoryManager
+        from karna.memory.extractor import MemoryExtractor
+
+        mm = MemoryManager()
+        _extractor_instance = MemoryExtractor(memory_manager=mm)
+    return _extractor_instance
+
+
+def reset_extractor() -> None:
+    """Reset the extractor singleton (useful for tests)."""
+    global _extractor_instance
+    _extractor_instance = None
+
+
+async def auto_save_memory_hook(
+    response: str = "",
+    user_message: str = "",
+    **kwargs: Any,
+) -> HookResult:
     """After each assistant response, check if something should be memorized.
 
-    Delegates to MemoryManager.auto_extract() which scans the response
-    for explicit "remember" requests and implicit memory-worthy patterns
-    (user corrections, project facts, preferences).
+    Scans the **user** message for memory-worthy patterns (corrections,
+    self-identification, project facts, references) using regex-based
+    detection.  Deduplicates against existing memories and rate-limits
+    to at most 1 save per 5 turns.
     """
-    if not response:
+    if not user_message:
         return HookResult()
 
     try:
-        from karna.memory import MemoryManager
-
-        cwd = Path.cwd()
-        mm = MemoryManager(cwd)
-        saved = mm.auto_extract(response)
+        extractor = _get_extractor()
+        saved = extractor.extract_and_save(
+            user_message=user_message,
+            assistant_response=response,
+        )
         if saved:
             return HookResult(
                 proceed=True,

@@ -604,11 +604,28 @@ def mcp_test(
 
 AI_CONFIG_FILES = ["CLAUDE.md", ".cursorrules", ".github/copilot-instructions.md"]
 
+# Minimal starter template when --minimal or no project detection can
+# produce anything richer.  This is the "onboarding-friendly" template
+# from the E8 spec.
+_STARTER_TEMPLATE = """\
+# Project Instructions for Nellie
+
+## Conventions
+<!-- Add your team's coding conventions here -->
+
+## Tools & Stack
+<!-- What technologies does this project use? -->
+
+## Rules
+<!-- Any rules Nellie should follow in this project -->
+"""
+
 
 @app.command()
 def init(
     provider: str = typer.Option(None, help="Default provider"),
     model: str = typer.Option(None, help="Default model"),
+    minimal: bool = typer.Option(False, "--minimal", "-m", help="Use a minimal starter template"),
 ) -> None:
     """Initialize Nellie for this project.
 
@@ -628,15 +645,16 @@ def init(
             "Creating KARNA.md for additional instructions.[/bright_black]"
         )
 
-    # Detect project type
-    project_type = detect_project_type(cwd)
-
     # Generate & write KARNA.md
     karna_md = cwd / "KARNA.md"
     if karna_md.exists():
         rprint("[yellow]KARNA.md already exists. Skipping.[/yellow]")
     else:
-        template = generate_karna_md_for_path(cwd, project_type, provider, model)
+        if minimal:
+            template = _STARTER_TEMPLATE
+        else:
+            project_type = detect_project_type(cwd)
+            template = generate_karna_md_for_path(cwd, project_type, provider, model)
         karna_md.write_text(template)
         rprint(f"[green]Created KARNA.md ({len(template)} bytes)[/green]")
 
