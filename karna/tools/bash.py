@@ -259,6 +259,7 @@ class BashTool(BaseTool):
     ) -> None:
         """Run the background process and push completion notification."""
         registry = get_task_registry()
+        proc = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -315,8 +316,16 @@ class BashTool(BaseTool):
             )
 
         except asyncio.CancelledError:
+            # Kill the subprocess so it doesn't continue as a zombie.
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass  # best-effort cleanup
             with open(output_file, "w") as f:
                 f.write("[cancelled]\n")
+            registry.fail_task(task_id, "Task cancelled")
             raise
         except Exception as exc:
             error_msg = f"{type(exc).__name__}: {exc}"

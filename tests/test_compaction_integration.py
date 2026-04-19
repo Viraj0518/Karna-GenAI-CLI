@@ -371,7 +371,8 @@ class TestPreservedTail:
 class TestCompactSlashCommand:
     """Verify the /compact slash command works end-to-end."""
 
-    def test_compact_command_with_provider(self):
+    @pytest.mark.asyncio
+    async def test_compact_command_with_provider(self):
         """The /compact command runs compaction and shows results."""
         from io import StringIO
         from unittest.mock import patch as mock_patch
@@ -406,7 +407,7 @@ class TestCompactSlashCommand:
                 "karna.providers.resolve_model",
                 return_value=("mock", "mock-model"),
             ):
-                handle_slash_command(
+                await handle_slash_command(
                     "/compact",
                     console,
                     config,
@@ -417,7 +418,8 @@ class TestCompactSlashCommand:
         # Should show some compaction output (before/after or success message)
         assert len(rendered) > 0
 
-    def test_compact_command_too_few_messages(self):
+    @pytest.mark.asyncio
+    async def test_compact_command_too_few_messages(self):
         """The /compact command handles conversations that are too short."""
         from io import StringIO
 
@@ -436,7 +438,7 @@ class TestCompactSlashCommand:
         console = Console(file=output, force_terminal=True, width=120)
         config = KarnaConfig()
 
-        handle_slash_command(
+        await handle_slash_command(
             "/compact",
             console,
             config,

@@ -307,17 +307,19 @@ class TestTasksSlashCommand:
     def setup_method(self) -> None:
         reset_task_registry()
 
-    def test_tasks_empty(self) -> None:
+    @pytest.mark.asyncio
+    async def test_tasks_empty(self) -> None:
         from karna.tui.slash import _cmd_tasks
 
         console = MagicMock()
-        result = _cmd_tasks(console=console, args="")
+        result = await _cmd_tasks(console=console, args="")
         assert result is None
         console.print.assert_called_once()
         call_args = str(console.print.call_args)
         assert "No background tasks" in call_args
 
-    def test_tasks_lists_registered(self) -> None:
+    @pytest.mark.asyncio
+    async def test_tasks_lists_registered(self) -> None:
         from karna.tui.slash import _cmd_tasks
 
         registry = get_task_registry()
@@ -325,30 +327,33 @@ class TestTasksSlashCommand:
         registry.register("t2", TaskType.BASH, "running tests")
 
         console = MagicMock()
-        result = _cmd_tasks(console=console, args="")
+        result = await _cmd_tasks(console=console, args="")
         assert result is None
         # Console.print was called with a Table
         console.print.assert_called_once()
 
-    def test_tasks_stop_unknown(self) -> None:
+    @pytest.mark.asyncio
+    async def test_tasks_stop_unknown(self) -> None:
         from karna.tui.slash import _cmd_tasks
 
         console = MagicMock()
-        result = _cmd_tasks(console=console, args="stop nonexistent")
+        result = await _cmd_tasks(console=console, args="stop nonexistent")
         assert result is None
         call_args = str(console.print.call_args)
         assert "Unknown task" in call_args
 
-    def test_tasks_stop_no_id(self) -> None:
+    @pytest.mark.asyncio
+    async def test_tasks_stop_no_id(self) -> None:
         from karna.tui.slash import _cmd_tasks
 
         console = MagicMock()
-        result = _cmd_tasks(console=console, args="stop")
+        result = await _cmd_tasks(console=console, args="stop")
         assert result is None
         call_args = str(console.print.call_args)
         assert "Usage" in call_args
 
-    def test_tasks_stop_completed_task(self) -> None:
+    @pytest.mark.asyncio
+    async def test_tasks_stop_completed_task(self) -> None:
         from karna.tui.slash import _cmd_tasks
 
         registry = get_task_registry()
@@ -356,7 +361,7 @@ class TestTasksSlashCommand:
         registry.complete_task("t1")
 
         console = MagicMock()
-        result = _cmd_tasks(console=console, args="stop t1")
+        result = await _cmd_tasks(console=console, args="stop t1")
         assert result is None
         call_args = str(console.print.call_args)
         assert "not running" in call_args

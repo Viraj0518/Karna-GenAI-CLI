@@ -368,15 +368,13 @@ def _cmd_exit(**_kw) -> None:
     raise SystemExit(0)
 
 
-def _cmd_compact(
+async def _cmd_compact(
     console: Console,
     conversation: Conversation,
     config: KarnaConfig,
     **_kw,
 ) -> None:
     """Manually trigger conversation compaction."""
-    import asyncio
-
     from karna.compaction.compactor import Compactor, _conv_tokens
     from karna.providers import get_provider, resolve_model
 
@@ -399,21 +397,15 @@ def _cmd_compact(
         provider = get_provider(provider_name)
         provider.model = model_name
 
-        compactor = Compactor(provider, threshold=0.0)  # threshold=0 forces compaction
+        # Use force=True to bypass threshold — the user explicitly asked
+        # for compaction so it should always run.
+        compactor = Compactor(provider, threshold=1.0)
 
         # Default context window (generous)
         context_window = 200_000
 
-        # Run the compaction
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(
-                compactor.compact(conversation, context_window),
-                loop,
-            )
-            future.result(timeout=60)
-        else:
-            asyncio.run(compactor.compact(conversation, context_window))
+        # Await directly — handle_slash_command is now async.
+        await compactor.compact(conversation, context_window, force=True)
 
     except Exception as exc:
         console.print(f"[red]Compaction failed: {type(exc).__name__}: {exc}[/red]")
@@ -549,20 +541,13 @@ def _cmd_sessions(console: Console, session_db: "SessionDB | None" = None, **_kw
     console.print(table)
 
 
-def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
+async def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
     """Read clipboard and return content to be injected as user message."""
-    import asyncio
-
     from karna.tools.clipboard import ClipboardTool
 
     tool = ClipboardTool()
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(tool.execute(action="read"), loop)
-            result = future.result(timeout=10)
-        else:
-            result = asyncio.run(tool.execute(action="read"))
+        result = await tool.execute(action="read")
     except Exception as exc:
         console.print(f"[red]Failed to read clipboard: {exc}[/red]")
         return None
@@ -578,10 +563,8 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
     return result
 
 
-def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
+async def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     """Copy the last assistant response to clipboard."""
-    import asyncio
-
     from karna.tools.clipboard import ClipboardTool
 
     last_assistant = None
@@ -596,12 +579,7 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
 
     tool = ClipboardTool()
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(tool.execute(action="write", content=last_assistant), loop)
-            result = future.result(timeout=10)
-        else:
-            result = asyncio.run(tool.execute(action="write", content=last_assistant))
+        result = await tool.execute(action="write", content=last_assistant)
     except Exception as exc:
         console.print(f"[red]Failed to copy to clipboard: {exc}[/red]")
         return
@@ -695,10 +673,8 @@ def _cmd_do(console: Console, conversation: Conversation, **_kw) -> str | None:
     return f"__DO__{plan}"
 
 
-def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
+async def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
     """``/tasks`` — list or stop background tasks."""
-    import asyncio
-
     from karna.tools.task_registry import TaskStatus, get_task_registry
 
     registry = get_task_registry()
@@ -717,12 +693,7 @@ def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
             console.print(f"[bright_black]Task {task_id} is not running (status: {entry.status.value})[/bright_black]")
             return None
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(registry.stop(task_id), loop)
-                stopped = future.result(timeout=10)
-            else:
-                stopped = asyncio.run(registry.stop(task_id))
+            stopped = await registry.stop(task_id)
         except Exception as exc:
             console.print(f"[red]Failed to stop task: {exc}[/red]")
             return None
@@ -956,7 +927,7 @@ _HANDLERS: dict[str, Callable[..., None]] = {
 }
 
 
-def handle_slash_command(
+async def handle_slash_command(
     raw_input: str,
     console: Console,
     config: KarnaConfig,
@@ -971,6 +942,10 @@ def handle_slash_command(
 
     *raw_input* is the full user string including the leading ``/``.
 
+    This is an async function so that handlers that need to await
+    coroutines (e.g. ``/compact``, ``/tasks stop``, ``/paste``,
+    ``/copy``) can do so without deadlocking the event loop.
+
     Returns a string if the command produces text to inject as a user
     message (e.g. ``/paste``), otherwise ``None``.
 
@@ -983,6 +958,9 @@ def handle_slash_command(
     The sentinels are prefixed with double underscores so they cannot
     collide with any plausible clipboard paste content.
     """
+    import asyncio
+    import inspect
+
     stripped = raw_input.strip().lstrip("/")
     parts = stripped.split(None, 1)
     cmd_name = parts[0].lower() if parts else ""
@@ -1009,6 +987,10 @@ def handle_slash_command(
         cost_tracker=cost_tracker,
         skill_manager=skill_manager,
     )
+    # Await if the handler is a coroutine (async handlers like
+    # _cmd_compact, _cmd_tasks, _cmd_paste, _cmd_copy).
+    if asyncio.iscoroutine(result) or inspect.isawaitable(result):
+        result = await result
     return result
 
 

@@ -46,6 +46,10 @@ _SEARCH_FILES: list[tuple[str, str, int]] = [
 # Global KARNA.md location — always checked as a fallback
 _GLOBAL_KARNA_MD = Path.home() / ".karna" / "KARNA.md"
 
+# The global ~/.karna/ directory — files under this path should NOT be
+# picked up by the ancestor walk (they are loaded separately as a fallback).
+_GLOBAL_KARNA_DIR = Path.home() / ".karna"
+
 
 class ProjectContext:
     """Detect and load project-level instruction files."""
@@ -58,6 +62,12 @@ class ProjectContext:
         2. Global ``~/.karna/KARNA.md`` as fallback (priority 3)
         3. Compatibility files (CLAUDE.md, .cursorrules) at lower priority
 
+        Files under ``~/.karna/`` are never treated as project-level
+        context — they are loaded exclusively via the global fallback
+        path below.  This prevents ``~/.karna/KARNA.md`` from being
+        mis-detected as a project file when the ancestor walk reaches
+        ``$HOME``.
+
         Returns combined content from all discovered files (closest to
         *cwd* wins when a filename appears at multiple levels), or
         ``None`` if nothing was found.
@@ -67,6 +77,9 @@ class ProjectContext:
         # Track which filenames we've already seen so a closer copy
         # shadows one further up the tree.
         seen_filenames: set[str] = set()
+
+        # Resolve the global karna dir once for comparison.
+        global_karna_dir = _GLOBAL_KARNA_DIR.resolve()
 
         # Walk up from cwd to filesystem root.
         dirs: list[Path] = []
@@ -86,6 +99,16 @@ class ProjectContext:
                 candidate = d / rel_path
                 if not candidate.is_file():
                     continue
+                # Skip files that live under ~/.karna/ — those are
+                # global, not project-level, and are loaded separately.
+                try:
+                    resolved = candidate.resolve()
+                    if resolved == global_karna_dir / resolved.name or str(resolved).startswith(
+                        str(global_karna_dir) + "/"
+                    ):
+                        continue
+                except OSError:
+                    pass
                 seen_filenames.add(rel_path)
                 try:
                     if rel_path.endswith(".toml"):

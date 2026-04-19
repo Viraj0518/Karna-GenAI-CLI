@@ -146,10 +146,24 @@ def _has_worktree_changes(worktree_path: Path) -> bool:
         return False
 
 
+def _set_tools_cwd(tools: list[BaseTool], cwd: str) -> None:
+    """Set the working directory on all tools that track one.
+
+    Used instead of ``os.chdir()`` so concurrent subagents don't
+    stomp on each other's global process cwd.  Only tools that
+    expose a ``_cwd`` attribute (e.g. BashTool, GitOpsTool) are
+    affected.
+    """
+    for tool in tools:
+        if hasattr(tool, "_cwd"):
+            tool._cwd = cwd
+
+
 @asynccontextmanager
 async def _isolation_context(
     isolation: Literal["none", "worktree"],
     worktree_base: Path | None,
+    tools: list[BaseTool] | None = None,
 ) -> AsyncIterator[Path]:
     """Yield the cwd the subagent should run in.
 
@@ -160,6 +174,10 @@ async def _isolation_context(
     is removed on exit, even if the body raises. If the current cwd is
     not a git repo, we log a warning and fall back to no isolation
     instead of crashing.
+
+    **Concurrency safety**: this context manager does NOT call
+    ``os.chdir()`` — it updates tool ``_cwd`` attributes instead so
+    concurrent subagents don't stomp on each other's working directory.
     """
     original_cwd = Path(os.getcwd())
 
@@ -193,15 +211,14 @@ async def _isolation_context(
         return
 
     try:
-        # Change cwd for the duration of the subagent run.
-        os.chdir(worktree_path)
+        # Point tools at the worktree instead of mutating process-global cwd.
+        if tools:
+            _set_tools_cwd(tools, str(worktree_path))
         yield worktree_path
     finally:
-        # Restore cwd before cleanup so we don't delete the dir we're standing in.
-        try:
-            os.chdir(original_cwd)
-        except OSError:
-            pass
+        # Restore tool cwds before cleanup.
+        if tools:
+            _set_tools_cwd(tools, str(original_cwd))
         _git_worktree_remove(original_cwd, worktree_path)
 
 
@@ -277,7 +294,7 @@ async def spawn_subagent(
         logger.debug("spawn_subagent: model override requested: %s", model)
 
     try:
-        async with _isolation_context(isolation, worktree_base):
+        async with _isolation_context(isolation, worktree_base, tools=tools):
             final_message = await agent_loop_sync(
                 parent_provider,
                 conversation,
@@ -511,9 +528,12 @@ class SubAgent:
 
         Sets up worktree if ``isolation='worktree'``, runs the agent loop,
         and cleans up on completion (or preserves worktree if changes exist).
-        Restores cwd on exit and force-cleans worktree on failure (E5).
 
-        Callback firing order: cwd restore -> worktree cleanup -> callbacks.
+        **Concurrency safety**: does NOT call ``os.chdir()`` — instead
+        uses ``_set_tools_cwd()`` to point tool working directories at
+        the worktree, so concurrent subagents don't stomp on each other.
+
+        Callback firing order: tool cwd restore -> worktree cleanup -> callbacks.
         This ensures ``worktree_preserved`` is set before callbacks see it.
         """
         self.status = "running"
@@ -529,9 +549,9 @@ class SubAgent:
                 self._fire_callbacks()
                 return f"[error] {exc}"
 
-        # chdir into worktree for the duration of the run
+        # Point tools at the worktree instead of mutating global cwd
         if self.worktree_path:
-            os.chdir(self.worktree_path)
+            _set_tools_cwd(self.tools, self.worktree_path)
 
         # Seed the conversation with the user prompt
         self.conversation.messages.append(Message(role="user", content=prompt))
@@ -568,12 +588,9 @@ class SubAgent:
             logger.exception("Subagent %s failed: %s", self.name, exc)
             return_value = f"[error] Subagent {self.name} failed: {exc}"
         finally:
-            # Restore cwd before cleanup so we don't delete dir we're in
-            if self._parent_cwd:
-                try:
-                    os.chdir(self._parent_cwd)
-                except OSError:
-                    pass
+            # Restore tool cwds before cleanup
+            if self.worktree_path and self._parent_cwd:
+                _set_tools_cwd(self.tools, self._parent_cwd)
             if self.isolation == "worktree":
                 # E5: force cleanup on failure, conditional on success
                 self._cleanup_worktree(force=(self.status == "failed"))
@@ -590,6 +607,11 @@ class SubAgent:
 
         If the agent is currently running, queues the message for processing
         after the current loop finishes.
+
+        If the agent was created with ``isolation="worktree"`` and the
+        worktree still exists, the follow-up loop runs with tool cwds
+        pointed at the worktree so file operations happen in the right
+        directory.
         """
         if self.status == "running":
             # Queue the message for when the current run finishes
@@ -602,6 +624,10 @@ class SubAgent:
         # Restart from completed/failed state
         self.status = "running"
         self.error = ""
+
+        # Re-enter worktree if one exists (e.g. preserved with changes)
+        if self.worktree_path and Path(self.worktree_path).is_dir():
+            _set_tools_cwd(self.tools, self.worktree_path)
 
         self.conversation.messages.append(Message(role="user", content=message))
 
@@ -623,6 +649,10 @@ class SubAgent:
             logger.exception("Subagent %s continue_with failed: %s", self.name, exc)
             self._fire_callbacks()
             return f"[error] Subagent {self.name} failed: {exc}"
+        finally:
+            # Restore tool cwds after follow-up
+            if self.worktree_path and self._parent_cwd:
+                _set_tools_cwd(self.tools, self._parent_cwd)
 
     async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""

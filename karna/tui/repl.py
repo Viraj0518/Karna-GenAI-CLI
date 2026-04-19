@@ -282,9 +282,25 @@ async def run_repl(
         if not user_input:
             continue
 
+        # ── Skill trigger matching (checked BEFORE slash commands) ─────
+        # Skills with slash-prefixed triggers (e.g. /commit) must be
+        # checked first, otherwise the slash command handler intercepts
+        # them and reports "unknown command".
+        matched_skills = skill_manager.match_trigger(user_input)
+        if matched_skills:
+            skill_preamble_parts: list[str] = []
+            for skill in matched_skills:
+                if skill.instructions:
+                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+            if skill_preamble_parts:
+                skill_preamble = "\n\n".join(skill_preamble_parts)
+                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+            # Skills matched — skip slash command handling, fall through
+            # to the regular message path below.
+
         # ── Slash commands ──────────────────────────────────────────────
-        if user_input.startswith("/"):
-            result = handle_slash_command(
+        elif user_input.startswith("/"):
+            result = await handle_slash_command(
                 user_input,
                 console,
                 config,
@@ -345,20 +361,6 @@ async def run_repl(
                     user_input = result
                 else:
                     continue
-
-        # ── Skill trigger matching ──────────────────────────────────────────
-        # Check if user input matches any skill triggers. If so, prepend
-        # the skill instructions to the user message so the LLM follows
-        # the skill's workflow for this turn.
-        matched_skills = skill_manager.match_trigger(user_input)
-        if matched_skills:
-            skill_preamble_parts: list[str] = []
-            for skill in matched_skills:
-                if skill.instructions:
-                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
-            if skill_preamble_parts:
-                skill_preamble = "\n\n".join(skill_preamble_parts)
-                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
 
         # ── Regular message ─────────────────────────────────────────────
         user_msg = Message(role="user", content=user_input)

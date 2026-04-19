@@ -244,8 +244,20 @@ class Compactor:
         self,
         conversation: Conversation,
         context_window: int,
+        *,
+        force: bool = False,
     ) -> Conversation:
+        """Compact the conversation if it exceeds the threshold budget.
+
+        When *force* is True, the compaction always runs regardless of
+        whether usage exceeds the threshold. This is used by ``/compact``
+        where the user explicitly requests compaction.
+        """
         budget = int(context_window * self.threshold)
+        # When forcing, use the full context window as the budget so
+        # that ``auto_compact``'s internal trigger check always passes.
+        if force:
+            budget = context_window
         try:
             result = await auto_compact(
                 conversation,
