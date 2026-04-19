@@ -131,13 +131,23 @@ async def _agent_loop(
         # Build system prompt (with skills if available)
         system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager)
 
-        # Run the real agent loop
+        # Create a per-turn compactor using the active provider
+        from karna.compaction.compactor import Compactor
+
+        turn_compactor = Compactor(provider, threshold=0.80)
+
+        # Default context window (128k tokens)
+        context_window = 128_000
+
+        # Run the real agent loop with auto-compaction
         async for event in agent_loop(
             provider=provider,
             conversation=conversation,
             tools=tools,
             system_prompt=system_prompt,
             max_iterations=25,
+            context_window=context_window,
+            compactor=turn_compactor,
         ):
             # Map agent StreamEvent → TUI StreamEvent
             if event.type == "text":

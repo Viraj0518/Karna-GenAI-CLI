@@ -36,6 +36,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.agents.safety import pre_tool_check
+from karna.compaction.compactor import Compactor  # noqa: F401
 from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResult
 from karna.permissions.manager import PermissionLevel, PermissionManager
 from karna.providers.base import BaseProvider
@@ -48,6 +49,59 @@ _LOOP_DETECTION_THRESHOLD = 3
 
 # Default tool execution timeout (seconds)
 _DEFAULT_TOOL_TIMEOUT = 120
+
+# Auto-compaction fires when estimated tokens exceed this fraction of
+# the context window.
+_AUTO_COMPACT_THRESHOLD = 0.80
+
+
+# ----------------------------------------------------------------------- #
+#  Auto-compaction helper
+# ----------------------------------------------------------------------- #
+
+
+async def _maybe_auto_compact(
+    conversation: Conversation,
+    context_window: int,
+    compactor: Compactor,
+) -> bool:
+    """Run auto-compaction if estimated tokens exceed the threshold.
+
+    Returns ``True`` if compaction was performed, ``False`` otherwise.
+    The Compactor's circuit breaker is respected -- if it has tripped
+    this is a no-op.
+    """
+    if compactor.circuit_breaker_tripped:
+        return False
+
+    estimated_before = _estimate_message_tokens(conversation.messages)
+    limit = int(context_window * _AUTO_COMPACT_THRESHOLD)
+
+    if estimated_before <= limit:
+        return False
+
+    logger.info(
+        "Auto-compaction triggered: ~%d tokens (threshold %d, window %d)",
+        estimated_before,
+        limit,
+        context_window,
+    )
+
+    original_count = len(conversation.messages)
+    await compactor.compact(conversation, context_window)
+
+    if len(conversation.messages) < original_count:
+        estimated_after = _estimate_message_tokens(conversation.messages)
+        saved = estimated_before - estimated_after
+        logger.info(
+            "Auto-compaction complete: ~%d tokens saved (%d -> %d)",
+            saved,
+            estimated_before,
+            estimated_after,
+        )
+        return True
+
+    return False
 
 
 # ----------------------------------------------------------------------- #
@@ -433,6 +487,7 @@ async def agent_loop(
     provider_max_retries: int = 3,
     thinking: bool = False,
     thinking_budget: int | None = None,
+    compactor: Compactor | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Run the tool-use agent loop (streaming variant).
 
@@ -441,6 +496,11 @@ async def agent_loop(
 
     The loop terminates when the model produces a response with no
     tool calls, or when *max_iterations* is reached.
+
+    When *compactor* is provided alongside *context_window*, the loop
+    automatically triggers summarization-based compaction after each
+    tool-execution turn if estimated token usage exceeds 80%% of the
+    context window.
 
     Error recovery:
     - Tool execution failures are captured and sent to the model
@@ -460,6 +520,19 @@ async def agent_loop(
     _MAX_CONSECUTIVE_EMPTY = 3
 
     for iteration in range(max_iterations):
+        # ---- Auto-compaction before provider call --------------------
+        if compactor is not None and context_window is not None:
+            compacted = await _maybe_auto_compact(
+                conversation,
+                context_window,
+                compactor,
+            )
+            if compacted:
+                yield StreamEvent(
+                    type="text",
+                    text="[Context compacted -- older messages summarized to free space]\n",
+                )
+
         # ---- Context overflow check --------------------------------
         if context_window is not None:
             estimated = _estimate_message_tokens(conversation.messages)
@@ -638,6 +711,7 @@ async def agent_loop_sync(
     context_window: int | None = None,
     thinking: bool = False,
     thinking_budget: int | None = None,
+    compactor: Compactor | None = None,
 ) -> Message:
     """Run the tool-use agent loop (non-streaming variant).
 
@@ -654,6 +728,14 @@ async def agent_loop_sync(
     _MAX_CONSECUTIVE_EMPTY = 3
 
     for iteration in range(max_iterations):
+        # ---- Auto-compaction before provider call --------------------
+        if compactor is not None and context_window is not None:
+            await _maybe_auto_compact(
+                conversation,
+                context_window,
+                compactor,
+            )
+
         # ---- Context overflow check --------------------------------
         if context_window is not None:
             estimated = _estimate_message_tokens(conversation.messages)
