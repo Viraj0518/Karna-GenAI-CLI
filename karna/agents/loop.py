@@ -40,6 +40,7 @@ from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResul
 from karna.permissions.manager import PermissionLevel, PermissionManager
 from karna.providers.base import BaseProvider
 from karna.tools.base import BaseTool
+from karna.tools.task_registry import get_task_registry
 
 logger = logging.getLogger(__name__)
 
@@ -460,6 +461,19 @@ async def agent_loop(
     _MAX_CONSECUTIVE_EMPTY = 3
 
     for iteration in range(max_iterations):
+        # ---- Inject pending task notifications -----------------------
+        _task_registry = get_task_registry()
+        if _task_registry.has_pending_notifications():
+            await asyncio.sleep(0.2)
+        _notifications = _task_registry.get_pending_notifications()
+        if _notifications:
+            _combined = "\n\n".join(_notifications)
+            conversation.messages.append(Message(role="user", content=_combined))
+            yield StreamEvent(
+                type="text",
+                text=f"[{len(_notifications)} task notification(s) injected]\n",
+            )
+
         # ---- Context overflow check --------------------------------
         if context_window is not None:
             estimated = _estimate_message_tokens(conversation.messages)
@@ -654,6 +668,13 @@ async def agent_loop_sync(
     _MAX_CONSECUTIVE_EMPTY = 3
 
     for iteration in range(max_iterations):
+        # ---- Inject pending task notifications -----------------------
+        _task_registry = get_task_registry()
+        _notifications = _task_registry.get_pending_notifications()
+        if _notifications:
+            _combined = "\n\n".join(_notifications)
+            conversation.messages.append(Message(role="user", content=_combined))
+
         # ---- Context overflow check --------------------------------
         if context_window is not None:
             estimated = _estimate_message_tokens(conversation.messages)

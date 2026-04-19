@@ -150,7 +150,7 @@ def _build_commands() -> dict[str, SlashCommand]:
         SlashCommand("system", "/system <prompt>", "Set the system prompt", category="context", icon=ic_system),
         SlashCommand("cost", "/cost", "Show total token usage and cost", category="context", icon=ic_cost),
         SlashCommand(
-            "compact", "/compact", "Trigger conversation compaction (stub)", category="context", icon=ic_compact
+            "compact", "/compact", "Summarize older messages to free context space", category="context", icon=ic_compact
         ),
         SlashCommand("tools", "/tools", "List available tools", category="context", icon=ic_tools),
         SlashCommand(
@@ -179,6 +179,13 @@ def _build_commands() -> dict[str, SlashCommand]:
             "do",
             "/do",
             "Execute the last plan produced by /plan",
+            category="advanced",
+            icon=ic_running,
+        ),
+        SlashCommand(
+            "tasks",
+            "/tasks [stop <id>]",
+            "List background tasks or stop one by ID",
             category="advanced",
             icon=ic_running,
         ),
@@ -353,8 +360,74 @@ def _cmd_exit(**_kw) -> None:
     raise SystemExit(0)
 
 
-def _cmd_compact(console: Console, **_kw) -> None:
-    console.print("[yellow]Compaction not yet implemented - coming in Phase 4.[/yellow]")
+def _cmd_compact(
+    console: Console,
+    conversation: Conversation,
+    config: KarnaConfig,
+    **_kw,
+) -> None:
+    """Manually trigger conversation compaction."""
+    import asyncio
+
+    from karna.compaction.compactor import Compactor, _conv_tokens
+    from karna.providers import get_provider, resolve_model
+
+    if len(conversation.messages) <= 6:
+        console.print("[bright_black]Not enough messages to compact.[/bright_black]")
+        return
+
+    # Estimate tokens before compaction
+    tokens_before = _conv_tokens(conversation.messages, "")
+    msg_count_before = len(conversation.messages)
+
+    try:
+        # Resolve the current provider for summarization
+        model_spec = (
+            f"{config.active_provider}:{config.active_model}"
+            if ":" not in (config.active_model or "")
+            else config.active_model
+        )
+        provider_name, model_name = resolve_model(model_spec)
+        provider = get_provider(provider_name)
+        provider.model = model_name
+
+        compactor = Compactor(provider, threshold=0.0)  # threshold=0 forces compaction
+
+        # Default context window (generous)
+        context_window = 200_000
+
+        # Run the compaction
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                compactor.compact(conversation, context_window),
+                loop,
+            )
+            future.result(timeout=60)
+        else:
+            asyncio.run(compactor.compact(conversation, context_window))
+
+    except Exception as exc:
+        console.print(f"[red]Compaction failed: {type(exc).__name__}: {exc}[/red]")
+        return
+
+    tokens_after = _conv_tokens(conversation.messages, "")
+    msg_count_after = len(conversation.messages)
+    saved = tokens_before - tokens_after
+
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+
+    console.print(
+        Panel(
+            f"[bright_black]Messages:[/] {msg_count_before} -> {msg_count_after}\n"
+            f"[bright_black]Est. tokens:[/] ~{tokens_before:,} -> ~{tokens_after:,} "
+            f"([green]-{saved:,}[/green])",
+            title=f"[bold {cyan}]Compaction Complete[/]",
+            border_style=border,
+            expand=False,
+        )
+    )
 
 
 def _cmd_tools(console: Console, tool_names: list[str], **_kw) -> None:
@@ -614,6 +687,83 @@ def _cmd_do(console: Console, conversation: Conversation, **_kw) -> str | None:
     return f"__DO__{plan}"
 
 
+def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
+    """``/tasks`` — list or stop background tasks."""
+    import asyncio
+
+    from karna.tools.task_registry import TaskStatus, get_task_registry
+
+    registry = get_task_registry()
+    parts = args.strip().split(None, 1) if args.strip() else []
+
+    if parts and parts[0].lower() == "stop":
+        if len(parts) < 2:
+            console.print("[red]Usage: /tasks stop <task-id>[/red]")
+            return None
+        task_id = parts[1].strip()
+        entry = registry.get(task_id)
+        if entry is None:
+            console.print(f"[red]Unknown task: {task_id}[/red]")
+            return None
+        if entry.status != TaskStatus.RUNNING:
+            console.print(f"[bright_black]Task {task_id} is not running (status: {entry.status.value})[/bright_black]")
+            return None
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(registry.stop(task_id), loop)
+                stopped = future.result(timeout=10)
+            else:
+                stopped = asyncio.run(registry.stop(task_id))
+        except Exception as exc:
+            console.print(f"[red]Failed to stop task: {exc}[/red]")
+            return None
+        if stopped:
+            console.print(f"[green]Task {task_id} cancelled.[/green]")
+        else:
+            console.print(f"[yellow]Could not cancel task {task_id}.[/yellow]")
+        return None
+
+    all_tasks = registry.list_all()
+    if not all_tasks:
+        console.print("[bright_black]No background tasks.[/bright_black]")
+        return None
+
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+    table = Table(
+        show_header=True,
+        header_style=f"bold {cyan}",
+        border_style=border,
+        expand=False,
+    )
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Type", style="white")
+    table.add_column("Description", style="white", max_width=40)
+    table.add_column("Status", style="white")
+    table.add_column("Runtime", style="bright_black", justify="right")
+
+    status_styles = {
+        TaskStatus.RUNNING: "green",
+        TaskStatus.COMPLETED: "bright_black",
+        TaskStatus.FAILED: "red",
+        TaskStatus.CANCELLED: "yellow",
+    }
+
+    for entry in all_tasks:
+        status_style = status_styles.get(entry.status, "white")
+        table.add_row(
+            entry.id,
+            entry.type.value,
+            entry.description[:40],
+            f"[{status_style}]{entry.status.value}[/{status_style}]",
+            entry.runtime_display,
+        )
+
+    console.print(table)
+    return None
+
+
 def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = None, **_kw) -> None:
     if session_db is None:
         console.print("[bright_black]Session database not available.[/bright_black]")
@@ -672,6 +822,7 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "loop": _cmd_loop,
     "plan": _cmd_plan,
     "do": _cmd_do,
+    "tasks": _cmd_tasks,
 }
 
 
