@@ -60,10 +60,11 @@ def test_slash_commands_registered() -> None:
         "sessions",
         "memory",
         "skills",
-        # Advanced mode (autonomous loop + plan-first)
+        # Advanced mode (autonomous loop + plan-first + task management)
         "loop",
         "plan",
         "do",
+        "tasks",
     }
     assert expected == set(COMMANDS.keys())
 
