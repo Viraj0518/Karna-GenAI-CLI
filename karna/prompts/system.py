@@ -27,6 +27,7 @@ from karna.tokens import count_tokens
 
 if TYPE_CHECKING:
     from karna.config import KarnaConfig
+    from karna.skills.loader import SkillManager
     from karna.tools.base import BaseTool
 
 
@@ -305,6 +306,7 @@ def build_system_prompt(
     memory_context: str | None = None,
     custom_instructions: str | None = None,
     *,
+    skill_manager: "SkillManager | None" = None,
     max_tokens: int = 4000,
 ) -> str:
     """Build the complete system prompt within a token budget.
@@ -313,8 +315,9 @@ def build_system_prompt(
     1. Selects the right template for the provider/model
     2. Generates tool documentation from the registry
     3. Injects context sections in priority order
-    4. Trims to fit the token budget
-    5. Applies model-specific adaptations
+    4. Injects active skills from the SkillManager
+    5. Trims to fit the token budget
+    6. Applies model-specific adaptations
 
     Priority order when trimming:
     1. Identity + tools (always include)
@@ -323,6 +326,7 @@ def build_system_prompt(
     4. Project context (include if fits)
     5. Git context (include if fits)
     6. Memory context (include if fits, trimmed first)
+    7. Available Skills (include if fits, trimmed before memory)
 
     Parameters
     ----------
@@ -338,6 +342,8 @@ def build_system_prompt(
         Relevant memories from ~/.karna/memory/.
     custom_instructions : str, optional
         User's personal preferences.
+    skill_manager : SkillManager, optional
+        Loaded SkillManager for injecting skill instructions.
     max_tokens : int
         Maximum token budget for the prompt (default 4000).
 
@@ -376,6 +382,20 @@ def build_system_prompt(
     # Add environment info as a context section (priority 2, always kept)
     env_section = _build_env_section()
     context_sections.insert(0, ("Environment", env_section.replace("# Environment\n", ""), 1))
+
+    # Inject skills as a context section (priority 6 -- trimmed after memory
+    # but before git/project context)
+    if skill_manager is not None:
+        skills_text = skill_manager.get_skills_for_prompt(max_tokens=3000)
+        if skills_text:
+            # Strip the leading "# Skills\n" header that get_skills_for_prompt
+            # produces -- _format_context_sections will add its own "# " prefix.
+            # We use "Available Skills" as the section label so the LLM knows
+            # these are invocable capabilities.
+            content = skills_text
+            if content.startswith("# Skills\n"):
+                content = content[len("# Skills\n") :]
+            context_sections.append(("Available Skills", content, 6))
 
     # Fill template placeholders
     prompt = template.replace("{user}", user)

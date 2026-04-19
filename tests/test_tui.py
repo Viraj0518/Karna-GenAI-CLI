@@ -59,6 +59,7 @@ def test_slash_commands_registered() -> None:
         "copy",
         "sessions",
         "memory",
+        "skills",
         # Advanced mode (autonomous loop + plan-first)
         "loop",
         "plan",
