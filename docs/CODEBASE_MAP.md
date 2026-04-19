@@ -1,6 +1,6 @@
 # Nellie Codebase Map -- Karna Engineering
 
-> One-liner per `.py` file. Updated 2026-04-17.
+> One-liner per `.py` file. Updated 2026-04-19.
 
 ## Core
 
@@ -16,9 +16,12 @@ karna/init.py                          — Project initialisation: detect type, 
 
 ```
 karna/agents/__init__.py               — Re-exports agent_loop, agent_loop_sync, pre_tool_check
-karna/agents/loop.py                   — Core agent loop: streaming + sync, parallel/sequential tool dispatch, retry, loop detection
+karna/agents/loop.py                   — Core agent loop: streaming + sync, parallel/sequential tool dispatch, retry, loop detection, auto-compaction trigger
 karna/agents/safety.py                 — Pre-tool safety checks: dangerous commands, sensitive paths, SSRF guard
-karna/agents/subagent.py               — SubAgent (independent agent with own conversation) + SubAgentManager registry
+karna/agents/subagent.py               — SubAgent spawning, SendMessage, completion callbacks, worktree isolation + auto-cleanup, foreground/background modes
+karna/agents/autonomous.py             — /loop repeat-until-done autonomous agent cycle
+karna/agents/parallel.py               — Parallel execution coordination for concurrent tool dispatch
+karna/agents/plan.py                   — /plan read-only reasoning mode (think-first, no mutations)
 ```
 
 ## Providers
@@ -52,8 +55,9 @@ karna/tools/image.py                  — Vision: base64 encoding, marker protoc
 karna/tools/git_ops.py                — Structured git ops: status/diff/log/add/commit/branch/stash/checkout with safety guards
 karna/tools/monitor.py                — Background process streaming: each stdout line becomes a notification event
 karna/tools/notebook.py               — Jupyter .ipynb: read/edit/add/execute/create, nbformat optional, exec() fallback
-karna/tools/task.py                   — Subagent spawning: delegates to SubAgentManager, optional worktree isolation
+karna/tools/task.py                   — Subagent spawning: create/send_message/stop actions, foreground + background modes, worktree isolation
 karna/tools/mcp.py                    — MCP client: JSON-RPC over stdio, server lifecycle, tool discovery, MCPProxyTool wrapper
+karna/tools/voice.py                  — Voice input/output support (optional dependency)
 ```
 
 ## Auth
@@ -69,9 +73,10 @@ karna/auth/pool.py                     — Multi-key pool: failover/round-robin/
 ```
 karna/context/__init__.py              — Re-exports ContextManager
 karna/context/manager.py               — Central context manager: project + git + env injection, token-budget truncation
-karna/context/project.py               — Project context detection: KARNA.md, CLAUDE.md, .cursorrules, copilot-instructions, .karna/project.toml
+karna/context/project.py               — Project context detection: KARNA.md/CLAUDE.md/.cursorrules hierarchical merge (E8), global + project-level
 karna/context/git.py                   — Git awareness: branch, status summary, recent commits, diff stat, parallel git commands
 karna/context/environment.py           — Environment metadata: platform, shell, Python version, cwd, date
+karna/context/references.py            — External reference tracking and context injection
 ```
 
 ## Prompts
@@ -93,10 +98,14 @@ karna/sessions/cost.py                 — CostTracker: per-session accumulation
 ## Memory
 
 ```
-karna/memory/__init__.py               — Re-exports MemoryManager, MemoryEntry, MemoryType
+karna/memory/__init__.py               — Re-exports MemoryManager, MemoryEntry, MemoryType, MemoryExtractor
 karna/memory/types.py                  — Memory type taxonomy (user/feedback/project/reference) + MemoryEntry model
 karna/memory/manager.py                — MemoryManager: CRUD, search, MEMORY.md index, context injection, staleness check
+karna/memory/extractor.py              — Auto-extraction: regex pattern matching for feedback/user/project/reference, dedup, rate-limiting
 karna/memory/prompts.py                — MEMORY_SYSTEM_PROMPT: comprehensive instructions for auto-memory behavior
+karna/memory/index.py                  — MEMORY.md index file management
+karna/memory/memdir.py                 — Memory directory layout and path utilities
+karna/memory/profile.py                — User profile aggregation from memory entries
 ```
 
 ## Skills
@@ -109,7 +118,7 @@ karna/skills/loader.py                 — Skill loader: .md parsing with YAML f
 ## Hooks
 
 ```
-karna/hooks/__init__.py                — Stub (Phase 3)
+karna/hooks/__init__.py                — Re-exports HookDispatcher, HookType, HookResult
 karna/hooks/dispatcher.py              — HookDispatcher: register/dispatch lifecycle hooks, shell-command wrapper, config loading
 karna/hooks/builtins.py                — Built-in hooks: cost warning, git dirty warning, auto-save memory (stub)
 ```
@@ -124,8 +133,8 @@ karna/permissions/manager.py           — 3-tier permission system: ALLOW/ASK/D
 ## Compaction
 
 ```
-karna/compaction/__init__.py           — Stub (Phase 3)
-karna/compaction/compactor.py          — Compactor: auto-summarize old messages, preserve tail, circuit breaker on failures
+karna/compaction/__init__.py           — Re-exports Compactor
+karna/compaction/compactor.py          — Compactor: auto-compact at 80% of context window, preserve tail, circuit breaker after 3 failures
 karna/compaction/prompts.py            — Summarization prompt templates for conversation compaction
 ```
 
@@ -148,12 +157,17 @@ karna/security/scrub.py                — Memory-safe scrubbing: secrets + cred
 
 ```
 karna/tui/__init__.py                  — Re-exports run_repl
-karna/tui/repl.py                      — Main REPL loop: banner, input, slash commands, agent loop, streaming output, session persistence
+karna/tui/repl.py                      — Main REPL loop: banner, input, slash commands, agent loop, streaming output, session persistence, skill matching
 karna/tui/output.py                    — OutputRenderer: Rich-based streaming (text/tool calls/results/errors/usage), spinner
+karna/tui/output_style.py             — Output styling configuration and theme-aware formatting
 karna/tui/input.py                     — Multiline input: prompt_toolkit preferred, plain input() fallback, backslash continuation
-karna/tui/slash.py                     — 14 slash commands: help, model, clear, history, cost, exit, compact, tools, system, sessions, resume, paste, copy
+karna/tui/slash.py                     — 18 slash commands: help, model, clear, history, cost, exit, compact, tools, skills, memory, loop, plan, do, system, sessions, resume, paste, copy
 karna/tui/banner.py                    — Startup banner: version, model, tool count in Rich panel with brand colours
 karna/tui/themes.py                    — Colour theme: Karna brand palette (#3C73BD blue, #87CEEB sky-blue), Rich Theme object
+karna/tui/design_tokens.py            — Semantic colour tokens for consistent UI styling
+karna/tui/icons.py                     — Unicode icon definitions for slash command display
+karna/tui/diff.py                      — Diff rendering for edit operations
+karna/tui/vim.py                       — Vim-mode keybinding support for input
 ```
 
 ## Plugin System

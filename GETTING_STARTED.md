@@ -233,13 +233,18 @@ Type these during a conversation:
 | Command | What it does |
 |---|---|
 | `/help` | Show all commands |
-| `/model` | Switch to a different model |
+| `/model <provider:model>` | Switch to a different model |
 | `/cost` | Check session and total spend |
-| `/compact` | Free up context space |
-| `/history` | Search past sessions |
+| `/compact` | Free up context space (auto-triggers at 80% window) |
+| `/history` | Show conversation so far |
 | `/sessions` | List recent sessions |
-| `/resume` | Continue a past session |
+| `/resume <id>` | Continue a past session |
 | `/tools` | See available tools |
+| `/skills [enable\|disable <name>]` | List, enable, or disable skills |
+| `/memory [search\|show\|forget]` | View, search, or manage memories |
+| `/loop <goal>` | Repeat-until-done autonomous agent |
+| `/plan <goal>` | Think first, read-only plan mode |
+| `/do` | Execute the last plan from `/plan` |
 | `/copy` | Copy last response to clipboard |
 | `/paste` | Paste clipboard into prompt |
 | `/clear` | Fresh conversation, same session |
@@ -249,14 +254,25 @@ Type these during a conversation:
 
 ## Skills
 
-Skills are reusable workflows. Nellie loads them from `.karna/skills/` in your project or `~/.config/karna/skills/` globally.
+Skills are reusable workflows. Nellie loads them from `.karna/skills/` in your project or `~/.config/karna/skills/` globally. Skills are injected into the system prompt when triggered -- they guide the model's behavior for specific tasks.
 
-Example — create `.karna/skills/sql-review.md`:
+### Managing skills
+
+```bash
+# Inside the REPL:
+/skills                    # List all loaded skills with status
+/skills enable sql-review  # Enable a disabled skill
+/skills disable sql-review # Disable without deleting
+```
+
+### Creating a skill
+
+Create `.karna/skills/sql-review.md`:
 ```markdown
 ---
 name: sql-review
-trigger: /sql-review
 description: Review a SQL query for performance and correctness
+triggers: ["/sql-review", "review this sql", "optimize query"]
 ---
 
 Read the SQL file the user specifies. Check for:
@@ -269,7 +285,114 @@ Read the SQL file the user specifies. Check for:
 Suggest concrete improvements with the rewritten query.
 ```
 
-Then type `/sql-review queries/slow_report.sql` in Nellie and it runs the workflow.
+Then type `/sql-review queries/slow_report.sql` in Nellie and it runs the workflow. You can also trigger skills with keyword phrases like "review this sql".
+
+### Skill file format
+
+| Frontmatter field | Required | Description |
+|---|---|---|
+| `name` | Yes | Unique skill identifier |
+| `description` | Yes | Short description (shown in `/skills` list) |
+| `triggers` | Yes | List of slash commands or keyword phrases |
+| `enabled` | No | `true` (default) or `false` |
+| `version` | No | Skill version string |
+| `author` | No | Author name |
+
+The body (below the `---` frontmatter) contains the full instructions injected into the system prompt when the skill is triggered.
+
+---
+
+## Memory System
+
+Nellie automatically learns your preferences, project conventions, and corrections across sessions. Memories persist in `~/.karna/memory/` as markdown files with YAML frontmatter.
+
+### How auto-memory works
+
+Every message you send is scanned for patterns (regex-based, zero LLM cost):
+
+| Pattern type | Example triggers | Memory type |
+|---|---|---|
+| **Corrections** | "don't use pandas", "that's wrong", "never add emojis" | `feedback` |
+| **Confirmations** | "yes, exactly like that", "keep doing it that way" | `feedback` |
+| **Self-identification** | "I'm a data engineer", "I prefer vim keybindings" | `user` |
+| **Project facts** | "we deploy to AWS", "our convention is snake_case" | `project` |
+| **References** | URLs, "bugs are tracked in Linear", "docs at..." | `reference` |
+
+Memories are deduplicated against existing entries and rate-limited (min 5 turns between saves) to avoid noise.
+
+### Managing memories
+
+```bash
+# Inside the REPL:
+/memory                    # List all memories in a table
+/memory search <query>     # Full-text search across memories
+/memory show <name>        # Display full content of a memory
+/memory forget <name>      # Delete a memory
+```
+
+### Memory file format
+
+```markdown
+---
+name: Memory title
+description: One-line description
+type: user|feedback|project|reference
+---
+
+Memory content here.
+```
+
+---
+
+## KARNA.md -- Project Instructions
+
+`KARNA.md` is the most important file for getting good results from Nellie. It teaches the agent your project's stack, conventions, and boundaries.
+
+### Setup
+
+```bash
+cd your-project/
+nellie init              # Auto-detects stack, generates KARNA.md
+nellie init --minimal    # Minimal starter template
+```
+
+### Hierarchy
+
+Nellie loads instruction files in priority order and merges them:
+
+```
+1. {project_root}/KARNA.md          -- highest priority (team conventions)
+2. {project_root}/.karna/KARNA.md   -- alternate location
+3. ~/.karna/KARNA.md                -- global personal preferences
+4. CLAUDE.md                        -- Claude Code compatibility
+5. .cursorrules                     -- Cursor compatibility
+6. .github/copilot-instructions.md  -- Copilot compatibility
+```
+
+This means you can have global preferences in `~/.karna/KARNA.md` (like "always use vim keybindings") and project-specific rules in your repo's `KARNA.md`. Both are loaded -- project-level wins on conflicts.
+
+### What to put in KARNA.md
+
+```markdown
+# KARNA.md
+
+## Stack
+Python 3.11, Polars, DuckDB, FastAPI
+
+## Conventions
+- Use polars over pandas for new code
+- SQL queries in queries/ as .sql files
+- Tests mirror source structure
+- Commit messages: conventional commits format
+
+## Don't touch
+- config/prod/ (production secrets)
+- migrations/ (use alembic)
+
+## Agent defaults
+- Always run tests after modifying code
+- Read existing patterns before writing new code
+```
 
 ---
 

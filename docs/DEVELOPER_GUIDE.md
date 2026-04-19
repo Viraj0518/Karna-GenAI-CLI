@@ -137,11 +137,24 @@ The heart of Nellie. Implements the iterative tool-call cycle.
 
 ### karna/agents/subagent.py
 
-Independent agents with their own conversation context, tools, and optional git worktree isolation.
+Independent agents with their own conversation context, tools, and optional git worktree isolation. Enhanced with completion callbacks, SendMessage for continuing agents, and worktree auto-cleanup.
+
+**Key function:**
+- `spawn_subagent()` -- canonical one-shot entrypoint. Spawns an agent, runs it to completion, and returns the final assistant content as a string. Supports optional git worktree isolation.
 
 **Classes:**
-- `SubAgent` -- a single background agent. Supports `run()` (blocking) and `run_in_background()` (returns `asyncio.Task`). Can create/cleanup git worktrees for filesystem isolation.
-- `SubAgentManager` -- registry of spawned subagents. Provides `spawn()`, `get()`, `list_active()`, `list_all()`.
+- `SubAgent` -- a single background agent. Supports `run()` (blocking) and `run_in_background()` (returns `asyncio.Task`). Can create/cleanup git worktrees for filesystem isolation. Completion callbacks (`on_complete`) notify the parent agent. Message queuing for in-flight agents.
+- `SubAgentManager` -- registry of spawned subagents. Provides `spawn()`, `get()`, `list_active()`, `list_all()`, `send_message()`.
+
+**Worktree lifecycle:**
+1. `git worktree add` creates an isolated working copy (serialized via `_WORKTREE_LOCK`)
+2. Subagent runs with `cwd` set to the worktree
+3. On completion: if no changes detected, worktree is auto-cleaned up; if changes exist, worktree is preserved for manual review
+
+**SendMessage (E4):**
+- `SubAgentManager.send_message(agent_id, message)` -- continue a completed or running agent with new instructions
+- For completed agents: appends the message and re-runs
+- For running agents: queues the message for delivery after current iteration
 
 ### karna/agents/safety.py
 
@@ -340,9 +353,22 @@ Context assembly for every provider call.
 
 #### karna/context/project.py
 
-`ProjectContext` -- walks up from cwd looking for instruction files.
-- Priority order: KARNA.md > CLAUDE.md > .karna/project.toml > .cursorrules > .github/copilot-instructions.md
-- All matching files are loaded and concatenated (closest shadows farthest)
+`ProjectContext` -- walks up from cwd looking for instruction files. Implements the hierarchical merge strategy (E8).
+
+**Priority system:**
+
+| Priority | File | Description |
+|---|---|---|
+| 1 | `{root}/KARNA.md` | Project-level Karna instructions (highest) |
+| 2 | `{root}/.karna/KARNA.md` | Alternate project location |
+| 3 | `~/.karna/KARNA.md` | Global personal preferences |
+| 5 | `CLAUDE.md` | Claude Code compatibility |
+| 6 | `.karna/project.toml` | TOML-format project config |
+| 7 | `.cursorrules` | Cursor compatibility |
+| 8 | `.github/copilot-instructions.md` | Copilot compatibility |
+
+- All matching files are loaded and merged (closest to cwd shadows files further up)
+- Project-level KARNA.md overrides global; both are injected if present
 - Supports both markdown and TOML formats
 
 #### karna/context/git.py
@@ -412,7 +438,7 @@ Session persistence and cost tracking. All data in `~/.karna/sessions/sessions.d
 
 ### karna/memory/
 
-Persistent file-based memory system with 4 typed entries.
+Persistent file-based memory system with 4 typed entries and automatic extraction.
 
 #### karna/memory/types.py
 
@@ -445,6 +471,23 @@ type: user|feedback|project|reference
 Memory content here.
 ```
 
+#### karna/memory/extractor.py
+
+`MemoryExtractor` -- automatic memory extraction from user messages. Zero LLM cost (regex-only).
+
+**Pattern categories (priority order):**
+1. **Negative feedback** -- corrections ("don't use X", "that's wrong", "never do Y")
+2. **Positive feedback** -- confirmations ("yes, exactly", "keep doing it that way")
+3. **User profile** -- self-identification ("I'm a data engineer", "I prefer X")
+4. **Project facts** -- conventions ("we use DuckDB", "our standard is...")
+5. **References** -- URLs, external system pointers
+
+**Deduplication:** Each candidate is checked against existing memories using word-overlap similarity (threshold: 60%). Duplicates are skipped.
+
+**Rate limiting:** Minimum 5 turns between automatic saves to avoid noise. At most 1 memory saved per turn.
+
+**Integration:** Called from the `auto_save_memory_hook` after each assistant response.
+
 #### karna/memory/prompts.py
 
 `MEMORY_SYSTEM_PROMPT` -- comprehensive instructions injected into the system prompt covering:
@@ -454,9 +497,15 @@ Memory content here.
 - MEMORY.md index conventions
 - Staleness verification rules
 
+**How to add a new memory type:**
+1. Add the type to `MemoryType` enum in `karna/memory/types.py`.
+2. Add extraction patterns in `karna/memory/extractor.py` (new `_MY_TYPE_PATTERNS` list).
+3. Add a detection block in `MemoryExtractor._detect_candidates()`.
+4. Update `MEMORY_SYSTEM_PROMPT` in `karna/memory/prompts.py` with guidance for the new type.
+
 ### karna/skills/
 
-Skill system -- extend agent behavior with `.md` skill files.
+Skill system -- extend agent behavior with `.md` skill files. Skills are now fully wired: injected into system prompts and matched via triggers in the REPL.
 
 #### karna/skills/loader.py
 
@@ -467,12 +516,18 @@ Skill system -- extend agent behavior with `.md` skill files.
 - Supports lists, bools, quoted strings, multiline values
 
 **`SkillManager`:**
-- `load_all()` -- load all `.md` files from `~/.karna/skills/`
-- `match_trigger(user_input)` -- find skills matching slash commands or keywords
-- `get_skills_for_prompt()` -- build skills section within token budget
+- `load_all()` -- load all `.md` files from `~/.karna/skills/` (project) and `~/.config/karna/skills/` (global)
+- `match_trigger(user_input)` -- find skills matching slash commands or keywords. Called by the REPL before agent loop dispatch.
+- `get_skills_for_prompt()` -- build skills section within token budget for system prompt injection
 - `install_skill(source)` -- install from URL or local path
 - `create_skill()` -- create a new skill file
-- `enable_skill()` / `disable_skill()` -- toggle with frontmatter persistence
+- `enable_skill()` / `disable_skill()` -- toggle with frontmatter persistence (persists across sessions)
+
+**Trigger matching flow:**
+1. REPL receives user input
+2. `SkillManager.match_trigger()` checks against all enabled skills
+3. If a match is found, skill instructions are injected into the system prompt for that turn
+4. Agent loop runs with the augmented prompt
 
 **How to write a skill:**
 ```markdown
@@ -484,6 +539,11 @@ triggers: ["/my-skill", "do the thing"]
 
 Instructions injected into the system prompt when active.
 ```
+
+**`/skills` slash command:**
+- `/skills` -- list all loaded skills with enabled/disabled status
+- `/skills enable <name>` -- enable a disabled skill
+- `/skills disable <name>` -- disable a skill without deleting the file
 
 ### karna/hooks/
 
@@ -548,15 +608,18 @@ Evaluation order (first match wins):
 
 ### karna/compaction/
 
-Context compaction -- summarize older messages to free tokens.
+Context compaction -- auto-summarize older messages when context fills up.
 
 #### karna/compaction/compactor.py
 
-`Compactor` -- auto-compact when estimated tokens exceed threshold (93% of context window).
-- Preserves system prompt + last 5 messages
+`Compactor` -- auto-compact when estimated tokens exceed 80% of the context window.
+- Triggered automatically by the agent loop (no user action needed)
+- Also available manually via `/compact` slash command
+- Preserves system prompt + last 5 messages (the "tail")
 - Summarizes everything in between via the same provider
-- Circuit breaker: stops after 3 consecutive failures
+- Circuit breaker: stops after 3 consecutive failures to avoid infinite retry loops
 - Summary formatted as structured output (decisions, changes, open tasks)
+- Secret scrubbing applied before the summarization call (leaked keys never leave the host)
 
 #### karna/compaction/prompts.py
 
@@ -626,7 +689,7 @@ Rich-based terminal interface.
 
 #### karna/tui/slash.py
 
-14 slash commands: `/help`, `/model`, `/clear`, `/history`, `/cost`, `/exit`, `/quit`, `/compact`, `/tools`, `/system`, `/sessions`, `/resume`, `/paste`, `/copy`.
+18 slash commands: `/help`, `/model`, `/clear`, `/history`, `/cost`, `/exit`, `/quit`, `/compact`, `/tools`, `/skills`, `/memory`, `/loop`, `/plan`, `/do`, `/system`, `/sessions`, `/resume`, `/paste`, `/copy`.
 
 **How to add a new slash command:**
 1. Add a `SlashCommand` entry in `_build_commands()`.
@@ -748,6 +811,50 @@ triggers: ["/my-skill", "keyword"]
 
 Full instructions injected into the system prompt when triggered.
 ```
+
+### Adding a New Memory Type
+
+1. Add the type to `MemoryType` enum in `karna/memory/types.py`:
+```python
+class MemoryType(str, Enum):
+    USER = "user"
+    FEEDBACK = "feedback"
+    PROJECT = "project"
+    REFERENCE = "reference"
+    MY_TYPE = "my_type"  # new
+```
+
+2. Add extraction patterns in `karna/memory/extractor.py`:
+```python
+_MY_TYPE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\bsome pattern\b", re.I),
+]
+```
+
+3. Add a detection block in `MemoryExtractor._detect_candidates()`:
+```python
+for pattern in _MY_TYPE_PATTERNS:
+    match = pattern.search(text)
+    if match:
+        snippet = self._extract_snippet(text, match)
+        candidates.append(ExtractionCandidate(
+            name=self._make_name("my_type", snippet),
+            description=f"My type: {snippet[:80]}",
+            type="my_type",
+            content=f"My type fact: {snippet}",
+        ))
+        break
+```
+
+4. Update `MEMORY_SYSTEM_PROMPT` in `karna/memory/prompts.py` with guidance for the new type.
+
+### Adding a New Subagent Type
+
+The task tool supports three subagent types (`general`, `research`, `code`). To add a new type:
+
+1. Add the type name to `_VALID_SUBAGENT_TYPES` in `karna/tools/task.py`.
+2. Add a tool-filtering branch in `_filter_tools_for_type()`.
+3. Update the `subagent_type` parameter's `enum` list in `TaskTool.parameters`.
 
 ---
 
