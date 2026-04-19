@@ -44,6 +44,7 @@ from karna.tui.design_tokens import SEMANTIC
 if TYPE_CHECKING:
     from karna.sessions.cost import CostTracker
     from karna.sessions.db import SessionDB
+    from karna.skills.loader import SkillManager
 
 # --------------------------------------------------------------------------- #
 #  Icons (optional; authored by a sibling agent — degrade gracefully)
@@ -152,6 +153,13 @@ def _build_commands() -> dict[str, SlashCommand]:
             "compact", "/compact", "Trigger conversation compaction (stub)", category="context", icon=ic_compact
         ),
         SlashCommand("tools", "/tools", "List available tools", category="context", icon=ic_tools),
+        SlashCommand(
+            "skills",
+            "/skills [enable|disable <name>]",
+            "List, enable, or disable skills",
+            category="context",
+            icon=ic_tools,
+        ),
         # ── Advanced ───────────────────────────────────────────────────
         SlashCommand(
             "loop",
@@ -360,6 +368,72 @@ def _cmd_tools(console: Console, tool_names: list[str], **_kw) -> None:
     table.add_column("Tool", style="white")
     for i, name in enumerate(sorted(tool_names), 1):
         table.add_row(str(i), name)
+    console.print(table)
+
+
+def _cmd_skills(
+    console: Console,
+    args: str,
+    skill_manager: "SkillManager | None" = None,
+    **_kw,
+) -> None:
+    """``/skills`` -- list, enable, or disable skills."""
+    if skill_manager is None:
+        console.print("[bright_black]No skills loaded.[/bright_black]")
+        return
+
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+
+    parts = args.strip().split(None, 1) if args.strip() else []
+    sub = parts[0].lower() if parts else ""
+    sub_arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if sub == "enable":
+        if not sub_arg:
+            console.print("[red]Usage: /skills enable <name>[/red]")
+            return
+        if skill_manager.enable_skill(sub_arg):
+            console.print(f"[green]Enabled skill: [bold]{sub_arg}[/bold][/green]")
+        else:
+            console.print(f"[red]Skill not found: {sub_arg}[/red]")
+        return
+
+    if sub == "disable":
+        if not sub_arg:
+            console.print("[red]Usage: /skills disable <name>[/red]")
+            return
+        if skill_manager.disable_skill(sub_arg):
+            console.print(f"[yellow]Disabled skill: [bold]{sub_arg}[/bold][/yellow]")
+        else:
+            console.print(f"[red]Skill not found: {sub_arg}[/red]")
+        return
+
+    # Default: list all skills
+    if not skill_manager.skills:
+        console.print("[bright_black]No skills loaded.[/bright_black]")
+        return
+
+    table = Table(
+        show_header=True,
+        header_style=f"bold {cyan}",
+        border_style=border,
+        expand=False,
+    )
+    table.add_column("Name", style="white")
+    table.add_column("Description", style="bright_black")
+    table.add_column("Triggers", style="cyan")
+    table.add_column("Enabled", style="green", justify="center")
+    for skill in skill_manager.skills:
+        triggers_str = ", ".join(skill.triggers) if skill.triggers else "-"
+        enabled_str = "yes" if skill.enabled else "no"
+        enabled_style = "green" if skill.enabled else "red"
+        table.add_row(
+            skill.name,
+            skill.description,
+            triggers_str,
+            f"[{enabled_style}]{enabled_str}[/{enabled_style}]",
+        )
     console.print(table)
 
 
@@ -589,6 +663,7 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "quit": _cmd_exit,
     "compact": _cmd_compact,
     "tools": _cmd_tools,
+    "skills": _cmd_skills,
     "system": _cmd_system,
     "sessions": _cmd_sessions,
     "resume": _cmd_resume,
@@ -609,6 +684,7 @@ def handle_slash_command(
     tool_names: list[str] | None = None,
     session_db: "SessionDB | None" = None,
     cost_tracker: "CostTracker | None" = None,
+    skill_manager: "SkillManager | None" = None,
 ) -> str | None:
     """Parse and dispatch a slash command.
 
@@ -650,6 +726,7 @@ def handle_slash_command(
         args=args,
         session_db=session_db,
         cost_tracker=cost_tracker,
+        skill_manager=skill_manager,
     )
     return result
 

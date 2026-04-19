@@ -7,6 +7,7 @@ tool use, slash commands, multiline input, and Rich-rendered output.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from rich.console import Console
 
@@ -19,6 +20,7 @@ from karna.prompts import build_system_prompt
 from karna.providers import get_provider, resolve_model
 from karna.sessions.cost import CostTracker
 from karna.sessions.db import SessionDB
+from karna.skills.loader import SkillManager
 from karna.tools import TOOLS, get_all_tools
 from karna.tui.banner import print_banner
 from karna.tui.input import get_multiline_input
@@ -107,6 +109,7 @@ async def _agent_loop(
     config: KarnaConfig,
     conversation: Conversation,
     tool_names: list[str],
+    skill_manager: SkillManager | None = None,
 ) -> list[StreamEvent]:
     """Run a single turn of the agent loop — LIVE provider + tool execution."""
 
@@ -125,8 +128,8 @@ async def _agent_loop(
         # Build tools
         tools = get_all_tools()
 
-        # Build system prompt
-        system_prompt = build_system_prompt(config, tools)
+        # Build system prompt (with skills if available)
+        system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager)
 
         # Run the real agent loop
         async for event in agent_loop(
@@ -236,6 +239,18 @@ async def run_repl(
     )
     session_cost = SessionCost()
 
+    # Load skills from ~/.karna/skills/ and .karna/skills/
+    skill_manager = SkillManager()
+    skill_manager.load_all()
+    # Also load project-local skills if present
+    local_skills_dir = Path.cwd() / ".karna" / "skills"
+    if local_skills_dir.is_dir():
+        local_mgr = SkillManager(skills_dir=local_skills_dir)
+        local_mgr.load_all()
+        for skill in local_mgr.skills:
+            if not skill_manager.get_skill_by_name(skill.name):
+                skill_manager.skills.append(skill)
+
     print_banner(console, config, tool_names)
 
     # Build the display prompt from the model name
@@ -268,6 +283,7 @@ async def run_repl(
                 tool_names=tool_names,
                 session_db=session_db,
                 cost_tracker=cost_tracker,
+                skill_manager=skill_manager,
             )
             # Refresh prompt in case the model was switched
             model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
@@ -320,6 +336,22 @@ async def run_repl(
                 else:
                     continue
 
+        # ── Skill trigger matching ──────────────────────────────────────────
+        # Check if user input matches any skill triggers. If so, prepend
+        # the skill instructions to the user message so the LLM follows
+        # the skill's workflow for this turn.
+        matched_skills = skill_manager.match_trigger(user_input)
+        if matched_skills:
+            skill_preamble_parts: list[str] = []
+            for skill in matched_skills:
+                if skill.instructions:
+                    skill_preamble_parts.append(
+                        f"[Skill: {skill.name}]\n{skill.instructions}"
+                    )
+            if skill_preamble_parts:
+                skill_preamble = "\n\n".join(skill_preamble_parts)
+                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+
         # ── Regular message ─────────────────────────────────────────────
         user_msg = Message(role="user", content=user_input)
         conversation.messages.append(user_msg)
@@ -329,7 +361,7 @@ async def run_repl(
         renderer.show_spinner()
 
         try:
-            events = await _agent_loop(config, conversation, tool_names)
+            events = await _agent_loop(config, conversation, tool_names, skill_manager=skill_manager)
             for event in events:
                 renderer.handle(event)
 
