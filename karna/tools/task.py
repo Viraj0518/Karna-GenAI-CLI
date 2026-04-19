@@ -1,10 +1,17 @@
-"""Task tool — spawn a subagent to handle a complex subtask.
+"""Task tool — spawn, continue, and manage subagents.
 
 The parent agent uses this tool to delegate work to an independent
 subagent that runs with its own conversation context, tools, and
-optional git worktree isolation. The subagent runs synchronously
-within ``execute`` and its final assistant message is returned as
-the tool result.
+optional git worktree isolation. Supports three actions:
+
+- ``create`` — spawn a new subagent (foreground or background)
+- ``send_message`` — continue a completed/running subagent with new instructions
+- ``stop`` — cancel a running subagent
+
+The subagent runs synchronously within ``execute`` (foreground) or
+returns immediately with an agent ID (background). Background
+completion notifications are injected into the parent conversation
+by the agent loop.
 
 Ported from cc-src AgentTool / in-process teammate patterns with
 attribution to the Anthropic Claude Code codebase.
@@ -12,6 +19,7 @@ attribution to the Anthropic Claude Code codebase.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Literal
@@ -70,30 +78,50 @@ def _filter_tools_for_type(
 
 
 class TaskTool(BaseTool):
-    """Spawn a subagent to handle a complex subtask.
+    """Spawn, continue, or stop subagents.
 
-    The subagent runs with its own conversation context and tool set.
-    It can optionally use a git worktree for filesystem isolation.
-    The tool blocks until the subagent completes and returns the final
-    assistant message content as its result.
+    Supports three actions:
+    - ``create`` (default) — spawn a new subagent
+    - ``send_message`` — continue an existing subagent with new instructions
+    - ``stop`` — cancel a running subagent
+
+    Create mode supports foreground (awaits result) and background
+    (returns agent ID immediately, notifies on completion).
     """
 
     name = "task"
     description = (
-        "Spawn a subagent to handle a complex subtask independently. "
-        "The subagent runs with its own conversation context and a "
-        "filtered tool subset. Returns the subagent's final answer."
+        "Manage subagents: create new ones, send follow-up messages to "
+        "existing ones, or stop running ones. Subagents run with their "
+        "own conversation context and filtered tool subset."
     )
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["create", "send_message", "stop"],
+                "description": (
+                    "Action to perform. 'create' spawns a new subagent, "
+                    "'send_message' continues an existing one, "
+                    "'stop' cancels a running one. Default: 'create'."
+                ),
+            },
             "description": {
                 "type": "string",
-                "description": "What the subagent should do (short summary for logs).",
+                "description": "What the subagent should do (short summary for logs). Required for 'create'.",
             },
             "prompt": {
                 "type": "string",
-                "description": "Full prompt for the subagent.",
+                "description": "Full prompt for the subagent. Required for 'create'.",
+            },
+            "agent_id": {
+                "type": "string",
+                "description": "Agent ID or name. Required for 'send_message' and 'stop'.",
+            },
+            "message": {
+                "type": "string",
+                "description": "Message to send to an existing agent. Required for 'send_message'.",
             },
             "subagent_type": {
                 "type": "string",
@@ -124,6 +152,14 @@ class TaskTool(BaseTool):
                 "minimum": 1,
                 "maximum": 100,
             },
+            "run_in_background": {
+                "type": "boolean",
+                "description": (
+                    "If true, the subagent runs in the background and returns "
+                    "its agent ID immediately. Completion is notified via a "
+                    "system message. Default: false (foreground)."
+                ),
+            },
         },
         "required": ["description", "prompt"],
     }
@@ -145,6 +181,17 @@ class TaskTool(BaseTool):
         self._system_prompt = system_prompt
 
     async def execute(self, **kwargs: Any) -> str:
+        action: str = kwargs.get("action", "create")
+
+        if action == "send_message":
+            return await self._handle_send_message(**kwargs)
+        elif action == "stop":
+            return await self._handle_stop(**kwargs)
+        else:
+            return await self._handle_create(**kwargs)
+
+    async def _handle_create(self, **kwargs: Any) -> str:
+        """Spawn a new subagent (foreground or background)."""
         description: str = kwargs["description"]
         prompt: str = kwargs["prompt"]
         subagent_type: str = kwargs.get("subagent_type", "general")
@@ -152,6 +199,7 @@ class TaskTool(BaseTool):
         isolation: Literal["none", "worktree"] = kwargs.get("isolation", "none")
         model: str | None = kwargs.get("model")
         max_iterations: int = int(kwargs.get("max_iterations", 20))
+        background: bool = kwargs.get("run_in_background", False)
 
         # --- Validation --------------------------------------------------
         if subagent_type not in _VALID_SUBAGENT_TYPES:
@@ -176,24 +224,92 @@ class TaskTool(BaseTool):
         )
 
         logger.info(
-            "TaskTool spawning subagent: %s (type=%s, tools=%d, isolation=%s)",
+            "TaskTool spawning subagent: %s (type=%s, tools=%d, isolation=%s, bg=%s)",
             description,
             subagent_type,
             len(selected_tools),
             isolation,
+            background,
         )
 
-        # --- Run the subagent -------------------------------------------
-        result = await spawn_subagent(
-            prompt,
-            parent_config=self._parent_config,
-            parent_provider=self._provider,
-            tools=selected_tools,
-            model=model,
-            max_iterations=max_iterations,
-            isolation=isolation,
-            worktree_base=self._worktree_base,
-            system_prompt=self._system_prompt,
+        if not background:
+            # --- Foreground: await the subagent result -------------------
+            result = await spawn_subagent(
+                prompt,
+                parent_config=self._parent_config,
+                parent_provider=self._provider,
+                tools=selected_tools,
+                model=model,
+                max_iterations=max_iterations,
+                isolation=isolation,
+                worktree_base=self._worktree_base,
+                system_prompt=self._system_prompt,
+            )
+            return result
+
+        # --- Background: use the managed SubAgent class -----------------
+        manager = get_subagent_manager()
+        # Use description as agent name, sanitised
+        agent_name = description.replace(" ", "_")[:40]
+        try:
+            agent = manager.spawn(
+                name=agent_name,
+                provider=self._provider,
+                tools=selected_tools,
+                system_prompt=self._system_prompt
+                or getattr(
+                    self._parent_config,
+                    "system_prompt",
+                    "You are a subagent. Complete the assigned task thoroughly and report back.",
+                ),
+                isolation=isolation,
+            )
+        except ValueError as exc:
+            return f"[error] {exc}"
+
+        await agent.run_in_background(prompt)
+
+        return json.dumps(
+            {
+                "status": "started",
+                "agent_id": agent.agent_id,
+                "agent_name": agent.name,
+                "message": f"Subagent '{agent.name}' started in background. You will be notified when it completes.",
+            }
         )
 
-        return result
+    async def _handle_send_message(self, **kwargs: Any) -> str:
+        """Send a message to an existing subagent (E4)."""
+        agent_id_or_name: str | None = kwargs.get("agent_id")
+        message: str | None = kwargs.get("message")
+
+        if not agent_id_or_name:
+            return "[error] 'agent_id' is required for send_message action."
+        if not message:
+            return "[error] 'message' is required for send_message action."
+
+        manager = get_subagent_manager()
+        return await manager.send_message(agent_id_or_name, message)
+
+    async def _handle_stop(self, **kwargs: Any) -> str:
+        """Stop a running subagent."""
+        agent_id_or_name: str | None = kwargs.get("agent_id")
+
+        if not agent_id_or_name:
+            return "[error] 'agent_id' is required for stop action."
+
+        manager = get_subagent_manager()
+        agent = manager._resolve_agent(agent_id_or_name)
+        if agent is None:
+            return f"[error] No subagent found with id/name: {agent_id_or_name}"
+
+        if agent.status != "running":
+            return f"[error] Subagent {agent.name} is not running (status: {agent.status})."
+
+        if agent._task is not None:
+            agent._task.cancel()
+            agent.status = "failed"
+            agent.error = "Cancelled by parent"
+            return f"Subagent {agent.name} cancelled."
+
+        return f"[error] Subagent {agent.name} has no task to cancel."
