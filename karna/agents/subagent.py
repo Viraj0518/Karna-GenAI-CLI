@@ -9,6 +9,14 @@ which returns the final assistant content as a string. The legacy
 ``SubAgent`` / ``SubAgentManager`` classes are retained for long-running
 background agents tracked by name.
 
+Enhanced (E4/E5) with:
+- Completion callbacks (``on_complete``) for parent notification
+- SendMessage to continue completed/running agents
+- Foreground vs background execution
+- Worktree auto-cleanup (no changes) vs preservation (with changes)
+- Result persistence for context-compaction survival
+- Message queuing for in-flight agents
+
 Ported from cc-src teammate/agent patterns with attribution to the
 Anthropic Claude Code codebase.
 """
@@ -22,9 +30,10 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator, Callable, Literal
 from uuid import uuid4
 
 from karna.agents.loop import agent_loop_sync
@@ -115,6 +124,26 @@ def _git_worktree_remove(parent_cwd: Path, worktree_path: Path) -> None:
             logger.info("Fallback rmtree removed worktree dir %s", worktree_path)
         except OSError as exc:
             logger.error("Failed to rmtree worktree dir %s: %s", worktree_path, exc)
+
+
+def _has_worktree_changes(worktree_path: Path) -> bool:
+    """Return True if the worktree has uncommitted or untracked files.
+
+    Uses ``git status --porcelain`` in the worktree directory.  Returns
+    False if the check fails (so the caller errs on the side of cleanup).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(worktree_path), "status", "--porcelain"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False
+        return bool(result.stdout.strip())
+    except (FileNotFoundError, OSError):
+        return False
 
 
 @asynccontextmanager
@@ -265,7 +294,7 @@ async def spawn_subagent(
 
 
 # --------------------------------------------------------------------------- #
-#  Legacy long-running subagent support
+#  Long-running subagent with lifecycle management (E4/E5)
 # --------------------------------------------------------------------------- #
 
 
@@ -274,10 +303,14 @@ class SubAgent:
 
     Each subagent has:
     - A unique name (used as key in the manager)
+    - A unique agent_id for programmatic lookup (E4)
     - Its own Conversation (message history)
     - A set of tools it can use
     - A system prompt
     - An optional worktree for filesystem isolation
+    - Completion callbacks for parent notification (E4)
+    - A message queue for SendMessage while running (E4)
+    - Worktree auto-cleanup / preservation logic (E5)
     """
 
     def __init__(
@@ -289,6 +322,7 @@ class SubAgent:
         isolation: str = "none",
     ) -> None:
         self.name = name
+        self.agent_id: str = uuid.uuid4().hex[:12]
         self.provider = provider
         self.tools = tools
         self.system_prompt = system_prompt
@@ -303,6 +337,43 @@ class SubAgent:
         # Worktree state (populated when isolation="worktree")
         self.worktree_path: str | None = None
         self.worktree_branch: str | None = None
+        # Whether worktree had changes and was preserved (not cleaned up)
+        self.worktree_preserved: bool = False
+
+        # E4: Completion callbacks
+        self._on_complete_callbacks: list[Callable[[SubAgent], Any]] = []
+
+        # E4: Message queue -- messages sent while agent is running
+        self._message_queue: deque[str] = deque()
+
+        # E4: Parent cwd preserved for worktree operations
+        self._parent_cwd: str | None = None
+
+    # ------------------------------------------------------------------ #
+    #  Callback registration (E4)
+    # ------------------------------------------------------------------ #
+
+    def on_complete(self, callback: Callable[[SubAgent], Any]) -> None:
+        """Register a callback invoked when this agent completes or fails.
+
+        The callback receives the SubAgent instance. If async, it is
+        scheduled as a task. If sync, it is called directly.
+        """
+        self._on_complete_callbacks.append(callback)
+
+    def _fire_callbacks(self) -> None:
+        """Invoke all registered on_complete callbacks."""
+        for cb in self._on_complete_callbacks:
+            try:
+                ret = cb(self)
+                if asyncio.iscoroutine(ret):
+                    asyncio.ensure_future(ret)
+            except Exception as exc:
+                logger.warning(
+                    "on_complete callback for subagent %s raised: %s",
+                    self.name,
+                    exc,
+                )
 
     # ------------------------------------------------------------------ #
     #  Worktree lifecycle
@@ -341,14 +412,32 @@ class SubAgent:
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(f"Failed to create worktree for subagent {self.name}: {exc.stderr}") from exc
 
-    def _cleanup_worktree(self) -> None:
+    def _cleanup_worktree(self, *, force: bool = False) -> None:
         """Remove the git worktree and its branch.
 
-        Failures are logged explicitly — never silently ignored.  Tries
+        If the worktree has uncommitted changes and *force* is False, the
+        worktree is preserved and ``self.worktree_preserved`` is set to True
+        so the caller can report the branch/path back (E5).
+
+        When *force* is True (e.g. on failure/crash), always clean up
+        regardless of changes.
+
+        Failures are logged explicitly -- never silently ignored.  Tries
         ``git worktree remove`` first, then falls back to
         ``shutil.rmtree`` if git leaves the directory behind.
         """
         if not self.worktree_path:
+            return
+
+        # E5: Auto-cleanup vs preservation
+        wt = Path(self.worktree_path)
+        if not force and wt.exists() and _has_worktree_changes(wt):
+            self.worktree_preserved = True
+            logger.info(
+                "Worktree %s has changes -- preserving (branch %s)",
+                self.worktree_path,
+                self.worktree_branch,
+            )
             return
 
         removed_by_git = False
@@ -421,9 +510,14 @@ class SubAgent:
         """Run the subagent to completion. Returns final response text.
 
         Sets up worktree if ``isolation='worktree'``, runs the agent loop,
-        and cleans up on completion.
+        and cleans up on completion (or preserves worktree if changes exist).
+        Restores cwd on exit and force-cleans worktree on failure (E5).
+
+        Callback firing order: cwd restore -> worktree cleanup -> callbacks.
+        This ensures ``worktree_preserved`` is set before callbacks see it.
         """
         self.status = "running"
+        self._parent_cwd = os.getcwd()
 
         # Set up worktree isolation if requested
         if self.isolation == "worktree":
@@ -432,10 +526,88 @@ class SubAgent:
             except RuntimeError as exc:
                 self.status = "failed"
                 self.error = str(exc)
+                self._fire_callbacks()
                 return f"[error] {exc}"
+
+        # chdir into worktree for the duration of the run
+        if self.worktree_path:
+            os.chdir(self.worktree_path)
 
         # Seed the conversation with the user prompt
         self.conversation.messages.append(Message(role="user", content=prompt))
+
+        return_value: str = ""
+        try:
+            final_message = await agent_loop_sync(
+                self.provider,
+                self.conversation,
+                self.tools,
+                system_prompt=self.system_prompt,
+                max_iterations=25,
+            )
+            self.result = final_message.content
+            self.status = "completed"
+
+            # E4: Process any queued messages (SendMessage while running)
+            while self._message_queue:
+                queued_msg = self._message_queue.popleft()
+                self.conversation.messages.append(
+                    Message(role="user", content=queued_msg)
+                )
+                final_message = await agent_loop_sync(
+                    self.provider,
+                    self.conversation,
+                    self.tools,
+                    system_prompt=self.system_prompt,
+                    max_iterations=25,
+                )
+                self.result = final_message.content
+
+            return_value = self.result
+        except Exception as exc:
+            self.status = "failed"
+            self.error = str(exc)
+            logger.exception("Subagent %s failed: %s", self.name, exc)
+            return_value = f"[error] Subagent {self.name} failed: {exc}"
+        finally:
+            # Restore cwd before cleanup so we don't delete dir we're in
+            if self._parent_cwd:
+                try:
+                    os.chdir(self._parent_cwd)
+                except OSError:
+                    pass
+            if self.isolation == "worktree":
+                # E5: force cleanup on failure, conditional on success
+                self._cleanup_worktree(force=(self.status == "failed"))
+            # Fire callbacks AFTER cleanup so worktree_preserved is set
+            self._fire_callbacks()
+
+        return return_value
+
+    async def continue_with(self, message: str) -> str:
+        """Continue a completed agent with a new user message (SendMessage, E4).
+
+        Appends the message to the agent's conversation and runs another
+        agent loop iteration. Returns the new final response.
+
+        If the agent is currently running, queues the message for processing
+        after the current loop finishes.
+        """
+        if self.status == "running":
+            # Queue the message for when the current run finishes
+            self._message_queue.append(message)
+            return f"[queued] Message queued for subagent {self.name} (currently running)."
+
+        if self.status not in ("completed", "failed"):
+            return f"[error] Cannot send message to subagent {self.name} in state {self.status}."
+
+        # Restart from completed/failed state
+        self.status = "running"
+        self.error = ""
+
+        self.conversation.messages.append(
+            Message(role="user", content=message)
+        )
 
         try:
             final_message = await agent_loop_sync(
@@ -447,15 +619,14 @@ class SubAgent:
             )
             self.result = final_message.content
             self.status = "completed"
+            self._fire_callbacks()
             return self.result
         except Exception as exc:
             self.status = "failed"
             self.error = str(exc)
-            logger.exception("Subagent %s failed: %s", self.name, exc)
+            logger.exception("Subagent %s continue_with failed: %s", self.name, exc)
+            self._fire_callbacks()
             return f"[error] Subagent {self.name} failed: {exc}"
-        finally:
-            if self.isolation == "worktree":
-                self._cleanup_worktree()
 
     async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""
@@ -468,25 +639,43 @@ class SubAgent:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise agent state for status reporting."""
-        return {
+        d: dict[str, Any] = {
             "name": self.name,
+            "agent_id": self.agent_id,
             "status": self.status,
             "isolation": self.isolation,
             "worktree_path": self.worktree_path,
             "result_preview": self.result[:200] if self.result else None,
             "error": self.error or None,
         }
+        # E5: Include branch info if worktree was preserved
+        if self.worktree_preserved and self.worktree_branch:
+            d["worktree_branch"] = self.worktree_branch
+            d["worktree_preserved"] = True
+        return d
 
 
 class SubAgentManager:
     """Registry of spawned subagents.
 
-    Provides spawn, get, and listing functionality so the parent agent
-    can track and query its children.
+    Provides spawn, get, listing, send_message, and result retrieval
+    functionality so the parent agent can track and query its children.
+
+    E4 additions:
+    - ``send_message`` to continue a completed/running agent
+    - ``get_result`` for compaction-safe result retrieval
+    - ``drain_notifications`` to collect completion events for parent injection
+    - Persistent result storage (survives context compaction)
     """
 
     def __init__(self) -> None:
         self.agents: dict[str, SubAgent] = {}
+        # agent_id -> SubAgent mapping for ID-based lookup
+        self._agents_by_id: dict[str, SubAgent] = {}
+        # E4: Persistent result storage (survives context compaction)
+        self._results: dict[str, dict[str, Any]] = {}
+        # E4: Pending notifications for parent injection
+        self._pending_notifications: list[dict[str, str]] = []
 
     def spawn(
         self,
@@ -519,11 +708,107 @@ class SubAgentManager:
             isolation=isolation,
         )
         self.agents[name] = agent
+        self._agents_by_id[agent.agent_id] = agent
+
+        # E4: Auto-register completion callback for notifications + persistence
+        agent.on_complete(self._on_agent_complete)
+
         return agent
+
+    def _on_agent_complete(self, agent: SubAgent) -> None:
+        """Internal callback: persist result and queue notification."""
+        # Persist the result
+        result_entry: dict[str, Any] = {
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "status": agent.status,
+            "result": agent.result,
+            "error": agent.error,
+        }
+        # E5: Include worktree info if preserved
+        if agent.worktree_preserved and agent.worktree_path:
+            result_entry["worktree_path"] = agent.worktree_path
+            result_entry["worktree_branch"] = agent.worktree_branch
+        self._results[agent.agent_id] = result_entry
+        self._results[agent.name] = result_entry  # Also indexed by name
+
+        # Queue notification for parent
+        summary = agent.result[:500] if agent.result else agent.error[:500]
+        notification: dict[str, str] = {
+            "agent_id": agent.agent_id,
+            "agent_name": agent.name,
+            "status": agent.status,
+            "summary": summary,
+        }
+        if agent.worktree_preserved:
+            notification["worktree_path"] = agent.worktree_path or ""
+            notification["worktree_branch"] = agent.worktree_branch or ""
+        self._pending_notifications.append(notification)
 
     def get(self, name: str) -> SubAgent | None:
         """Look up a subagent by name."""
         return self.agents.get(name)
+
+    def get_by_id(self, agent_id: str) -> SubAgent | None:
+        """Look up a subagent by its unique agent_id."""
+        return self._agents_by_id.get(agent_id)
+
+    def _resolve_agent(self, agent_id_or_name: str) -> SubAgent | None:
+        """Resolve an agent by ID or name."""
+        agent = self._agents_by_id.get(agent_id_or_name)
+        if agent is None:
+            agent = self.agents.get(agent_id_or_name)
+        return agent
+
+    async def send_message(self, agent_id_or_name: str, message: str) -> str:
+        """Send a message to a completed or running subagent (E4).
+
+        If the agent is completed/failed, restarts its loop with the new
+        message. If running, queues the message for processing after the
+        current loop finishes.
+
+        Returns the agent's response or a status string.
+        """
+        agent = self._resolve_agent(agent_id_or_name)
+        if agent is None:
+            return f"[error] No subagent found with id/name: {agent_id_or_name}"
+
+        return await agent.continue_with(message)
+
+    def get_result(self, agent_id_or_name: str) -> dict[str, Any] | None:
+        """Retrieve a persisted subagent result (E4).
+
+        Survives context compaction -- results are stored separately from
+        the conversation history.
+        """
+        return self._results.get(agent_id_or_name)
+
+    def drain_notifications(self) -> list[dict[str, str]]:
+        """Return and clear all pending completion notifications (E4).
+
+        Each notification is a dict with keys: agent_id, agent_name,
+        status, summary. The parent agent loop should call this before
+        each turn and inject matching system messages.
+        """
+        notifications = list(self._pending_notifications)
+        self._pending_notifications.clear()
+        return notifications
+
+    def format_notification(self, notification: dict[str, str]) -> str:
+        """Format a notification dict as a system message string (E4)."""
+        parts = [
+            "<task-notification>",
+            f"<task-id>{notification['agent_id']}</task-id>",
+            f"<summary>{notification['agent_name']} {notification['status']}</summary>",
+            f"<event>{notification['summary']}</event>",
+        ]
+        if notification.get("worktree_path"):
+            parts.append(
+                f"<worktree path=\"{notification['worktree_path']}\" "
+                f"branch=\"{notification.get('worktree_branch', '')}\"/>"
+            )
+        parts.append("</task-notification>")
+        return "\n".join(parts)
 
     def list_active(self) -> list[SubAgent]:
         """Return all agents that are pending or running."""
