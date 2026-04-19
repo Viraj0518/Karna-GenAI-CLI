@@ -16,12 +16,10 @@ from pathlib import Path
 import pytest
 
 from karna.memory.extractor import (
-    ExtractionCandidate,
     MemoryExtractor,
     _RateLimiter,
 )
 from karna.memory.manager import MemoryManager
-
 
 # --------------------------------------------------------------------------- #
 #  Fixtures

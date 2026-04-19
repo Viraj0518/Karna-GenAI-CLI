@@ -18,7 +18,6 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -243,7 +242,9 @@ class MemoryExtractor:
                             name=self._make_name("positive feedback", snippet),
                             description=f"Positive feedback: {snippet[:80]}",
                             type="feedback",
-                            content=f"User confirmed: {snippet}\n\nContext: The user validated the assistant's approach.",
+                            content=(
+                                f"User confirmed: {snippet}\n\nContext: The user validated the assistant's approach."
+                            ),
                         )
                     )
                     break

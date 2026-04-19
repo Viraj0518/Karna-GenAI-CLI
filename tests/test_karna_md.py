@@ -19,8 +19,6 @@ from typer.testing import CliRunner
 
 from karna.cli import app
 from karna.context.project import ProjectContext
-from karna.models import Conversation
-
 
 runner = CliRunner()
 

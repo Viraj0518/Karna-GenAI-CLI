@@ -581,7 +581,7 @@ def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-
             header_style=f"bold {cyan}",
             border_style=border,
             expand=False,
-            title=f"Memory search: \"{subargs}\"",
+            title=f'Memory search: "{subargs}"',
         )
         table.add_column("Name", style="white")
         table.add_column("Type", style="cyan")
