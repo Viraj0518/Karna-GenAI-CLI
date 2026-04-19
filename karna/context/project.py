@@ -4,6 +4,15 @@ Walks up from the working directory looking for project-specific
 instruction files.  Supports multiple conventions so Karna works in
 any project that already has AI-assistant configuration.
 
+**Priority system (E8 — hierarchical merge)**:
+
+1. ``{project_root}/KARNA.md``       — highest priority
+2. ``{project_root}/.karna/KARNA.md`` — project-level alternate location
+3. ``~/.karna/KARNA.md``             — global default
+
+Project-level KARNA.md overrides global.  Both are injected if present.
+CLAUDE.md and .cursorrules are loaded with lower priority for compatibility.
+
 Adapted from cc-src ``utils/claudemd.ts``.  See NOTICES.md.
 """
 
@@ -24,14 +33,18 @@ logger = logging.getLogger(__name__)
 # Priority order (highest first).  All matching files are loaded and
 # concatenated so that Karna works in a project that already has
 # CLAUDE.md *and* gains KARNA.md-specific overrides.
-_SEARCH_FILES: list[tuple[str, str]] = [
-    # (relative_path, label)
-    ("KARNA.md", "karna project instructions"),
-    ("CLAUDE.md", "project instructions (Claude Code compatible)"),
-    (".karna/project.toml", "karna project config"),
-    (".cursorrules", "project instructions (Cursor compatible)"),
-    (".github/copilot-instructions.md", "project instructions (Copilot compatible)"),
+_SEARCH_FILES: list[tuple[str, str, int]] = [
+    # (relative_path, label, priority)  — lower number = higher priority
+    ("KARNA.md", "karna project instructions", 1),
+    (".karna/KARNA.md", "karna project instructions (.karna/)", 2),
+    ("CLAUDE.md", "project instructions (Claude Code compatible)", 5),
+    (".karna/project.toml", "karna project config", 6),
+    (".cursorrules", "project instructions (Cursor compatible)", 7),
+    (".github/copilot-instructions.md", "project instructions (Copilot compatible)", 8),
 ]
+
+# Global KARNA.md location — always checked as a fallback
+_GLOBAL_KARNA_MD = Path.home() / ".karna" / "KARNA.md"
 
 
 class ProjectContext:
@@ -40,11 +53,17 @@ class ProjectContext:
     def detect(self, cwd: Path) -> str | None:
         """Walk up from *cwd* looking for project context files.
 
+        Implements the hierarchical merge strategy (E8):
+        1. Project-level files (closest to cwd win)
+        2. Global ``~/.karna/KARNA.md`` as fallback (priority 3)
+        3. Compatibility files (CLAUDE.md, .cursorrules) at lower priority
+
         Returns combined content from all discovered files (closest to
         *cwd* wins when a filename appears at multiple levels), or
         ``None`` if nothing was found.
         """
-        collected: list[str] = []
+        # Collect as (content, priority, label) tuples, sort by priority
+        collected: list[tuple[str, int, str]] = []
         # Track which filenames we've already seen so a closer copy
         # shadows one further up the tree.
         seen_filenames: set[str] = set()
@@ -61,7 +80,7 @@ class ProjectContext:
 
         # Process closest-first so shadowing works correctly.
         for d in dirs:
-            for rel_path, label in _SEARCH_FILES:
+            for rel_path, label, priority in _SEARCH_FILES:
                 if rel_path in seen_filenames:
                     continue
                 candidate = d / rel_path
@@ -75,14 +94,31 @@ class ProjectContext:
                         content = self.load_karna_md(candidate)
                     if content.strip():
                         header = f"# {label} ({candidate})"
-                        collected.append(f"{header}\n\n{content.strip()}")
-                        logger.debug("Loaded project context: %s", candidate)
+                        collected.append((f"{header}\n\n{content.strip()}", priority, label))
+                        logger.debug("Loaded project context: %s (priority %d)", candidate, priority)
                 except Exception:
                     logger.warning("Failed to read project context: %s", candidate, exc_info=True)
 
+        # Global KARNA.md — only if no project-level KARNA.md was found
+        has_project_karna = "KARNA.md" in seen_filenames or ".karna/KARNA.md" in seen_filenames
+        if not has_project_karna:
+            try:
+                global_path = _GLOBAL_KARNA_MD
+                if global_path.is_file():
+                    content = self.load_karna_md(global_path)
+                    if content.strip():
+                        header = f"# karna global instructions ({global_path})"
+                        collected.append((f"{header}\n\n{content.strip()}", 3, "global karna"))
+                        logger.debug("Loaded global KARNA.md: %s", global_path)
+            except Exception:
+                logger.warning("Failed to read global KARNA.md", exc_info=True)
+
         if not collected:
             return None
-        return "\n\n---\n\n".join(collected)
+
+        # Sort by priority (lower number = higher priority, injected first)
+        collected.sort(key=lambda t: t[1])
+        return "\n\n---\n\n".join(c[0] for c in collected)
 
     # ------------------------------------------------------------------
     #  File loaders
