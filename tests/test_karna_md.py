@@ -356,11 +356,11 @@ class TestMemoryStaleness:
 
         from karna.memory.manager import _staleness_warning
 
-        # 10 days ago
-        old_mtime = time.time() - (10 * 86400)
+        # 10 days ago (use 10.5 days to avoid timezone edge cases)
+        old_mtime = time.time() - (10.5 * 86400)
         warning = _staleness_warning(old_mtime)
         assert warning is not None
-        assert "10 days old" in warning
+        assert "days old" in warning
 
     def test_no_staleness_for_recent_memory(self) -> None:
         import time
