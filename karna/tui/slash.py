@@ -149,9 +149,7 @@ def _build_commands() -> dict[str, SlashCommand]:
         ),
         SlashCommand("system", "/system <prompt>", "Set the system prompt", category="context", icon=ic_system),
         SlashCommand("cost", "/cost", "Show total token usage and cost", category="context", icon=ic_cost),
-        SlashCommand(
-            "compact", "/compact", "Trigger conversation compaction", category="context", icon=ic_compact
-        ),
+        SlashCommand("compact", "/compact", "Trigger conversation compaction", category="context", icon=ic_compact),
         SlashCommand("tools", "/tools", "List available tools", category="context", icon=ic_tools),
         # ── Advanced ───────────────────────────────────────────────────
         SlashCommand(

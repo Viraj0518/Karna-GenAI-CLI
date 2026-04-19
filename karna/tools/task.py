@@ -257,8 +257,10 @@ class TaskTool(BaseTool):
         )
         await agent.run_in_background(prompt)
 
-        return json.dumps({
-            "status": "started",
-            "agent_id": agent.agent_id,
-            "agent_name": agent_name,
-        })
+        return json.dumps(
+            {
+                "status": "started",
+                "agent_id": agent.agent_id,
+                "agent_name": agent_name,
+            }
+        )
