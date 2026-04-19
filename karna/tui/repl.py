@@ -345,9 +345,7 @@ async def run_repl(
             skill_preamble_parts: list[str] = []
             for skill in matched_skills:
                 if skill.instructions:
-                    skill_preamble_parts.append(
-                        f"[Skill: {skill.name}]\n{skill.instructions}"
-                    )
+                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
             if skill_preamble_parts:
                 skill_preamble = "\n\n".join(skill_preamble_parts)
                 user_input = f"{skill_preamble}\n\n---\n\n{user_input}"

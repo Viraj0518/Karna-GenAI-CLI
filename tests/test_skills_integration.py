@@ -17,9 +17,8 @@ import pytest
 
 from karna.config import KarnaConfig
 from karna.prompts.system import build_system_prompt
-from karna.skills.loader import Skill, SkillManager
+from karna.skills.loader import SkillManager
 from karna.tools.base import BaseTool
-
 
 # ------------------------------------------------------------------ #
 #  Fixtures
@@ -59,7 +58,8 @@ def tmp_skills_dir(tmp_path: Path) -> Path:
     skills_dir.mkdir()
 
     # Skill 1: commit helper
-    (skills_dir / "commit.md").write_text(textwrap.dedent("""\
+    (skills_dir / "commit.md").write_text(
+        textwrap.dedent("""\
         ---
         name: commit
         description: Generate commit messages
@@ -68,10 +68,12 @@ def tmp_skills_dir(tmp_path: Path) -> Path:
 
         When the user asks to commit, generate a conventional commit message.
         Use the format: type(scope): description
-    """))
+    """)
+    )
 
     # Skill 2: review helper
-    (skills_dir / "review.md").write_text(textwrap.dedent("""\
+    (skills_dir / "review.md").write_text(
+        textwrap.dedent("""\
         ---
         name: review
         description: Code review assistant
@@ -82,10 +84,12 @@ def tmp_skills_dir(tmp_path: Path) -> Path:
         - Correctness
         - Security
         - Performance
-    """))
+    """)
+    )
 
     # Skill 3: disabled skill
-    (skills_dir / "disabled-skill.md").write_text(textwrap.dedent("""\
+    (skills_dir / "disabled-skill.md").write_text(
+        textwrap.dedent("""\
         ---
         name: disabled-skill
         description: This skill is disabled
@@ -94,7 +98,8 @@ def tmp_skills_dir(tmp_path: Path) -> Path:
         ---
 
         This should not appear anywhere.
-    """))
+    """)
+    )
 
     return skills_dir
 
@@ -115,31 +120,19 @@ def skill_manager(tmp_skills_dir: Path) -> SkillManager:
 class TestSkillsInSystemPrompt:
     """Test that skills are injected into the system prompt."""
 
-    def test_skills_section_present(
-        self, default_config, fake_tools, skill_manager
-    ):
-        prompt = build_system_prompt(
-            default_config, fake_tools, skill_manager=skill_manager
-        )
+    def test_skills_section_present(self, default_config, fake_tools, skill_manager):
+        prompt = build_system_prompt(default_config, fake_tools, skill_manager=skill_manager)
         assert "# Skills" in prompt or "Available Skills" in prompt
         assert "commit" in prompt
         assert "review" in prompt
 
-    def test_skill_instructions_injected(
-        self, default_config, fake_tools, skill_manager
-    ):
-        prompt = build_system_prompt(
-            default_config, fake_tools, skill_manager=skill_manager
-        )
+    def test_skill_instructions_injected(self, default_config, fake_tools, skill_manager):
+        prompt = build_system_prompt(default_config, fake_tools, skill_manager=skill_manager)
         assert "conventional commit" in prompt
         assert "Correctness" in prompt
 
-    def test_disabled_skills_excluded(
-        self, default_config, fake_tools, skill_manager
-    ):
-        prompt = build_system_prompt(
-            default_config, fake_tools, skill_manager=skill_manager
-        )
+    def test_disabled_skills_excluded(self, default_config, fake_tools, skill_manager):
+        prompt = build_system_prompt(default_config, fake_tools, skill_manager=skill_manager)
         assert "disabled-skill" not in prompt
         assert "This should not appear" not in prompt
 
@@ -157,9 +150,7 @@ class TestSkillsInSystemPrompt:
         empty_dir.mkdir()
         mgr = SkillManager(skills_dir=empty_dir)
         mgr.load_all()
-        prompt = build_system_prompt(
-            default_config, fake_tools, skill_manager=mgr
-        )
+        prompt = build_system_prompt(default_config, fake_tools, skill_manager=mgr)
         assert "# Skills" not in prompt
 
 
@@ -171,21 +162,14 @@ class TestSkillsInSystemPrompt:
 class TestSkillsTokenBudget:
     """Test that skills respect the token budget."""
 
-    def test_skills_trimmed_under_budget(
-        self, default_config, fake_tools, tmp_path
-    ):
+    def test_skills_trimmed_under_budget(self, default_config, fake_tools, tmp_path):
         """When skills are large, they should be trimmed to fit budget."""
         skills_dir = tmp_path / "big_skills"
         skills_dir.mkdir()
 
         # Create a very large skill
         (skills_dir / "huge.md").write_text(
-            "---\n"
-            "name: huge\n"
-            "description: A huge skill\n"
-            "triggers: [\"/huge\"]\n"
-            "---\n\n"
-            + "x" * 50000 + "\n"
+            '---\nname: huge\ndescription: A huge skill\ntriggers: ["/huge"]\n---\n\n' + "x" * 50000 + "\n"
         )
         mgr = SkillManager(skills_dir=skills_dir)
         mgr.load_all()
@@ -245,17 +229,21 @@ class TestSkillsSlashCommand:
 
     def test_skills_command_registered(self):
         from karna.tui.slash import COMMANDS
+
         assert "skills" in COMMANDS
 
     def test_skills_lists_loaded_skills(self, skill_manager):
         from io import StringIO
+
         from rich.console import Console
+
         from karna.tui.slash import handle_slash_command
 
         buf = StringIO()
         console = Console(file=buf, force_terminal=True, width=120)
         config = KarnaConfig()
         from karna.models import Conversation
+
         conversation = Conversation()
 
         handle_slash_command(
@@ -271,7 +259,9 @@ class TestSkillsSlashCommand:
 
     def test_skills_enable(self, skill_manager):
         from io import StringIO
+
         from rich.console import Console
+
         from karna.tui.slash import handle_slash_command
 
         # First disable it
@@ -282,6 +272,7 @@ class TestSkillsSlashCommand:
         console = Console(file=buf, force_terminal=True, width=120)
         config = KarnaConfig()
         from karna.models import Conversation
+
         conversation = Conversation()
 
         handle_slash_command(
@@ -297,13 +288,16 @@ class TestSkillsSlashCommand:
 
     def test_skills_disable(self, skill_manager):
         from io import StringIO
+
         from rich.console import Console
+
         from karna.tui.slash import handle_slash_command
 
         buf = StringIO()
         console = Console(file=buf, force_terminal=True, width=120)
         config = KarnaConfig()
         from karna.models import Conversation
+
         conversation = Conversation()
 
         handle_slash_command(
@@ -319,13 +313,16 @@ class TestSkillsSlashCommand:
 
     def test_skills_enable_unknown(self, skill_manager):
         from io import StringIO
+
         from rich.console import Console
+
         from karna.tui.slash import handle_slash_command
 
         buf = StringIO()
         console = Console(file=buf, force_terminal=True, width=120)
         config = KarnaConfig()
         from karna.models import Conversation
+
         conversation = Conversation()
 
         handle_slash_command(

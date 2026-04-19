@@ -394,7 +394,7 @@ def build_system_prompt(
             # these are invocable capabilities.
             content = skills_text
             if content.startswith("# Skills\n"):
-                content = content[len("# Skills\n"):]
+                content = content[len("# Skills\n") :]
             context_sections.append(("Available Skills", content, 6))
 
     # Fill template placeholders
