@@ -132,6 +132,7 @@ class TaskRegistry:
                 task_id=task_id,
                 description=entry.description,
                 event_text=final_event,
+                task_type=entry.type,
             )
             self.queue_notification(notification)
         logger.info("Task completed: %s", task_id)
@@ -147,6 +148,7 @@ class TaskRegistry:
             task_id=task_id,
             description=entry.description,
             event_text=f"[error] {error}",
+            task_type=entry.type,
         )
         self.queue_notification(notification)
         logger.info("Task failed: %s — %s", task_id, error)
@@ -205,16 +207,23 @@ def format_task_notification(
     task_id: str,
     description: str,
     event_text: str,
+    task_type: TaskType | None = None,
 ) -> str:
     """Format a task event as an XML notification block.
 
     This format is injected into the conversation as a system message
     so the LLM can see background task updates.
+
+    When *task_type* is provided the summary uses the actual type label
+    (e.g. "Monitor", "Bash", "Subagent") instead of a hard-coded
+    "Monitor event" string.
     """
+    type_label = task_type.value.capitalize() if task_type is not None else "Task"
+    summary = f'{type_label} event: "{description}"'
     return (
         f"<task-notification>\n"
         f"<task-id>{task_id}</task-id>\n"
-        f'<summary>Monitor event: "{description}"</summary>\n'
+        f"<summary>{summary}</summary>\n"
         f"<event>{event_text}</event>\n"
         f"</task-notification>"
     )

@@ -534,7 +534,7 @@ async def agent_loop(
         _notifications = _task_registry.get_pending_notifications()
         if _notifications:
             _combined = "\n\n".join(_notifications)
-            conversation.messages.append(Message(role="user", content=_combined))
+            conversation.messages.append(Message(role="system", content=_combined))
             yield StreamEvent(
                 type="text",
                 text=f"[{len(_notifications)} task notification(s) injected]\n",
@@ -753,7 +753,7 @@ async def agent_loop_sync(
         _notifications = _task_registry.get_pending_notifications()
         if _notifications:
             _combined = "\n\n".join(_notifications)
-            conversation.messages.append(Message(role="user", content=_combined))
+            conversation.messages.append(Message(role="system", content=_combined))
 
         # ---- Auto-compaction before provider call --------------------
         if compactor is not None and context_window is not None:
