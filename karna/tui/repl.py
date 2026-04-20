@@ -29,6 +29,7 @@ import re as _re_mod
 import subprocess as _subprocess_mod
 import tempfile as _tempfile_mod
 import time
+from collections import deque
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator
@@ -164,19 +165,17 @@ class TUIOutputWriter:
     """
 
     def __init__(self, width: int = 120) -> None:
-        self._lines: list[str] = []
+        # ``deque(maxlen=N)`` gives O(1) append and O(1) evict-oldest
+        # (vs list+slice-delete which is O(n) per overflow). ``get_text``
+        # and prompt_toolkit reads tolerate any iterable, so the switch
+        # is transparent to callers.
+        self._lines: deque[str] = deque(maxlen=_MAX_OUTPUT_LINES)
         self._width = width
         self._invalidate_cb: Any = None
 
     def _append(self, text: str) -> None:
-        """Append one rendered chunk and enforce the ring-buffer cap."""
+        """Append one rendered chunk; the deque evicts oldest on overflow."""
         self._lines.append(text)
-        overflow = len(self._lines) - _MAX_OUTPUT_LINES
-        if overflow > 0:
-            # Trim exactly the overflow — Python's ``del lst[:n]`` is O(n)
-            # regardless of chunk size, so there's no point dropping more
-            # than we have to and losing scrollback we could have kept.
-            del self._lines[:overflow]
 
     def set_invalidate(self, cb: Any) -> None:
         """Register the Application.invalidate callback."""
