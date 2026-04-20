@@ -4,20 +4,20 @@
 
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"/></a>
-  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue.svg" alt="License"/></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-proprietary-red.svg" alt="License"/></a>
   <img src="https://img.shields.io/badge/telemetry-zero-brightgreen.svg" alt="Zero Telemetry"/>
-  <img src="https://img.shields.io/badge/tools-17-3C73BD.svg" alt="Tools: 17"/>
+  <img src="https://img.shields.io/badge/tools-20-3C73BD.svg" alt="Tools: 20"/>
   <img src="https://img.shields.io/badge/providers-5-5A8FCC.svg" alt="Providers: 5"/>
 </p>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License: Proprietary](https://img.shields.io/badge/license-proprietary-red.svg)](LICENSE.md)
 [![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-brightgreen.svg)](#)
-[![Tools: 15](https://img.shields.io/badge/tools-15-orange.svg)](#tools)
+[![Tools: 20](https://img.shields.io/badge/tools-20-3C73BD.svg)](#tools)
 
 > **Internal Use Only -- Karna Engineering**
 
-Nellie is Karna's AI coding agent. It runs in your terminal, connects to any LLM, reads your codebase, writes code, runs commands, manages git, and learns your preferences across sessions. Zero telemetry. Runs locally. Costs pennies.
+Nellie is Karna's AI coding agent. It runs in your terminal, connects to any LLM, reads your codebase, writes code, runs commands, manages git, and learns your preferences across sessions. Runs locally. Costs pennies. Nellie itself sends no telemetry; optional ML features (e.g. `rag`) fetch models from Hugging Face on first use.
 
 **New here? Read [GETTING_STARTED.md](GETTING_STARTED.md) first.**
 
@@ -79,7 +79,7 @@ nellie
 | Capability | Details |
 |---|---|
 | **Any model** | OpenRouter (200+ models), Anthropic, OpenAI, Azure OpenAI, Google Vertex AI, AWS Bedrock, local/Ollama, multi-credential failover |
-| **15 tools** | bash, read, write, edit, grep, glob, git, web search, web fetch, clipboard, image, notebook, monitor, task, MCP |
+| **20 tools** | bash, read, write, edit, grep, glob, git, web_search, web_fetch, clipboard, image, notebook, monitor, task, mcp, browser, db, comms, document, voice |
 | **Parallel tool execution** | Independent reads/greps run concurrently; writes are serialized for safety |
 | **Skills system** | Extend with `.md` skill files -- custom workflows triggered by slash commands or keywords, enable/disable on the fly |
 | **Auto-memory** | Learns your preferences, project facts, and corrections automatically via pattern detection -- persists across sessions |
@@ -94,7 +94,35 @@ nellie
 | **Security** | Path traversal guard, SSRF protection, secret scrubbing, dangerous command detection |
 | **Credential pooling** | Multi-key rotation for high-volume usage |
 | **Prompt caching** | Anthropic cache_control headers (10% cost on cache hits) |
-| **Zero telemetry** | Nothing phones home, ever |
+| **Zero telemetry** | No telemetry calls from Nellie itself. Optional ML features (`rag` with `sentence-transformers`) download models from Hugging Face on first use — a one-time fetch, not ongoing telemetry. |
+
+---
+
+## What's new on `dev` (unreleased)
+
+The `dev` branch adds four subsystems that land together in the next cut:
+
+- **RAG** (`karna/rag/`) — local-first retrieval over indexed project files. Uses `sentence-transformers` embeddings (downloaded once on first use) plus a small on-disk vector store. Enables context-aware recall without sending project content to any external service.
+- **Multi-agent comms** (`karna/comms/` + `comms` tool) — inter-agent inbox that lets two Nellie instances on the same machine (or a human + an agent) exchange messages by writing markdown files under `~/.karna-comms/`. Reads, sends, and replies are exposed as a tool so the agent can use it the way it uses any other tool.
+- **Cron scheduler** (`karna/cron/`) — background scheduler for time-triggered or interval-triggered tasks. Runs inside the agent process; survives session restarts via SQLite-backed state.
+- **Persona templates** (`templates/KARNA-*.md`) — five ready-to-copy `KARNA.md` files for different Karna divisions (BD, data-science, engineering, health-comms, research). Drop into a project directory to seed context for the agent; see the Templates section below.
+
+New tools on `dev`: `browser` (Playwright-driven), `db` (SQLite/Postgres/MySQL with read-only default + parameterised bind), `comms` (see above), `document` (PDF/Office/CSV extraction), plus a `voice` experiment.
+
+## Templates
+
+Five persona starter files live under `templates/` and are meant to be copied — **not** invoked via `nellie init` — since each one encodes division-specific context that isn't auto-detectable from the project tree:
+
+| File | Use when |
+|---|---|
+| `templates/KARNA.md` | Generic base — start here if none of the specialised personas fit |
+| `templates/KARNA-bd.md` | Business-development work (contracts, capture, past-performance narrative) |
+| `templates/KARNA-data-science.md` | Statistics, modelling, NHANES/NCHS pipelines |
+| `templates/KARNA-engineering.md` | Platform / internal tools / infra work |
+| `templates/KARNA-health-comms.md` | Public-health communications and risk messaging |
+| `templates/KARNA-research.md` | Research design, lit review, protocol authoring |
+
+Usage: `cp templates/KARNA-<persona>.md <your-project>/KARNA.md` — then edit the copy. Nellie picks up `KARNA.md` hierarchically from the project directory.
 
 ---
 
@@ -359,9 +387,10 @@ karna/                            ~22K lines, 105 .py files
 │   ├── openai.py                 -- OpenAI / Azure
 │   ├── local.py                  -- Local endpoints (Ollama, vLLM, etc.)
 │   └── caching.py                -- Prompt cache helper
-├── tools/                        -- 15 tools (bash, read, write, edit, grep, glob,
+├── tools/                        -- 20 tools (bash, read, write, edit, grep, glob,
 │                                    git, web_search, web_fetch, clipboard, image,
-│                                    notebook, monitor, task, MCP)
+│                                    notebook, monitor, task, mcp, browser, db,
+│                                    comms, document, voice)
 ├── auth/                         -- Credential store + multi-key pool rotation
 ├── context/
 │   ├── manager.py                -- Central context manager, token-budget truncation
