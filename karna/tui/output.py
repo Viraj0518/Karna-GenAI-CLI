@@ -263,6 +263,9 @@ class OutputRenderer:
         self._tool: _ToolState | None = None
         # Turn rhythm
         self._turn_started: bool = False
+        # Thinking stream state — tracks whether the thinking header has been
+        # printed so subsequent deltas are streamed inline.
+        self._thinking_started: bool = False
 
     # ── public API ─────────────────────────────────────────────────────
 
@@ -306,6 +309,7 @@ class OutputRenderer:
         self._tool = None
         self._in_code_fence = False
         self._text_label_printed = False
+        self._thinking_started = False
 
     # ── live display management ────────────────────────────────────────
 
@@ -335,6 +339,9 @@ class OutputRenderer:
         # Kill the transient spinner on first content
         if self._live_kind == "spinner":
             self._stop_live()
+        # End thinking block when assistant text starts arriving
+        if self._thinking_started:
+            self._end_thinking_block()
 
         self._text_buffer.append(delta)
         # Buffer output and only flush on complete blocks to avoid flicker:
@@ -387,42 +394,73 @@ class OutputRenderer:
     # ── thinking / reasoning ───────────────────────────────────────────
 
     def _on_thinking_delta(self, delta: str) -> None:
+        """Stream each thinking delta immediately as dimmed italic text.
+
+        On the first delta, prints a header line (icon + "reasoning" +
+        an Esc-to-interrupt hint).  Subsequent deltas render inline so
+        the user watches the reasoning stream in real time, Claude
+        Code-style.
+        """
         if not delta:
             return
         if self._live_kind == "spinner":
             self._stop_live()
+
+        # Print the thinking header on first delta
+        if not self._thinking_started:
+            self._thinking_started = True
+            self._ensure_turn_break()
+            header = Text()
+            header.append(f"{_ICON_THINKING} ", style=_STYLE_THINKING)
+            header.append("reasoning ", style=_STYLE_THINKING)
+            header.append("(esc to interrupt)", style="dim")
+            self.console.print(header)
+
+        # Stream the delta immediately with thinking style
+        self.console.print(
+            Text(delta, style=_STYLE_THINKING_DIM),
+            end="",
+        )
+        # Keep a buffer copy for total char count on collapse
         self._thinking_buffer.append(delta)
 
-    def _flush_thinking(self) -> None:
-        if not self._thinking_buffer:
+    def _end_thinking_block(self) -> None:
+        """Close the live-streamed thinking block with a newline + summary.
+
+        Called when the first non-thinking event (TEXT_DELTA,
+        TOOL_CALL_START) arrives after a thinking sequence, or on
+        finish().  Short thinking stays expanded; long thinking gets a
+        collapsed char-count note.
+        """
+        if not self._thinking_started:
             return
+        self._thinking_started = False
+
         full = "".join(self._thinking_buffer).strip()
-        self._thinking_buffer.clear()
-        if not full:
-            return
-        self._stop_live()
-
-        lines = full.splitlines()
-        first = lines[0] if lines else ""
         char_count = len(full)
+        self._thinking_buffer.clear()
 
-        body = Text()
-        body.append(f"{_ICON_THINKING} ", style=_STYLE_THINKING)
-        body.append("thinking ", style=_STYLE_THINKING)
-        body.append(first, style=_STYLE_THINKING_DIM)
-        if len(lines) > 1:
-            body.append(
-                f"  … ({char_count} chars)",
-                style=_STYLE_META,
-            )
-        self.console.print(body)
+        # End the inline thinking stream with a newline
+        self.console.print()
+        # If there was substantial reasoning, show a summary note
+        if char_count > 200:
+            note = Text()
+            note.append(f"  {_ICON_THINKING} ", style=_STYLE_META)
+            note.append(f"{char_count:,} chars of reasoning", style=_STYLE_META)
+            self.console.print(note)
+        self.console.print()
+
+    def _flush_thinking(self) -> None:
+        """Flush remaining thinking — just delegates to _end_thinking_block."""
+        self._end_thinking_block()
 
     # ── tool calls ─────────────────────────────────────────────────────
 
     def _on_tool_call_start(self, data: dict[str, Any] | None) -> None:
         # Close out any in-flight assistant text / thinking first.
         self._stop_live()
-        self._flush_thinking()
+        if self._thinking_started:
+            self._end_thinking_block()
         self._flush_text()
 
         data = data or {}
