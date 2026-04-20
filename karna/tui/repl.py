@@ -577,6 +577,21 @@ async def _run_agent_turn(
 
     # Persist assistant reply to conversation and session DB
     full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
+
+    # Surface empty-reply + tool-halt conditions so the user isn't left
+    # looking at silence. If the agent did tool calls but produced no
+    # text, or hit max_iterations without a DONE text, say so.
+    saw_error = any(e.kind == EventKind.ERROR for e in events)
+    saw_tool = any(e.kind == EventKind.TOOL_CALL_START for e in events)
+    if not full_reply and not saw_error:
+        reason = (
+            "Agent completed without producing any text reply"
+            + (" (only tool calls ran)." if saw_tool else ".")
+            + " Try rephrasing the request, or check /history for the"
+            " tool results."
+        )
+        console.print(f"[yellow]{reason}[/yellow]")
+
     if full_reply:
         assistant_msg = Message(role="assistant", content=full_reply)
         conversation.messages.append(assistant_msg)
@@ -752,6 +767,13 @@ def _build_application(
             bar = _ctx_bar(pct)
             color = _ctx_color(pct)
             parts.append(f"\x1b[{color}m{bar} {pct:.0f}%\x1b[38;5;245m")
+
+        # Queued mid-stream messages — persistent indicator so the user
+        # knows the agent hasn't forgotten a steering message between
+        # event boundaries.
+        queued = state.input_queue.qsize()
+        if queued > 0:
+            parts.append(f"\x1b[38;5;214m✉ {queued} queued\x1b[38;5;245m")
 
         # Session cost
         if state.session_cost.total_usd > 0:
