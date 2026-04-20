@@ -27,6 +27,7 @@ _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "mcp": ("karna.tools.mcp", "MCPClientTool"),
     "monitor": ("karna.tools.monitor", "MonitorTool"),
     "notebook": ("karna.tools.notebook", "NotebookTool"),
+    "document": ("karna.tools.document", "DocumentTool"),
     "task": ("karna.tools.task", "TaskTool"),
 }
 
