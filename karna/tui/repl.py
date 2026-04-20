@@ -387,6 +387,20 @@ async def run_repl(
                 else:
                     continue
 
+        # ── Skill trigger matching ──────────────────────────────────────────
+        # Only check keyword triggers for non-slash inputs — slash commands
+        # are handled above and should not be intercepted by skill keywords.
+        matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
+        if matched_skills:
+            skill_preamble_parts: list[str] = []
+            for skill in matched_skills:
+                if skill.instructions:
+                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+            if skill_preamble_parts:
+                skill_preamble = "\n\n".join(skill_preamble_parts)
+                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+
+
         # ── Regular message ─────────────────────────────────────────────
         user_msg = Message(role="user", content=user_input)
         conversation.messages.append(user_msg)

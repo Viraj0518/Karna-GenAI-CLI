@@ -10,7 +10,7 @@ any project that already has AI-assistant configuration.
 2. ``{project_root}/.karna/KARNA.md`` — project-level alternate location
 3. ``~/.karna/KARNA.md``             — global default
 
-Project-level KARNA.md overrides global.  Both are injected if present.
+Global KARNA.md is used only if no project-level KARNA.md is found.
 CLAUDE.md and .cursorrules are loaded with lower priority for compatibility.
 
 Adapted from cc-src ``utils/claudemd.ts``.  See NOTICES.md.

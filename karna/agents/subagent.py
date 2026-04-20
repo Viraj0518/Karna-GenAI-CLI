@@ -550,7 +550,7 @@ class SubAgent:
     #  Execution
     # ------------------------------------------------------------------ #
 
-    async def run(self, prompt: str) -> str:
+    async def run(self, prompt: str, *, max_iterations: int = 25) -> str:
         """Run the subagent to completion. Returns final response text.
 
         Sets up worktree if ``isolation='worktree'``, runs the agent loop,
@@ -594,7 +594,7 @@ class SubAgent:
                 self.conversation,
                 self.tools,
                 system_prompt=self.system_prompt,
-                max_iterations=25,
+                max_iterations=max_iterations,
             )
             self.result = final_message.content
             self.status = "completed"
@@ -608,7 +608,7 @@ class SubAgent:
                     self.conversation,
                     self.tools,
                     system_prompt=self.system_prompt,
-                    max_iterations=25,
+                    max_iterations=max_iterations,
                 )
                 self.result = final_message.content
 
@@ -686,9 +686,9 @@ class SubAgent:
             # Restore each tool to its original per-tool cwd
             _restore_tools_cwd(self.tools, saved_cwds)
 
-    async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
+    async def run_in_background(self, prompt: str, *, max_iterations: int = 25) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""
-        self._task = asyncio.create_task(self.run(prompt), name=f"subagent-{self.name}")
+        self._task = asyncio.create_task(self.run(prompt, max_iterations=max_iterations), name=f"subagent-{self.name}")
         return self._task
 
     # ------------------------------------------------------------------ #
@@ -854,16 +854,21 @@ class SubAgentManager:
 
     def format_notification(self, notification: dict[str, str]) -> str:
         """Format a notification dict as a system message string (E4)."""
+
+        def _esc(text: str) -> str:
+            """Escape XML-special characters to prevent injection."""
+            return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
         parts = [
             "<task-notification>",
-            f"<task-id>{notification['agent_id']}</task-id>",
-            f"<summary>{notification['agent_name']} {notification['status']}</summary>",
-            f"<event>{notification['summary']}</event>",
+            f"<task-id>{_esc(notification['agent_id'])}</task-id>",
+            f"<summary>{_esc(notification['agent_name'])} {_esc(notification['status'])}</summary>",
+            f"<event>{_esc(notification['summary'])}</event>",
         ]
         if notification.get("worktree_path"):
-            parts.append(
-                f'<worktree path="{notification["worktree_path"]}" branch="{notification.get("worktree_branch", "")}"/>'
-            )
+            wt_path = _esc(notification["worktree_path"])
+            wt_branch = _esc(notification.get("worktree_branch", ""))
+            parts.append(f'<worktree path="{wt_path}" branch="{wt_branch}"/>')
         parts.append("</task-notification>")
         return "\n".join(parts)
 
