@@ -299,11 +299,33 @@ def _cmd_help(console: Console, **_kw) -> None:  # type: ignore[no-untyped-def]
 
 def _cmd_model(console: Console, config: KarnaConfig, args: str, conversation: Conversation, **_kw) -> None:
     if not args:
+        # Show interactive model picker table
+        from karna.tui.model_picker import render_model_table
+
         console.print(f"[bright_black]Current model:[/] [white]{config.active_provider}:{config.active_model}[/]")
+        console.print()
+        render_model_table(console)
+        console.print(
+            "[bright_black]  Tip: type [bold]/model provider:model[/bold] to switch "
+            "(e.g. [bold]/model anthropic:claude-sonnet-4-20250514[/bold])[/bright_black]"
+        )
         return
     if ":" not in args:
-        console.print("[red]Usage: /model provider:model_name[/red]")
-        return
+        # Try to resolve a numeric selection from the model picker
+        from karna.tui.model_picker import get_model_catalog
+
+        if args.strip().isdigit():
+            catalog = get_model_catalog()
+            idx = int(args.strip()) - 1
+            if 0 <= idx < len(catalog):
+                entry = catalog[idx]
+                args = f"{entry['provider']}:{entry['model']}"
+            else:
+                console.print(f"[red]Invalid selection: {args.strip()}. Use /model to see options.[/red]")
+                return
+        else:
+            console.print("[red]Usage: /model provider:model_name[/red]")
+            return
     provider, model = args.split(":", 1)
     config.active_provider = provider.strip()
     config.active_model = model.strip()
@@ -891,10 +913,28 @@ def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = No
         return
     sid = args.strip() if args else None
     if not sid:
-        sid = session_db.get_latest_session_id()
-    if not sid:
-        console.print("[bright_black]No sessions to resume.[/bright_black]")
+        # Show interactive session picker
+        from karna.tui.session_picker import render_session_table
+
+        sessions = render_session_table(console, session_db, limit=10)
+        if not sessions:
+            return
+        console.print(
+            "[bright_black]  Tip: type [bold]/resume <id>[/bold] or "
+            "[bold]/resume <number>[/bold] to resume a session.[/bright_black]"
+        )
         return
+    # Support numeric selection from session picker
+    if sid.isdigit():
+        from karna.tui.session_picker import resolve_session_choice
+
+        sessions = session_db.list_sessions(limit=10)
+        resolved = resolve_session_choice(sessions, sid)
+        if resolved:
+            sid = resolved
+        else:
+            console.print(f"[red]Invalid selection: {sid}. Use /resume to see options.[/red]")
+            return
     conv = session_db.resume_session(sid)
     if conv is None:
         console.print(f"[red]Session not found: {sid}[/red]")

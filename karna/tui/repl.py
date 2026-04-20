@@ -40,6 +40,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension as D
+from prompt_toolkit.layout.margins import ScrollbarMargin
 from prompt_toolkit.layout.processors import BeforeInput, Processor, Transformation
 from prompt_toolkit.output import ColorDepth
 from rich.console import Console
@@ -55,6 +56,7 @@ from karna.sessions.cost import CostTracker
 from karna.sessions.db import SessionDB
 from karna.skills.loader import SkillManager
 from karna.tools import TOOLS, get_all_tools
+from karna.tui.completer import NellieCompleter
 from karna.tui.output import (
     FACES,
     LONG_RUN_CHARMS,
@@ -613,13 +615,14 @@ def _build_application(
     """
     from karna.tui.design_tokens import SEMANTIC
 
-    # Output window -- scrollable, shows all agent output
+    # Output window -- scrollable, shows all agent output, with scrollbar
     output_window = Window(
         content=FormattedTextControl(
             lambda: ANSI(writer.get_text()),
             focusable=False,
         ),
         wrap_lines=True,
+        right_margins=[ScrollbarMargin(display_arrows=True)],
     )
 
     # Status bar -- 1-line, shows model + animated face/verb + context bar + cost + timer
@@ -925,9 +928,14 @@ async def run_repl(
             )
         )
 
-    # Input buffer with accept handler
+    # Tab-completion for slash commands, file paths, and model names
+    completer = NellieCompleter()
+
+    # Input buffer with accept handler and tab completion
     input_buffer = Buffer(
         name="input",
+        completer=completer,
+        complete_while_typing=True,
         multiline=False,
         accept_handler=lambda buf: asyncio.ensure_future(_on_submit(buf)),
     )
