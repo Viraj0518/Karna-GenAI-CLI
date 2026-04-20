@@ -4,7 +4,7 @@ Supports schema inspection, table listing, and SQL query execution
 with read-only mode enforcement and result formatting as markdown tables.
 
 SQLite uses the built-in ``sqlite3`` module. PostgreSQL and MySQL
-require optional dependencies (``asyncpg``/``psycopg2`` and ``aiomysql``
+require optional dependencies (``psycopg2-binary`` and ``pymysql``
 respectively), installed via ``pip install karna[db]``.
 """
 
@@ -108,6 +108,9 @@ class _SQLiteConn:
         cur = self.conn.execute(sql, params)
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchmany(_MAX_ROWS)
+        # Commit after mutating statements so changes are persisted.
+        if not _is_read_only_sql(sql):
+            self._conn.commit()  # type: ignore[union-attr]
         return columns, rows
 
     def tables(self) -> list[tuple[str, int]]:
