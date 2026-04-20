@@ -88,48 +88,54 @@ def _new_cell(cell_type: str = "code", source: str = "") -> dict:
 # --------------------------------------------------------------------------- #
 
 
-def _run_subprocess_execution(in_path: Path, out_path: Path) -> dict | None:
+def _run_subprocess_execution(
+    in_path: Path, out_path: Path
+) -> tuple[dict | None, list[str]]:
     """Execute ``in_path`` to ``out_path`` via nbconvert, then papermill.
 
-    Returns the parsed executed notebook dict on success, or ``None`` when
-    neither tool is available (or both failed). We deliberately do NOT fall
-    back to in-process evaluation of cell source — model-generated notebook
-    contents must stay out of the host interpreter.
+    Returns ``(notebook_dict, [])`` on success, or ``(None, diagnostics)``
+    on failure where ``diagnostics`` carries per-backend reasons:
+    ``"<name>: not available"`` when the binary is missing,
+    ``"<name>: <stderr summary>"`` when it ran and failed. Callers build
+    the user-facing error message from these strings.
+
+    We deliberately do NOT fall back to in-process evaluation of cell
+    source — model-generated notebook contents must stay out of the host
+    interpreter.
     """
-    try:
-        result = subprocess.run(  # noqa: S603
-            [
-                "jupyter",
-                "nbconvert",
-                "--to",
-                "notebook",
-                "--execute",
-                "--output",
-                str(out_path),
-                str(in_path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode == 0:
-            return _read_nb(out_path)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    diagnostics: list[str] = []
 
-    try:
-        result = subprocess.run(  # noqa: S603
-            ["papermill", str(in_path), str(out_path)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode == 0:
-            return _read_nb(out_path)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    def _truncate_stderr(stderr: str) -> str:
+        # Keep the last informative chunk; Jupyter traceback headers
+        # tend to live near the end of stderr.
+        stderr = stderr.strip()
+        return stderr[-500:] if len(stderr) > 500 else stderr
 
-    return None
+    for name, argv in (
+        ("jupyter nbconvert", [
+            "jupyter", "nbconvert", "--to", "notebook", "--execute",
+            "--output", str(out_path), str(in_path),
+        ]),
+        ("papermill", ["papermill", str(in_path), str(out_path)]),
+    ):
+        try:
+            result = subprocess.run(  # noqa: S603
+                argv, capture_output=True, text=True, timeout=120
+            )
+        except FileNotFoundError:
+            diagnostics.append(f"{name}: not available on PATH")
+            continue
+        except subprocess.TimeoutExpired:
+            diagnostics.append(f"{name}: timed out after 120s")
+            continue
+
+        if result.returncode == 0:
+            return _read_nb(out_path), []
+        diagnostics.append(
+            f"{name}: exit {result.returncode} — {_truncate_stderr(result.stderr) or '(no stderr)'}"
+        )
+
+    return None, diagnostics
 
 
 # --------------------------------------------------------------------------- #
@@ -330,18 +336,19 @@ class NotebookTool(BaseTool):
         """Execute the entire notebook via nbconvert or papermill."""
         out_path = path.with_suffix(".out.ipynb")
         try:
-            executed = _run_subprocess_execution(path, out_path)
+            executed, diagnostics = _run_subprocess_execution(path, out_path)
         finally:
             try:
                 out_path.unlink()
             except OSError:
                 pass
         if executed is None:
+            joined = "\n  ".join(diagnostics) or "no diagnostics available"
             return (
-                "[error] Could not execute notebook: neither `jupyter "
-                "nbconvert` nor `papermill` is available on PATH, or both "
-                "failed. Install one via `pip install jupyter nbconvert` "
-                "or `pip install papermill`, then retry."
+                "[error] Could not execute notebook. Backend results:\n  "
+                f"{joined}\n"
+                "Install one via `pip install jupyter nbconvert` or "
+                "`pip install papermill`, then retry."
             )
         _write_nb(path, executed)
         return self._read(path, None)
@@ -373,7 +380,7 @@ class NotebookTool(BaseTool):
         _write_nb(tmp_in, single_nb)
 
         try:
-            executed = _run_subprocess_execution(tmp_in, tmp_out)
+            executed, diagnostics = _run_subprocess_execution(tmp_in, tmp_out)
         finally:
             for tmp in (tmp_in, tmp_out):
                 try:
@@ -382,12 +389,13 @@ class NotebookTool(BaseTool):
                     pass
 
         if executed is None:
+            joined = "\n  ".join(diagnostics) or "no diagnostics available"
             return (
-                "[error] Could not execute cell: neither `jupyter nbconvert` "
-                "nor `papermill` is available on PATH. Install one via "
-                "`pip install jupyter nbconvert` or `pip install papermill`, "
-                "then retry. In-process cell execution has been disabled "
-                "for safety."
+                "[error] Could not execute cell. Backend results:\n  "
+                f"{joined}\n"
+                "Install one via `pip install jupyter nbconvert` or "
+                "`pip install papermill`, then retry. In-process cell "
+                "execution has been disabled for safety."
             )
 
         executed_cells = executed.get("cells", [])

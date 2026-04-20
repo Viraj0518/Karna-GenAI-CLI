@@ -173,10 +173,10 @@ class TUIOutputWriter:
         self._lines.append(text)
         overflow = len(self._lines) - _MAX_OUTPUT_LINES
         if overflow > 0:
-            # Drop the oldest half of the overflow in one slice — cheaper
-            # than trimming one line per append once we're at the cap.
-            trim = max(overflow, _MAX_OUTPUT_LINES // 10)
-            del self._lines[:trim]
+            # Trim exactly the overflow — Python's ``del lst[:n]`` is O(n)
+            # regardless of chunk size, so there's no point dropping more
+            # than we have to and losing scrollback we could have kept.
+            del self._lines[:overflow]
 
     def set_invalidate(self, cb: Any) -> None:
         """Register the Application.invalidate callback."""
@@ -1182,10 +1182,11 @@ async def run_repl(
 
     # Wire up invalidation so output changes trigger redraws. Also
     # autoscroll the output window to the bottom on every new chunk
-    # unless the user has explicitly scrolled up (output_scroll_locked).
-    # Once locked, new output accumulates off-screen until the user
-    # presses End (or scrolls back to the bottom manually) — matches
-    # the convention in every TUI that handles long logs.
+    # unless the user has explicitly scrolled up (output_scroll_locked
+    # flips true on any PgUp/Ctrl-Up/Home). The lock is only cleared by
+    # pressing End — we don't detect "scrolled back to the bottom by
+    # hand" today, so scroll-wheeling down to the tail keeps the lock
+    # on and you'll need End (or a fresh turn) to re-engage autoscroll.
     def _invalidate_and_autoscroll() -> None:
         if not state.output_scroll_locked and state.output_window is not None:
             # Large sentinel; prompt_toolkit clamps to the document end.

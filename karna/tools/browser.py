@@ -96,8 +96,12 @@ class BrowserTool(BaseTool):
         # initial URL that 302s to 169.254.169.254 or a host that flips
         # DNS between the initial validation and the actual connection
         # will be aborted at the browser-network boundary.
-        async def _ssrf_route(route: Any) -> None:  # pragma: no cover - thin
-            req_url = route.request.url
+        #
+        # Playwright's Python binding always invokes the handler as
+        # ``handler(route, route.request)`` (see playwright/_impl/_helper.py),
+        # so we take both positional args even though we only need `route`.
+        async def _ssrf_route(route: Any, request: Any) -> None:  # pragma: no cover - thin
+            req_url = request.url
             if not is_safe_url(req_url):
                 log.warning("Blocked in-browser request to unsafe URL: %s", req_url)
                 await route.abort("accessdenied")
