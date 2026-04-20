@@ -27,7 +27,7 @@ web = ["trafilatura>=1.8"]
 vertex = ["google-auth>=2.0"]
 bedrock = ["boto3>=1.34"]
 cron = ["croniter>=2.0"]
-db = ["asyncpg>=0.29", "aiomysql>=0.2"]
+db = ["psycopg2-binary>=2.9", "pymysql>=1.1"]
 all = ["karna[tokens,web,vertex,bedrock,cron,db]"]
 dev = [
     "pytest>=8.0",
