@@ -307,6 +307,7 @@ def build_system_prompt(
     custom_instructions: str | None = None,
     *,
     skill_manager: "SkillManager | None" = None,
+    rag_context: str | None = None,
     max_tokens: int = 4000,
 ) -> str:
     """Build the complete system prompt within a token budget.
@@ -315,18 +316,20 @@ def build_system_prompt(
     1. Selects the right template for the provider/model
     2. Generates tool documentation from the registry
     3. Injects context sections in priority order
-    4. Injects active skills from the SkillManager
-    5. Trims to fit the token budget
-    6. Applies model-specific adaptations
+    4. Injects RAG knowledge base context
+    5. Injects active skills from the SkillManager
+    6. Trims to fit the token budget
+    7. Applies model-specific adaptations
 
     Priority order when trimming (highest priority number = trimmed first):
     1. Identity + tools (always include)
     2. Behavioral guidelines (always include)
     3. Custom instructions (priority 2, trimmed last)
     4. Project context (priority 3)
-    5. Git context (priority 4)
-    6. Memory context (priority 5)
-    7. Available Skills (priority 6, trimmed first)
+    5. Knowledge Base / RAG context (priority 4)
+    6. Git context (priority 4)
+    7. Memory context (priority 5)
+    8. Available Skills (priority 6, trimmed first)
 
     Parameters
     ----------
@@ -344,6 +347,8 @@ def build_system_prompt(
         User's personal preferences.
     skill_manager : SkillManager, optional
         Loaded SkillManager for injecting skill instructions.
+    rag_context : str, optional
+        Retrieved context from the RAG knowledge base.
     max_tokens : int
         Maximum token budget for the prompt (default 4000).
 
@@ -382,6 +387,11 @@ def build_system_prompt(
     # Add environment info as a context section (priority 2, always kept)
     env_section = _build_env_section()
     context_sections.insert(0, ("Environment", env_section.replace("# Environment\n", ""), 1))
+
+    # Inject RAG knowledge base context (priority 4 — between project
+    # context and memory; trimmed before memory but after project/git).
+    if rag_context:
+        context_sections.append(("Knowledge Base", rag_context, 4))
 
     # Inject skills as a context section (priority 6 -- trimmed first,
     # before memory, git, and project context)
