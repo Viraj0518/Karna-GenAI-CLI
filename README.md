@@ -5,14 +5,12 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"/></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-proprietary-red.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/telemetry-zero-brightgreen.svg" alt="Zero Telemetry"/>
   <img src="https://img.shields.io/badge/tools-20-3C73BD.svg" alt="Tools: 20"/>
   <img src="https://img.shields.io/badge/providers-5-5A8FCC.svg" alt="Providers: 5"/>
 </p>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License: Proprietary](https://img.shields.io/badge/license-proprietary-red.svg)](LICENSE.md)
-[![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-brightgreen.svg)](#)
 [![Tools: 20](https://img.shields.io/badge/tools-20-3C73BD.svg)](#tools)
 
 > **Internal Use Only -- Karna Engineering**
