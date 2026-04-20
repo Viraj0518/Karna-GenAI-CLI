@@ -161,7 +161,7 @@ class TaskTool(BaseTool):
                 ),
             },
         },
-        "required": ["description", "prompt"],
+        "required": [],
     }
 
     def __init__(
@@ -184,10 +184,20 @@ class TaskTool(BaseTool):
         action: str = kwargs.get("action", "create")
 
         if action == "send_message":
+            if not kwargs.get("agent_id"):
+                return "[error] 'agent_id' is required for send_message action."
+            if not kwargs.get("message"):
+                return "[error] 'message' is required for send_message action."
             return await self._handle_send_message(**kwargs)
         elif action == "stop":
+            if not kwargs.get("agent_id"):
+                return "[error] 'agent_id' is required for stop action."
             return await self._handle_stop(**kwargs)
         else:
+            if not kwargs.get("description"):
+                return "[error] 'description' is required for create action."
+            if not kwargs.get("prompt"):
+                return "[error] 'prompt' is required for create action."
             return await self._handle_create(**kwargs)
 
     async def _handle_create(self, **kwargs: Any) -> str:
@@ -267,7 +277,7 @@ class TaskTool(BaseTool):
         except ValueError as exc:
             return f"[error] {exc}"
 
-        await agent.run_in_background(prompt)
+        await agent.run_in_background(prompt, max_iterations=max_iterations)
 
         return json.dumps(
             {

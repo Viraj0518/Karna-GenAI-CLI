@@ -350,7 +350,9 @@ async def run_repl(
         # Check if user input matches any skill triggers. If so, prepend
         # the skill instructions to the user message so the LLM follows
         # the skill's workflow for this turn.
-        matched_skills = skill_manager.match_trigger(user_input)
+        # Only check keyword triggers for non-slash inputs — slash commands
+        # are handled above and should not be intercepted by skill keywords.
+        matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
         if matched_skills:
             skill_preamble_parts: list[str] = []
             for skill in matched_skills:

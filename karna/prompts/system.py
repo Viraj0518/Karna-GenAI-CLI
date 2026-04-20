@@ -319,14 +319,14 @@ def build_system_prompt(
     5. Trims to fit the token budget
     6. Applies model-specific adaptations
 
-    Priority order when trimming:
+    Priority order when trimming (highest priority number = trimmed first):
     1. Identity + tools (always include)
     2. Behavioral guidelines (always include)
-    3. Custom instructions (include if fits)
-    4. Project context (include if fits)
-    5. Git context (include if fits)
-    6. Memory context (include if fits, trimmed first)
-    7. Available Skills (include if fits, trimmed before memory)
+    3. Custom instructions (priority 2, trimmed last)
+    4. Project context (priority 3)
+    5. Git context (priority 4)
+    6. Memory context (priority 5)
+    7. Available Skills (priority 6, trimmed first)
 
     Parameters
     ----------
@@ -383,8 +383,8 @@ def build_system_prompt(
     env_section = _build_env_section()
     context_sections.insert(0, ("Environment", env_section.replace("# Environment\n", ""), 1))
 
-    # Inject skills as a context section (priority 6 -- trimmed after memory
-    # but before git/project context)
+    # Inject skills as a context section (priority 6 -- trimmed first,
+    # before memory, git, and project context)
     if skill_manager is not None:
         skills_text = skill_manager.get_skills_for_prompt(max_tokens=3000)
         if skills_text:
