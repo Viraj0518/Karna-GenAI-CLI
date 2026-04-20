@@ -19,10 +19,16 @@ import logging
 import math
 import os
 import re
-import sys
+import threading
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
+
+# Serialise HF silence windows so concurrent embeds don't swallow each
+# other's stdout/stderr. Nellie's agent loop is single-threaded asyncio
+# today, but embedder calls can be reached from threads via subagents
+# and background monitors; the lock keeps the global stream swap safe.
+_HF_SILENCE_LOCK = threading.Lock()
 
 
 @contextlib.contextmanager
@@ -33,27 +39,30 @@ def _silence_hf_output():
     plus UNEXPECTED-keys warnings on first use of MiniLM. Those writes
     hit stderr directly (bypassing Python logging) and corrupt the
     prompt_toolkit TUI output pane when they fire mid-session. This
-    context redirects both streams to /dev/null for the duration of
-    the load and also nudges the relevant loggers down to ERROR.
+    context redirects both streams to os.devnull for the duration of
+    the load and nudges the relevant loggers down to ERROR.
+
+    The context mutates process-global state (sys.stdout/sys.stderr
+    via contextlib.redirect_*), so concurrent callers are serialised
+    through ``_HF_SILENCE_LOCK`` to avoid one caller's silence window
+    swallowing another caller's legitimate prints.
     """
-    saved_levels = {}
-    for name in ("transformers", "sentence_transformers", "tokenizers", "huggingface_hub"):
-        lg = logging.getLogger(name)
-        saved_levels[name] = lg.level
-        lg.setLevel(logging.ERROR)
+    saved_levels: dict[str, int] = {}
+    logger_names = ("transformers", "sentence_transformers", "tokenizers", "huggingface_hub")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-    devnull = open(os.devnull, "w")
-    real_stdout, real_stderr = sys.stdout, sys.stderr
-    try:
-        sys.stdout = devnull
-        sys.stderr = devnull
-        yield
-    finally:
-        sys.stdout = real_stdout
-        sys.stderr = real_stderr
-        devnull.close()
-        for name, level in saved_levels.items():
-            logging.getLogger(name).setLevel(level)
+    with _HF_SILENCE_LOCK:
+        for name in logger_names:
+            lg = logging.getLogger(name)
+            saved_levels[name] = lg.level
+            lg.setLevel(logging.ERROR)
+        try:
+            with open(os.devnull, "w") as devnull, \
+                 contextlib.redirect_stdout(devnull), \
+                 contextlib.redirect_stderr(devnull):
+                yield
+        finally:
+            for name, level in saved_levels.items():
+                logging.getLogger(name).setLevel(level)
 
 
 class BaseEmbedder(ABC):
