@@ -172,7 +172,20 @@ class CronStore:
             return False
         job.last_run_at = datetime.now(timezone.utc).isoformat()
         job.last_result_snippet = (snippet or "")[:500] or None
-        return self.update_job(job)
+        updated = self.update_job(job)
+        if updated:
+            self._sync_yaml(job)
+        return updated
+
+    def _sync_yaml(self, job: CronJob) -> None:
+        """Best-effort sync of a single job to the YAML mirror."""
+        try:
+            from karna.cron.jobs import YAMLJobStore
+
+            yaml_store = YAMLJobStore(self.path.parent)
+            yaml_store.save_job(job)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _job_from_dict(d: dict[str, Any]) -> CronJob:
