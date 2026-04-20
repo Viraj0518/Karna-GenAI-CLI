@@ -27,7 +27,8 @@ web = ["trafilatura>=1.8"]
 vertex = ["google-auth>=2.0"]
 bedrock = ["boto3>=1.34"]
 cron = ["croniter>=2.0"]
-all = ["karna[tokens,web,vertex,bedrock,cron]"]
+browser = ["playwright>=1.40"]
+all = ["karna[tokens,web,vertex,bedrock,cron,browser]"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

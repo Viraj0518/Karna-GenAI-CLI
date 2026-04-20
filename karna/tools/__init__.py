@@ -28,6 +28,7 @@ _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "monitor": ("karna.tools.monitor", "MonitorTool"),
     "notebook": ("karna.tools.notebook", "NotebookTool"),
     "task": ("karna.tools.task", "TaskTool"),
+    "browser": ("karna.tools.browser", "BrowserTool"),
 }
 
 # Public alias — maps tool name → (module, class) for introspection.
@@ -53,3 +54,7 @@ def get_tool(name: str) -> "BaseTool":
 def get_all_tools() -> list["BaseTool"]:
     """Instantiate and return one instance of every registered tool."""
     return [get_tool(name) for name in _TOOL_PATHS]
+
+# test marker 12345
+
+# test marker 12345
