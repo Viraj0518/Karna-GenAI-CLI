@@ -3,21 +3,25 @@
 Launched by ``nellie`` (no args) — provides streaming conversation with
 tool use, slash commands, multiline input, and Rich-rendered output.
 
-Supports Escape-to-interrupt: while the assistant is streaming, the user
-can press Escape to interrupt generation, type a steering message, and
-resume the agent loop with new context.
+Supports always-active input: the user can type at any time, even while
+the agent is streaming.  If the agent is idle, Enter starts a new turn.
+If the agent is working, the message is queued and injected mid-stream
+as a steering message — Claude Code-style UX.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
 
 if TYPE_CHECKING:
     from karna.compaction.compactor import Compactor
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.patch_stdout import patch_stdout
 from rich.console import Console
 
 from karna.agents.autonomous import run_autonomous_loop
@@ -32,7 +36,7 @@ from karna.sessions.db import SessionDB
 from karna.skills.loader import SkillManager
 from karna.tools import TOOLS, get_all_tools
 from karna.tui.banner import print_banner
-from karna.tui.input import get_multiline_input
+from karna.tui.input import _bottom_toolbar_factory, _format_prompt, _pt_style
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
 from karna.tui.slash import (
     SessionCost,
@@ -47,6 +51,25 @@ from karna.tui.themes import KARNA_THEME
 _LOOP_SENTINEL = "__LOOP__"
 _PLAN_SENTINEL = "__PLAN__"
 _DO_SENTINEL = "__DO__"
+
+
+# --------------------------------------------------------------------------- #
+#  Always-active input state
+# --------------------------------------------------------------------------- #
+
+
+class REPLState:
+    """Shared mutable state between the input loop and agent tasks."""
+
+    def __init__(self) -> None:
+        self.input_queue: asyncio.Queue[str] = asyncio.Queue()
+        self.agent_running: bool = False
+        self.agent_task: asyncio.Task | None = None
+
+
+# --------------------------------------------------------------------------- #
+#  Dispatch helpers (unchanged)
+# --------------------------------------------------------------------------- #
 
 
 async def _run_loop_mode(
@@ -112,6 +135,11 @@ async def _run_plan_mode(
 def _load_tool_names() -> list[str]:
     """Return the names of all registered tools."""
     return sorted(TOOLS.keys())
+
+
+# --------------------------------------------------------------------------- #
+#  Agent loop async generator (unchanged from original)
+# --------------------------------------------------------------------------- #
 
 
 async def _agent_loop(
@@ -205,112 +233,172 @@ async def _agent_loop(
 
 
 # --------------------------------------------------------------------------- #
-#  Escape-to-interrupt helpers
+#  Agent turn — runs as a concurrent task
 # --------------------------------------------------------------------------- #
 
 
-class _EscapeDetector:
-    """Non-blocking Escape key detector using prompt_toolkit's input layer.
+async def _run_agent_turn(
+    state: REPLState,
+    config: KarnaConfig,
+    conversation: Conversation,
+    console: Console,
+    session_db: SessionDB,
+    session_id: str,
+    session_cost: SessionCost,
+    skill_manager: SkillManager | None,
+    repl_compactor: "Compactor",
+    tool_names: list[str],
+) -> None:
+    """Execute one agent turn, checking for queued steering messages.
 
-    Works cross-platform (Unix termios + Windows msvcrt) by delegating
-    to prompt_toolkit's ``create_input()`` which handles both.
-
-    Usage::
-
-        detector = _EscapeDetector()
-        detector.start()
-        ...
-        if detector.check():
-            print("Escape pressed!")
-        ...
-        detector.stop()
+    Runs as an ``asyncio.Task`` so the input loop stays responsive.
     """
+    renderer = OutputRenderer(console)
+    renderer.show_spinner()
 
-    def __init__(self) -> None:
-        self._active = False
-        self._input: object | None = None
-
-    def start(self) -> None:
-        """Begin raw-mode key capture on stdin."""
-        if self._active:
-            return
-        try:
-            from prompt_toolkit.input import create_input
-
-            self._input = create_input()
-            self._input.attach(None)  # type: ignore[union-attr]
-            self._active = True
-        except Exception:  # noqa: BLE001
-            # If prompt_toolkit is unavailable or attach fails (e.g.
-            # non-interactive stdin), interrupt detection degrades
-            # gracefully — the user can still Ctrl-C.
-            self._active = False
-
-    def stop(self) -> None:
-        """Restore normal terminal mode."""
-        if not self._active:
-            return
-        try:
-            if self._input is not None:
-                self._input.detach()  # type: ignore[union-attr]
-        except Exception:  # noqa: BLE001
-            pass
-        self._active = False
-        self._input = None
-
-    def check(self) -> bool:
-        """Non-blocking check: return True if Escape was pressed."""
-        if not self._active or self._input is None:
-            return False
-        try:
-            from prompt_toolkit.keys import Keys
-
-            for key_press in self._input.read_keys():  # type: ignore[union-attr]
-                if key_press.key == Keys.Escape:
-                    return True
-        except Exception:  # noqa: BLE001
-            pass
-        return False
-
-
-def _check_escape_simple() -> bool:
-    """Fallback non-blocking Escape check using raw stdin (Unix only).
-
-    Used when prompt_toolkit's input layer is not available.  On
-    Windows this always returns False.
-    """
-    if sys.platform == "win32":
-        try:
-            import msvcrt
-
-            if msvcrt.kbhit():
-                ch = msvcrt.getch()
-                if ch == b"\x1b":
-                    return True
-        except Exception:  # noqa: BLE001
-            pass
-        return False
-
-    # Unix: check if stdin has data, read one byte
-    import select
-    import termios
-    import tty
-
+    events: list[StreamEvent] = []
     try:
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
+        async for event in _agent_loop(
+            config,
+            conversation,
+            tool_names,
+            skill_manager=skill_manager,
+            compactor=repl_compactor,
+        ):
+            renderer.handle(event)
+            events.append(event)
+
+            # Accumulate session cost
+            if event.kind == EventKind.USAGE and isinstance(event.data, dict):
+                session_cost.add(
+                    prompt=event.data.get("prompt_tokens", 0),
+                    completion=event.data.get("completion_tokens", 0),
+                    usd=event.data.get("total_usd", 0.0),
+                )
+
+            # Check for queued steering messages (non-blocking)
+            while not state.input_queue.empty():
+                try:
+                    steered = state.input_queue.get_nowait()
+                    conversation.messages.append(Message(role="user", content=steered))
+                    session_db.add_message(session_id, Message(role="user", content=steered))
+                    preview = steered[:60]
+                    if len(steered) > 60:
+                        preview += "..."
+                    console.print(f"\n[bright_black]  -> injected: {preview}[/bright_black]")
+                except asyncio.QueueEmpty:
+                    break
+
+    except Exception as exc:
+        renderer.handle(StreamEvent(kind=EventKind.ERROR, data=str(exc)))
+    finally:
+        renderer.finish()
+        state.agent_running = False
+        state.agent_task = None
+
+    # Persist assistant reply to conversation and session DB
+    full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
+    if full_reply:
+        assistant_msg = Message(role="assistant", content=full_reply)
+        conversation.messages.append(assistant_msg)
+
+        # Compute token count from usage event
+        turn_tokens = 0
+        turn_cost = 0.0
+        for e in events:
+            if e.kind == EventKind.USAGE and isinstance(e.data, dict):
+                turn_tokens = e.data.get("prompt_tokens", 0) + e.data.get("completion_tokens", 0)
+                turn_cost = e.data.get("total_usd", 0.0)
+        session_db.add_message(session_id, assistant_msg, tokens=turn_tokens, cost_usd=turn_cost)
+
+        # Display per-turn cost in dim text
+        if turn_tokens or turn_cost:
+            from rich.text import Text as RichText
+
+            console.print(
+                RichText(
+                    f"  [{turn_tokens:,} tokens, ${turn_cost:.4f}]",
+                    style="bright_black",
+                )
+            )
+
+
+# --------------------------------------------------------------------------- #
+#  Slash command processing (extracted for reuse)
+# --------------------------------------------------------------------------- #
+
+
+async def _process_slash_command(
+    user_input: str,
+    console: Console,
+    config: KarnaConfig,
+    conversation: Conversation,
+    session_cost: SessionCost,
+    tool_names: list[str],
+    session_db: SessionDB,
+    cost_tracker: CostTracker,
+    skill_manager: SkillManager,
+) -> str | None:
+    """Handle a slash command and return user_input to send (or None to skip).
+
+    Returns:
+        - A string to treat as user input (e.g. /do injects the plan)
+        - None if the command was fully handled (no message to send)
+    """
+    result = await handle_slash_command(
+        user_input,
+        console,
+        config,
+        conversation,
+        session_cost=session_cost,
+        tool_names=tool_names,
+        session_db=session_db,
+        cost_tracker=cost_tracker,
+        skill_manager=skill_manager,
+    )
+
+    # Advanced-command sentinels
+    if isinstance(result, str) and result.startswith(_LOOP_SENTINEL):
+        goal = result[len(_LOOP_SENTINEL) :]
         try:
-            tty.setraw(fd)
-            rlist, _, _ = select.select([fd], [], [], 0)
-            if rlist:
-                ch = os.read(fd, 1)
-                if ch == b"\x1b":
-                    return True
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    except Exception:  # noqa: BLE001
-        pass
-    return False
+            final_text = await _run_loop_mode(console, config, goal)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Loop interrupted by user.[/yellow]")
+            return None
+        except Exception as exc:
+            console.print(f"[red]Loop failed: {type(exc).__name__}: {exc}[/red]")
+            return None
+        if final_text:
+            console.print(final_text)
+        return None
+
+    if isinstance(result, str) and result.startswith(_PLAN_SENTINEL):
+        goal = result[len(_PLAN_SENTINEL) :]
+        try:
+            plan_text = await _run_plan_mode(console, config, goal)
+        except Exception as exc:
+            console.print(f"[red]Plan mode failed: {type(exc).__name__}: {exc}[/red]")
+            return None
+        if plan_text:
+            console.print(plan_text)
+            _store_last_plan(conversation, plan_text)
+        return None
+
+    if isinstance(result, str) and result.startswith(_DO_SENTINEL):
+        plan_text = result[len(_DO_SENTINEL) :]
+        clear_last_plan(conversation)
+        return plan_text
+
+    # /paste returns raw text — treat as user input
+    if isinstance(result, str) and result:
+        return result
+
+    return None
+
+
+# --------------------------------------------------------------------------- #
+#  Main REPL — always-active input with concurrent agent execution
+# --------------------------------------------------------------------------- #
 
 
 async def run_repl(
@@ -318,19 +406,20 @@ async def run_repl(
     resume_conversation: Conversation | None = None,
     resume_session_id: str | None = None,
 ) -> None:
-    """Main REPL — streaming conversation with tool use.
+    """Main REPL — streaming conversation with always-active input.
 
-    This is the primary interactive loop invoked by ``nellie`` with no
-    arguments.  It:
+    The user can always type, even while the agent is working:
+    - If the agent is idle, Enter starts a new turn.
+    - If the agent is working, the message is queued and injected
+      mid-stream as a steering message.
 
-    1. Prints the startup banner.
-    2. Reads user input (multiline, with history).
-    3. Dispatches slash commands.
-    4. Streams assistant responses through the OutputRenderer.
-    5. Loops until Ctrl-D or /exit.
+    Uses ``prompt_toolkit``'s ``prompt_async`` with ``patch_stdout``
+    so the input prompt stays at the bottom while agent output scrolls
+    above it.
     """
     console = Console(theme=KARNA_THEME)
     tool_names = _load_tool_names()
+    state = REPLState()
 
     # Session persistence
     session_db = SessionDB()
@@ -387,9 +476,6 @@ async def run_repl(
     # circuit breaker's consecutive_failures counter is not reset each turn.
     from karna.compaction.compactor import Compactor
 
-    # Resolve provider once for the compactor — it will be re-resolved
-    # per-turn inside _agent_loop, but the Compactor only needs a
-    # provider for its summarisation calls.
     _init_prov_name, _init_model = resolve_model(
         f"{config.active_provider}:{config.active_model}"
         if ":" not in (config.active_model or "")
@@ -405,204 +491,141 @@ async def run_repl(
         model_short = model_short[:21] + "..."
     prompt_str = f"{model_short}> "
 
-    while True:
-        try:
-            user_input = await get_multiline_input(console, prompt_str)
-        except EOFError:
-            console.print("\n[bright_black]Goodbye.[/bright_black]")
-            break
-        except KeyboardInterrupt:
-            console.print()
-            continue
+    # Build the prompt_toolkit session for async prompting
+    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.key_binding import KeyBindings
 
-        if not user_input:
-            continue
+    bindings = KeyBindings()
 
-        # ── Skill trigger matching (checked BEFORE slash commands) ─────
-        # Skills with slash-prefixed triggers (e.g. /commit) must be
-        # checked first, otherwise the slash command handler intercepts
-        # them and reports "unknown command".
-        matched_skills = skill_manager.match_trigger(user_input)
-        if matched_skills:
-            skill_preamble_parts: list[str] = []
-            for skill in matched_skills:
-                if skill.instructions:
-                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
-            if skill_preamble_parts:
-                skill_preamble = "\n\n".join(skill_preamble_parts)
-                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
-            # Skills matched — skip slash command handling, fall through
-            # to the regular message path below.
+    @bindings.add("escape", "enter")
+    def _insert_newline(event):  # type: ignore[no-untyped-def]
+        event.current_buffer.insert_text("\n")
 
-        # ── Slash commands ──────────────────────────────────────────────
-        elif user_input.startswith("/"):
-            result = await handle_slash_command(
-                user_input,
-                console,
-                config,
-                conversation,
-                session_cost=session_cost,
-                tool_names=tool_names,
-                session_db=session_db,
-                cost_tracker=cost_tracker,
-                skill_manager=skill_manager,
-            )
-            # Refresh prompt in case the model was switched
-            model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
-            if len(model_short) > 24:
-                model_short = model_short[:21] + "..."
-            prompt_str = f"{model_short}> "
+    pt_session: PromptSession[str] = PromptSession(
+        message=_format_prompt(prompt_str),
+        history=InMemoryHistory(),
+        key_bindings=bindings,
+        multiline=False,
+        enable_history_search=True,
+        style=_pt_style(),
+        placeholder=HTML("<placeholder>Ask anything...</placeholder>"),
+        bottom_toolbar=_bottom_toolbar_factory(),
+        include_default_pygments_style=False,
+    )
 
-            # Advanced-command sentinels — these return a payload that
-            # the REPL (not the slash handler) executes.
-            if isinstance(result, str) and result.startswith(_LOOP_SENTINEL):
-                goal = result[len(_LOOP_SENTINEL) :]
-                try:
-                    final_text = await _run_loop_mode(console, config, goal)
-                except KeyboardInterrupt:
-                    console.print("\n[yellow]Loop interrupted by user.[/yellow]")
-                    continue
-                except Exception as exc:
-                    console.print(f"[red]Loop failed: {type(exc).__name__}: {exc}[/red]")
-                    continue
-                if final_text:
-                    console.print(final_text)
+    # ── Main input loop — always active ───────────────────────────────
+    with patch_stdout():
+        while True:
+            try:
+                text = await pt_session.prompt_async(
+                    _format_prompt(prompt_str),
+                )
+            except EOFError:
+                console.print("\n[bright_black]Goodbye.[/bright_black]")
+                # Cancel any running agent task
+                if state.agent_task is not None and not state.agent_task.done():
+                    state.agent_task.cancel()
+                    try:
+                        await state.agent_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                break
+            except KeyboardInterrupt:
+                console.print()
                 continue
 
-            if isinstance(result, str) and result.startswith(_PLAN_SENTINEL):
-                goal = result[len(_PLAN_SENTINEL) :]
-                try:
-                    plan_text = await _run_plan_mode(console, config, goal)
-                except Exception as exc:
-                    console.print(f"[red]Plan mode failed: {type(exc).__name__}: {exc}[/red]")
-                    continue
-                if plan_text:
-                    console.print(plan_text)
-                    _store_last_plan(conversation, plan_text)
+            text = text.strip()
+            if not text:
                 continue
 
-            if isinstance(result, str) and result.startswith(_DO_SENTINEL):
-                # /do → execute the stored plan by injecting it as the
-                # next user message and falling through to the normal
-                # agent-loop path below.
-                plan_text = result[len(_DO_SENTINEL) :]
-                clear_last_plan(conversation)
-                user_input = plan_text
-                # Fall through to the "Regular message" block below.
-            else:
-                # Any other (non-sentinel) slash result — including the
-                # string returned by /paste — should be treated as user
-                # input. /paste historically returned raw text.
-                if isinstance(result, str) and result:
-                    user_input = result
+            # ── If agent is running, queue as steering message ─────────
+            if state.agent_running:
+                # Slash commands still work immediately even during agent execution
+                if text.startswith("/"):
+                    if text.strip() in ("/exit", "/quit"):
+                        if state.agent_task is not None and not state.agent_task.done():
+                            state.agent_task.cancel()
+                            try:
+                                await state.agent_task
+                            except (asyncio.CancelledError, Exception):
+                                pass
+                        console.print("\n[bright_black]Goodbye.[/bright_black]")
+                        return
+                    # Other slash commands during agent run — warn
+                    console.print("[yellow]Agent is working. Slash commands are available when idle.[/yellow]")
+                    continue
+
+                state.input_queue.put_nowait(text)
+                console.print("[bright_black]  -> message queued (will be injected mid-stream)[/bright_black]")
+                continue
+
+            # ── Skill trigger matching (checked BEFORE slash commands) ─
+            user_input = text
+            matched_skills = skill_manager.match_trigger(user_input)
+            if matched_skills:
+                skill_preamble_parts: list[str] = []
+                for skill in matched_skills:
+                    if skill.instructions:
+                        skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+                if skill_preamble_parts:
+                    skill_preamble = "\n\n".join(skill_preamble_parts)
+                    user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+                # Skills matched — skip slash command handling, fall through
+                # to the regular message path below.
+
+            # ── Slash commands ─────────────────────────────────────────
+            elif user_input.startswith("/"):
+                injected = await _process_slash_command(
+                    user_input,
+                    console,
+                    config,
+                    conversation,
+                    session_cost,
+                    tool_names,
+                    session_db,
+                    cost_tracker,
+                    skill_manager,
+                )
+                # Refresh prompt in case the model was switched
+                model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
+                if len(model_short) > 24:
+                    model_short = model_short[:21] + "..."
+                prompt_str = f"{model_short}> "
+
+                if injected is not None:
+                    # /do or /paste returned text — treat as user input
+                    user_input = injected
                 else:
                     continue
 
-        # ── Skill trigger matching ──────────────────────────────────────────
-        # Only check keyword triggers for non-slash inputs — slash commands
-        # are handled above and should not be intercepted by skill keywords.
-        matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
-        if matched_skills:
-            skill_preamble_parts: list[str] = []
-            for skill in matched_skills:
-                if skill.instructions:
-                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
-            if skill_preamble_parts:
-                skill_preamble = "\n\n".join(skill_preamble_parts)
-                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+            # ── Skill trigger matching for non-slash ───────────────────
+            matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
+            if matched_skills:
+                skill_preamble_parts = []
+                for skill in matched_skills:
+                    if skill.instructions:
+                        skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+                if skill_preamble_parts:
+                    skill_preamble = "\n\n".join(skill_preamble_parts)
+                    user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
 
-        # ── Regular message ─────────────────────────────────────────────
-        user_msg = Message(role="user", content=user_input)
-        conversation.messages.append(user_msg)
-        session_db.add_message(session_id, user_msg)
+            # ── Start new agent turn ───────────────────────────────────
+            user_msg = Message(role="user", content=user_input)
+            conversation.messages.append(user_msg)
+            session_db.add_message(session_id, user_msg)
 
-        # ── Stream events live with Escape-to-interrupt ────────────────
-        interrupted = False
-        while True:
-            renderer = OutputRenderer(console)
-            renderer.show_spinner()
-
-            events: list[StreamEvent] = []
-            interrupted = False
-
-            try:
-                async for event in _agent_loop(
+            state.agent_running = True
+            state.agent_task = asyncio.create_task(
+                _run_agent_turn(
+                    state,
                     config,
                     conversation,
+                    console,
+                    session_db,
+                    session_id,
+                    session_cost,
+                    skill_manager,
+                    repl_compactor,
                     tool_names,
-                    skill_manager=skill_manager,
-                    compactor=repl_compactor,
-                ):
-                    renderer.handle(event)
-                    events.append(event)
-
-                    # Accumulate session cost
-                    if event.kind == EventKind.USAGE and isinstance(event.data, dict):
-                        session_cost.add(
-                            prompt=event.data.get("prompt_tokens", 0),
-                            completion=event.data.get("completion_tokens", 0),
-                            usd=event.data.get("total_usd", 0.0),
-                        )
-
-                    # Non-blocking Escape check while streaming
-                    if _check_escape_simple():
-                        interrupted = True
-                        break
-
-            except Exception as exc:
-                renderer.handle(StreamEvent(kind=EventKind.ERROR, data=str(exc)))
-            finally:
-                renderer.finish()
-
-            if interrupted:
-                # Show interrupt prompt
-                console.print()
-                console.print("[yellow]Interrupted -- type a message to steer, or press Enter to continue:[/yellow]")
-                try:
-                    steer = await get_multiline_input(console, "steer> ")
-                except (EOFError, KeyboardInterrupt):
-                    steer = ""
-
-                if steer.strip():
-                    # Append partial assistant reply if any
-                    partial_reply = "".join(
-                        e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str)
-                    )
-                    if partial_reply:
-                        conversation.messages.append(
-                            Message(role="assistant", content=partial_reply + "\n[interrupted by user]")
-                        )
-                    # Append the steering message and re-enter the agent loop
-                    conversation.messages.append(Message(role="user", content=steer))
-                    session_db.add_message(session_id, Message(role="user", content=steer))
-                    continue  # Re-enter the while loop → new agent_loop call
-                # Empty Enter → just stop, don't re-enter
-
-            # Not interrupted or empty steer → break out of the while loop
-            break
-
-        # Append assistant reply to conversation and persist
-        full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
-        if full_reply:
-            assistant_msg = Message(role="assistant", content=full_reply)
-            conversation.messages.append(assistant_msg)
-
-            # Compute token count from usage event
-            turn_tokens = 0
-            turn_cost = 0.0
-            for e in events:
-                if e.kind == EventKind.USAGE and isinstance(e.data, dict):
-                    turn_tokens = e.data.get("prompt_tokens", 0) + e.data.get("completion_tokens", 0)
-                    turn_cost = e.data.get("total_usd", 0.0)
-            session_db.add_message(session_id, assistant_msg, tokens=turn_tokens, cost_usd=turn_cost)
-
-            # Display per-turn cost in dim text
-            if turn_tokens or turn_cost:
-                from rich.text import Text as RichText
-
-                console.print(
-                    RichText(
-                        f"  [{turn_tokens:,} tokens, ${turn_cost:.4f}]",
-                        style="bright_black",
-                    )
                 )
+            )

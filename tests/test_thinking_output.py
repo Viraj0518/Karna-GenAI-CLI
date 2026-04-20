@@ -211,24 +211,15 @@ def test_model_stream_event_thinking_type() -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Escape detection helper (unit test)
+#  Always-active input state (unit test)
 # --------------------------------------------------------------------------- #
 
 
-def test_escape_detector_creation() -> None:
-    """The _EscapeDetector class should be importable and instantiable."""
-    from karna.tui.repl import _EscapeDetector
+def test_repl_state_creation() -> None:
+    """The REPLState class should be importable and instantiable."""
+    from karna.tui.repl import REPLState
 
-    det = _EscapeDetector()
-    assert det._active is False
-    # check() should return False when not started
-    assert det.check() is False
-
-
-def test_check_escape_simple_returns_false_without_input() -> None:
-    """_check_escape_simple should return False when no key is pending."""
-    from karna.tui.repl import _check_escape_simple
-
-    # Without any stdin activity, this should return False
-    result = _check_escape_simple()
-    assert result is False
+    state = REPLState()
+    assert state.agent_running is False
+    assert state.agent_task is None
+    assert state.input_queue.empty()
