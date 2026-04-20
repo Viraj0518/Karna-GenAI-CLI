@@ -409,14 +409,12 @@ class AnthropicProvider(BaseProvider):
                             # Regular text token — stream to caller immediately
                             yield StreamEvent(type="text", text=delta.get("text", ""))
                         elif delta.get("type") in ("thinking_delta", "signature_delta"):
-                            # Extended-thinking reasoning token. We can't add a
-                            # dedicated event type without touching models.py,
-                            # so we surface the content as regular text with a
-                            # leading marker so the renderer can distinguish it
-                            # downstream if it wants to.
+                            # Extended-thinking reasoning token — surfaced as a
+                            # dedicated "thinking" event so the TUI renderer can
+                            # stream it live with distinct styling.
                             txt = delta.get("thinking") or delta.get("text") or ""
                             if txt:
-                                yield StreamEvent(type="text", text=txt)
+                                yield StreamEvent(type="thinking", text=txt)
                         elif delta.get("type") == "input_json_delta":
                             # Tool argument fragment — accumulate until block stops
                             partial = delta.get("partial_json", "")

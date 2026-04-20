@@ -444,10 +444,11 @@ class BedrockProvider(BaseProvider):
             if delta.get("type") == "text_delta":
                 yield StreamEvent(type="text", text=delta.get("text", ""))
             elif delta.get("type") in ("thinking_delta", "signature_delta"):
-                # Surface reasoning tokens as text (no dedicated event kind).
+                # Surface reasoning tokens as a dedicated "thinking" event
+                # so the TUI can stream them live with distinct styling.
                 txt = delta.get("thinking") or delta.get("text") or ""
                 if txt:
-                    yield StreamEvent(type="text", text=txt)
+                    yield StreamEvent(type="thinking", text=txt)
         elif ctype == "message_start":
             u = chunk.get("message", {}).get("usage", {})
             cumulative.input_tokens = u.get("input_tokens", cumulative.input_tokens)

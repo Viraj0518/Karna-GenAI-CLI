@@ -2,13 +2,18 @@
 
 Launched by ``nellie`` (no args) — provides streaming conversation with
 tool use, slash commands, multiline input, and Rich-rendered output.
+
+Supports Escape-to-interrupt: while the assistant is streaming, the user
+can press Escape to interrupt generation, type a steering message, and
+resume the agent loop with new context.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, AsyncIterator
 
 if TYPE_CHECKING:
     from karna.compaction.compactor import Compactor
@@ -115,11 +120,14 @@ async def _agent_loop(
     tool_names: list[str],
     skill_manager: SkillManager | None = None,
     compactor: "Compactor | None" = None,
-) -> list[StreamEvent]:
-    """Run a single turn of the agent loop — LIVE provider + tool execution."""
-    from karna.compaction.compactor import Compactor
+) -> AsyncIterator[StreamEvent]:
+    """Yield TUI StreamEvents live from the agent loop.
 
-    events: list[StreamEvent] = []
+    This is an async generator -- each event is yielded immediately as
+    the underlying provider produces it, enabling true real-time
+    streaming of thinking and text deltas to the renderer.
+    """
+    from karna.compaction.compactor import Compactor
 
     try:
         # Resolve provider
@@ -155,51 +163,154 @@ async def _agent_loop(
             context_window=context_window,
             compactor=turn_compactor,
         ):
-            # Map agent StreamEvent → TUI StreamEvent
-            if event.type == "text":
-                events.append(StreamEvent(kind=EventKind.TEXT_DELTA, data=event.text or ""))
+            # Map agent StreamEvent → TUI StreamEvent and yield immediately
+            if event.type == "thinking":
+                yield StreamEvent(kind=EventKind.THINKING_DELTA, data=event.text or "")
+            elif event.type == "text":
+                yield StreamEvent(kind=EventKind.TEXT_DELTA, data=event.text or "")
             elif event.type == "tool_call_start":
                 tc = event.tool_call
-                events.append(
-                    StreamEvent(
-                        kind=EventKind.TOOL_CALL_START,
-                        data={"name": tc.name if tc else "?", "arguments": tc.arguments if tc else "{}"},
-                    )
+                yield StreamEvent(
+                    kind=EventKind.TOOL_CALL_START,
+                    data={"name": tc.name if tc else "?", "arguments": tc.arguments if tc else "{}"},
                 )
             elif event.type == "tool_call_end":
                 tc = event.tool_call
                 # Emit TOOL_CALL_END so the renderer closes the live
                 # spinner before we send the result.
-                events.append(StreamEvent(kind=EventKind.TOOL_CALL_END))
-                events.append(
-                    StreamEvent(
-                        kind=EventKind.TOOL_RESULT,
-                        data={"content": event.text or (tc.arguments if tc else ""), "is_error": False},
-                    )
+                yield StreamEvent(kind=EventKind.TOOL_CALL_END)
+                yield StreamEvent(
+                    kind=EventKind.TOOL_RESULT,
+                    data={"content": event.text or (tc.arguments if tc else ""), "is_error": False},
                 )
             elif event.type == "tool_call_delta":
                 pass  # accumulating, not rendered until tool_call_end
             elif event.type == "error":
-                events.append(StreamEvent(kind=EventKind.ERROR, data=event.text or "Unknown error"))
+                yield StreamEvent(kind=EventKind.ERROR, data=event.text or "Unknown error")
             elif event.type == "done":
                 if event.usage:
-                    events.append(
-                        StreamEvent(
-                            kind=EventKind.USAGE,
-                            data={
-                                "prompt_tokens": event.usage.input_tokens,
-                                "completion_tokens": event.usage.output_tokens,
-                                "total_usd": event.usage.cost_usd or 0.0,
-                            },
-                        )
+                    yield StreamEvent(
+                        kind=EventKind.USAGE,
+                        data={
+                            "prompt_tokens": event.usage.input_tokens,
+                            "completion_tokens": event.usage.output_tokens,
+                            "total_usd": event.usage.cost_usd or 0.0,
+                        },
                     )
-                events.append(StreamEvent(kind=EventKind.DONE))
+                yield StreamEvent(kind=EventKind.DONE)
 
     except Exception as e:
-        events.append(StreamEvent(kind=EventKind.ERROR, data=f"Agent error: {type(e).__name__}: {e}"))
-        events.append(StreamEvent(kind=EventKind.DONE))
+        yield StreamEvent(kind=EventKind.ERROR, data=f"Agent error: {type(e).__name__}: {e}")
+        yield StreamEvent(kind=EventKind.DONE)
 
-    return events
+
+# --------------------------------------------------------------------------- #
+#  Escape-to-interrupt helpers
+# --------------------------------------------------------------------------- #
+
+
+class _EscapeDetector:
+    """Non-blocking Escape key detector using prompt_toolkit's input layer.
+
+    Works cross-platform (Unix termios + Windows msvcrt) by delegating
+    to prompt_toolkit's ``create_input()`` which handles both.
+
+    Usage::
+
+        detector = _EscapeDetector()
+        detector.start()
+        ...
+        if detector.check():
+            print("Escape pressed!")
+        ...
+        detector.stop()
+    """
+
+    def __init__(self) -> None:
+        self._active = False
+        self._input: object | None = None
+
+    def start(self) -> None:
+        """Begin raw-mode key capture on stdin."""
+        if self._active:
+            return
+        try:
+            from prompt_toolkit.input import create_input
+
+            self._input = create_input()
+            self._input.attach(None)  # type: ignore[union-attr]
+            self._active = True
+        except Exception:  # noqa: BLE001
+            # If prompt_toolkit is unavailable or attach fails (e.g.
+            # non-interactive stdin), interrupt detection degrades
+            # gracefully — the user can still Ctrl-C.
+            self._active = False
+
+    def stop(self) -> None:
+        """Restore normal terminal mode."""
+        if not self._active:
+            return
+        try:
+            if self._input is not None:
+                self._input.detach()  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            pass
+        self._active = False
+        self._input = None
+
+    def check(self) -> bool:
+        """Non-blocking check: return True if Escape was pressed."""
+        if not self._active or self._input is None:
+            return False
+        try:
+            from prompt_toolkit.keys import Keys
+
+            for key_press in self._input.read_keys():  # type: ignore[union-attr]
+                if key_press.key == Keys.Escape:
+                    return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+
+def _check_escape_simple() -> bool:
+    """Fallback non-blocking Escape check using raw stdin (Unix only).
+
+    Used when prompt_toolkit's input layer is not available.  On
+    Windows this always returns False.
+    """
+    if sys.platform == "win32":
+        try:
+            import msvcrt
+
+            if msvcrt.kbhit():
+                ch = msvcrt.getch()
+                if ch == b"\x1b":
+                    return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+    # Unix: check if stdin has data, read one byte
+    import select
+    import termios
+    import tty
+
+    try:
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            rlist, _, _ = select.select([fd], [], [], 0)
+            if rlist:
+                ch = os.read(fd, 1)
+                if ch == b"\x1b":
+                    return True
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 async def run_repl(
@@ -400,37 +511,75 @@ async def run_repl(
                 skill_preamble = "\n\n".join(skill_preamble_parts)
                 user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
 
-
         # ── Regular message ─────────────────────────────────────────────
         user_msg = Message(role="user", content=user_input)
         conversation.messages.append(user_msg)
         session_db.add_message(session_id, user_msg)
 
-        renderer = OutputRenderer(console)
-        renderer.show_spinner()
+        # ── Stream events live with Escape-to-interrupt ────────────────
+        interrupted = False
+        while True:
+            renderer = OutputRenderer(console)
+            renderer.show_spinner()
 
-        try:
-            events = await _agent_loop(
-                config,
-                conversation,
-                tool_names,
-                skill_manager=skill_manager,
-                compactor=repl_compactor,
-            )
-            for event in events:
-                renderer.handle(event)
+            events: list[StreamEvent] = []
+            interrupted = False
 
-                # Accumulate session cost
-                if event.kind == EventKind.USAGE and isinstance(event.data, dict):
-                    session_cost.add(
-                        prompt=event.data.get("prompt_tokens", 0),
-                        completion=event.data.get("completion_tokens", 0),
-                        usd=event.data.get("total_usd", 0.0),
+            try:
+                async for event in _agent_loop(
+                    config,
+                    conversation,
+                    tool_names,
+                    skill_manager=skill_manager,
+                    compactor=repl_compactor,
+                ):
+                    renderer.handle(event)
+                    events.append(event)
+
+                    # Accumulate session cost
+                    if event.kind == EventKind.USAGE and isinstance(event.data, dict):
+                        session_cost.add(
+                            prompt=event.data.get("prompt_tokens", 0),
+                            completion=event.data.get("completion_tokens", 0),
+                            usd=event.data.get("total_usd", 0.0),
+                        )
+
+                    # Non-blocking Escape check while streaming
+                    if _check_escape_simple():
+                        interrupted = True
+                        break
+
+            except Exception as exc:
+                renderer.handle(StreamEvent(kind=EventKind.ERROR, data=str(exc)))
+            finally:
+                renderer.finish()
+
+            if interrupted:
+                # Show interrupt prompt
+                console.print()
+                console.print("[yellow]Interrupted -- type a message to steer, or press Enter to continue:[/yellow]")
+                try:
+                    steer = await get_multiline_input(console, "steer> ")
+                except (EOFError, KeyboardInterrupt):
+                    steer = ""
+
+                if steer.strip():
+                    # Append partial assistant reply if any
+                    partial_reply = "".join(
+                        e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str)
                     )
-        except Exception as exc:
-            renderer.handle(StreamEvent(kind=EventKind.ERROR, data=str(exc)))
-        finally:
-            renderer.finish()
+                    if partial_reply:
+                        conversation.messages.append(
+                            Message(role="assistant", content=partial_reply + "\n[interrupted by user]")
+                        )
+                    # Append the steering message and re-enter the agent loop
+                    conversation.messages.append(Message(role="user", content=steer))
+                    session_db.add_message(session_id, Message(role="user", content=steer))
+                    continue  # Re-enter the while loop → new agent_loop call
+                # Empty Enter → just stop, don't re-enter
+
+            # Not interrupted or empty steer → break out of the while loop
+            break
 
         # Append assistant reply to conversation and persist
         full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
