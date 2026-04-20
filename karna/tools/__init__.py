@@ -31,6 +31,7 @@ _TOOL_PATHS: dict[str, tuple[str, str]] = {
     "task": ("karna.tools.task", "TaskTool"),
     "db": ("karna.tools.database", "DatabaseTool"),
     "browser": ("karna.tools.browser", "BrowserTool"),
+    "comms": ("karna.tools.comms", "CommsTool"),
 }
 
 # Public alias — maps tool name → (module, class) for introspection.

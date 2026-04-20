@@ -190,13 +190,6 @@ def _build_commands() -> dict[str, SlashCommand]:
             icon=ic_running,
         ),
         SlashCommand(
-            "cron",
-            "/cron [add|remove|enable|disable|run] [args]",
-            "Manage scheduled cron jobs",
-            category="advanced",
-            icon=ic_running,
-        ),
-        SlashCommand(
             "comms",
             "/comms [check|read|send|reply]",
             "Inter-agent messaging inbox",
@@ -313,33 +306,11 @@ def _cmd_help(console: Console, **_kw) -> None:  # type: ignore[no-untyped-def]
 
 def _cmd_model(console: Console, config: KarnaConfig, args: str, conversation: Conversation, **_kw) -> None:
     if not args:
-        # Show interactive model picker table
-        from karna.tui.model_picker import render_model_table
-
         console.print(f"[bright_black]Current model:[/] [white]{config.active_provider}:{config.active_model}[/]")
-        console.print()
-        render_model_table(console)
-        console.print(
-            "[bright_black]  Tip: type [bold]/model provider:model[/bold] to switch "
-            "(e.g. [bold]/model anthropic:claude-sonnet-4-20250514[/bold])[/bright_black]"
-        )
         return
     if ":" not in args:
-        # Try to resolve a numeric selection from the model picker
-        from karna.tui.model_picker import get_model_catalog
-
-        if args.strip().isdigit():
-            catalog = get_model_catalog()
-            idx = int(args.strip()) - 1
-            if 0 <= idx < len(catalog):
-                entry = catalog[idx]
-                args = f"{entry['provider']}:{entry['model']}"
-            else:
-                console.print(f"[red]Invalid selection: {args.strip()}. Use /model to see options.[/red]")
-                return
-        else:
-            console.print("[red]Usage: /model provider:model_name[/red]")
-            return
+        console.print("[red]Usage: /model provider:model_name[/red]")
+        return
     provider, model = args.split(":", 1)
     config.active_provider = provider.strip()
     config.active_model = model.strip()
@@ -779,123 +750,6 @@ async def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
     return None
 
 
-def _cmd_cron(console: Console, args: str, **_kw) -> str | None:  # type: ignore[no-untyped-def]
-    """List, add, remove, enable, disable, or run cron jobs from the REPL."""
-    import shlex
-
-    from karna.cron.expression import CronParseError, parse_expression
-    from karna.cron.runner import summarize_job
-    from karna.cron.store import CronStore
-
-    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
-    border = SEMANTIC.get("border.accent", "#3C73BD")
-    store = CronStore()
-
-    parts = args.strip().split(None, 1) if args.strip() else []
-    subcmd = parts[0].lower() if parts else ""
-    subargs = parts[1].strip() if len(parts) > 1 else ""
-
-    if subcmd == "add":
-        if not subargs:
-            console.print('[red]Usage: /cron add "<schedule>" "<prompt>"[/red]')
-            return None
-        try:
-            tokens = shlex.split(subargs)
-        except ValueError as exc:
-            console.print(f"[red]Parse error: {exc}[/red]")
-            return None
-        if len(tokens) < 2:
-            console.print('[red]Usage: /cron add "<schedule>" "<prompt>"[/red]')
-            return None
-        schedule = tokens[0]
-        prompt = tokens[1]
-        name = "-".join(prompt.split()[:3]).lower()[:30]
-        for i, t in enumerate(tokens):
-            if t == "--name" and i + 1 < len(tokens):
-                name = tokens[i + 1]
-                break
-        try:
-            parse_expression(schedule)
-        except CronParseError as exc:
-            console.print(f"[red]Invalid schedule: {exc}[/red]")
-            return None
-        job = store.add_job(name=name, schedule=schedule, prompt=prompt)
-        console.print(f"[green]Added cron job [bold]{job.id}[/bold] ({job.name}) -- {job.schedule}[/green]")
-        return None
-
-    if subcmd == "remove":
-        if not subargs:
-            console.print("[red]Usage: /cron remove <id>[/red]")
-            return None
-        if store.remove_job(subargs):
-            console.print(f"[green]Removed cron job {subargs}[/green]")
-        else:
-            console.print(f"[red]No cron job matches {subargs}[/red]")
-        return None
-
-    if subcmd == "enable":
-        if not subargs:
-            console.print("[red]Usage: /cron enable <id>[/red]")
-            return None
-        if store.set_enabled(subargs, True):
-            console.print(f"[green]Enabled {subargs}[/green]")
-        else:
-            console.print(f"[red]No cron job matches {subargs}[/red]")
-        return None
-
-    if subcmd == "disable":
-        if not subargs:
-            console.print("[red]Usage: /cron disable <id>[/red]")
-            return None
-        if store.set_enabled(subargs, False):
-            console.print(f"[green]Disabled {subargs}[/green]")
-        else:
-            console.print(f"[red]No cron job matches {subargs}[/red]")
-        return None
-
-    if subcmd == "run":
-        if not subargs:
-            console.print("[red]Usage: /cron run <id>[/red]")
-            return None
-        job = store.get_job(subargs)
-        if job is None:
-            console.print(f"[red]No cron job matches {subargs}[/red]")
-            return None
-        console.print(f"[bright_black]Running cron job {job.id} ({job.name})...[/bright_black]")
-        return f"__CRON_RUN__{job.prompt}"
-
-    jobs = store.list_jobs()
-    if not jobs:
-        console.print("[bright_black]No cron jobs configured. Use /cron add to create one.[/bright_black]")
-        return None
-
-    table = Table(
-        show_header=True,
-        header_style=f"bold {cyan}",
-        border_style=border,
-        expand=False,
-        title="Cron Jobs",
-    )
-    table.add_column("ID", style="cyan")
-    table.add_column("Name", style="white")
-    table.add_column("Schedule", style="green")
-    table.add_column("Enabled", style="yellow")
-    table.add_column("Last Run", style="bright_black")
-    table.add_column("Next Fire", style="bright_black")
-    for job in jobs:
-        info = summarize_job(job)
-        table.add_row(
-            job.id,
-            job.name,
-            job.schedule,
-            "yes" if job.enabled else "no",
-            (info.get("last_run_at") or "")[:19].replace("T", " "),
-            (info.get("next_fire_at") or "")[:19].replace("T", " "),
-        )
-    console.print(table)
-    return None
-
-
 def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-untyped-def]
     """``/memory`` — list, search, show, or forget memories.
 
@@ -1044,28 +898,10 @@ def _cmd_resume(console: Console, args: str, session_db: "SessionDB | None" = No
         return
     sid = args.strip() if args else None
     if not sid:
-        # Show interactive session picker
-        from karna.tui.session_picker import render_session_table
-
-        sessions = render_session_table(console, session_db, limit=10)
-        if not sessions:
-            return
-        console.print(
-            "[bright_black]  Tip: type [bold]/resume <id>[/bold] or "
-            "[bold]/resume <number>[/bold] to resume a session.[/bright_black]"
-        )
+        sid = session_db.get_latest_session_id()
+    if not sid:
+        console.print("[bright_black]No sessions to resume.[/bright_black]")
         return
-    # Support numeric selection from session picker
-    if sid.isdigit():
-        from karna.tui.session_picker import resolve_session_choice
-
-        sessions = session_db.list_sessions(limit=10)
-        resolved = resolve_session_choice(sessions, sid)
-        if resolved:
-            sid = resolved
-        else:
-            console.print(f"[red]Invalid selection: {sid}. Use /resume to see options.[/red]")
-            return
     conv = session_db.resume_session(sid)
     if conv is None:
         console.print(f"[red]Session not found: {sid}[/red]")
@@ -1139,14 +975,19 @@ def _cmd_comms(console: Console, config: KarnaConfig, args: str, **_kw) -> None:
             console.print(f"[red]Message not found: {subargs}[/red]")
             return
         nl = chr(10)
-        _reply = msg.in_reply_to or "-"
         detail = (
-            f"[bright_black]From:[/] {msg.from_agent}{nl}"
-            f"[bright_black]To:[/] {msg.to_agent}{nl}"
-            f"[bright_black]Subject:[/] {msg.subject}{nl}"
-            f"[bright_black]Time:[/] {msg.timestamp.isoformat()}{nl}"
-            f"[bright_black]Reply to:[/] {_reply}{nl}{nl}"
-            f"{msg.body}"
+            f"[bright_black]From:[/] {msg.from_agent}"
+            + nl
+            + f"[bright_black]To:[/] {msg.to_agent}"
+            + nl
+            + f"[bright_black]Subject:[/] {msg.subject}"
+            + nl
+            + f"[bright_black]Time:[/] {msg.timestamp.isoformat()}"
+            + nl
+            + f"[bright_black]Reply to:[/] {msg.in_reply_to or chr(45)}"
+            + nl
+            + nl
+            + f"{msg.body}"
         )
         console.print(
             Panel(
@@ -1215,7 +1056,6 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "plan": _cmd_plan,
     "do": _cmd_do,
     "tasks": _cmd_tasks,
-    "cron": _cmd_cron,
     "comms": _cmd_comms,
 }
 

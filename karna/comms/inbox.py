@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 
 COMMS_ROOT = KARNA_DIR / "comms" / "inbox"
 
+# Allowed characters in agent names: alphanumeric, hyphen, underscore.
+_AGENT_NAME_RE = __import__("re").compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+
+def _validate_agent_name(name: str) -> None:
+    """Raise ValueError if *name* contains path-traversal characters."""
+    if not name or not _AGENT_NAME_RE.match(name):
+        raise ValueError(
+            f"Invalid agent name {name!r}: must be alphanumeric, hyphens, "
+            "and underscores only, and not start with '.' or contain '/' or '\\'."
+        )
+
 
 class AgentInbox:
     """File-based inbox for a single agent.
@@ -40,6 +52,7 @@ class AgentInbox:
     """
 
     def __init__(self, agent_name: str, *, root: Path | None = None) -> None:
+        _validate_agent_name(agent_name)
         self.agent_name = agent_name
         self._root = root or COMMS_ROOT
         self._inbox_dir = self._root / agent_name
@@ -61,6 +74,7 @@ class AgentInbox:
 
         Returns the sent :class:`AgentMessage`.
         """
+        _validate_agent_name(to_agent)
         msg = AgentMessage(
             from_agent=self.agent_name,
             to_agent=to_agent,

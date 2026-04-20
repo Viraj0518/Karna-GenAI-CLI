@@ -80,6 +80,18 @@ class MemoryConfig(BaseModel):
 _BUILTIN_MEMORY_TYPES: tuple[str, ...] = ("user", "feedback", "project", "reference")
 
 
+class AgentConfig(BaseModel):
+    """Configuration for the agent identity.
+
+    Serialised as an ``[agent]`` section in ``config.toml``.
+    """
+
+    name: str = Field(
+        default="default",
+        description="Name of this agent instance (used for inter-agent comms)",
+    )
+
+
 class KarnaConfig(BaseModel):
     """Top-level configuration persisted to ``~/.karna/config.toml``."""
 
@@ -108,6 +120,10 @@ class KarnaConfig(BaseModel):
     memory: MemoryConfig = Field(
         default_factory=MemoryConfig,
         description="Persistent memory system configuration",
+    )
+    agent: AgentConfig = Field(
+        default_factory=AgentConfig,
+        description="Agent identity configuration",
     )
 
 
