@@ -146,6 +146,9 @@ def _ctx_color(pct: float) -> str:
 # --------------------------------------------------------------------------- #
 
 
+_MAX_OUTPUT_LINES = 5000
+
+
 class TUIOutputWriter:
     """Captures Rich console output as ANSI strings for prompt_toolkit.
 
@@ -153,12 +156,27 @@ class TUIOutputWriter:
     prompt_toolkit), this writer accumulates rendered ANSI text in a
     buffer.  The prompt_toolkit ``Application`` reads from this buffer
     via an ``OutputControl`` and redraws only when invalidated.
+
+    The buffer is capped at ``_MAX_OUTPUT_LINES`` rendered chunks —
+    pathological cases (a tool dumping a 100 MB CSV) evict oldest
+    output rather than growing unbounded and eventually starving the
+    render loop.
     """
 
     def __init__(self, width: int = 120) -> None:
         self._lines: list[str] = []
         self._width = width
         self._invalidate_cb: Any = None
+
+    def _append(self, text: str) -> None:
+        """Append one rendered chunk and enforce the ring-buffer cap."""
+        self._lines.append(text)
+        overflow = len(self._lines) - _MAX_OUTPUT_LINES
+        if overflow > 0:
+            # Drop the oldest half of the overflow in one slice — cheaper
+            # than trimming one line per append once we're at the cap.
+            trim = max(overflow, _MAX_OUTPUT_LINES // 10)
+            del self._lines[:trim]
 
     def set_invalidate(self, cb: Any) -> None:
         """Register the Application.invalidate callback."""
@@ -193,20 +211,20 @@ class TUIOutputWriter:
         console.print(renderable)
         text = buf.getvalue()
         if text:
-            self._lines.append(text.rstrip("\n"))
+            self._append(text.rstrip("\n"))
             self._invalidate()
 
     def write_ansi(self, text: str) -> None:
         """Append raw ANSI text to output buffer."""
         if text:
-            self._lines.append(text.rstrip("\n"))
+            self._append(text.rstrip("\n"))
             self._invalidate()
 
     def write_console_output(self, console_buf: StringIO) -> None:
         """Flush a StringIO that a Rich Console wrote to."""
         text = console_buf.getvalue()
         if text:
-            self._lines.append(text.rstrip("\n"))
+            self._append(text.rstrip("\n"))
             self._invalidate()
 
     def get_text(self) -> str:
@@ -255,7 +273,7 @@ class RedirectedConsole(Console):
         super().print(*args, **kwargs)
         text = self._capture_buf.getvalue()
         if text:
-            self._writer._lines.append(text.rstrip("\n"))
+            self._writer._append(text.rstrip("\n"))
             self._writer._invalidate()
 
 
@@ -492,6 +510,17 @@ async def _run_agent_turn(
             skill_manager=skill_manager,
             compactor=repl_compactor,
         ):
+            # Cooperative interrupt — Esc sets this flag; we stop
+            # consuming events and surface a soft interruption.
+            if state.interrupt_requested:
+                renderer.handle(
+                    StreamEvent(
+                        kind=EventKind.ERROR,
+                        data="[interrupted by user]",
+                    )
+                )
+                state.interrupt_requested = False
+                break
             renderer.handle(event)
             events.append(event)
 
@@ -1016,6 +1045,23 @@ async def run_repl(
         else:
             event.current_buffer.reset()
 
+    @kb.add("escape", eager=True)
+    def _soft_interrupt(event):  # type: ignore[no-untyped-def]
+        """Esc alone asks the agent to stop at its next checkpoint.
+
+        Distinct from Ctrl-C: this is a cooperative interrupt. The
+        agent loop sees ``state.interrupt_requested`` between events
+        and winds down cleanly. Eager=True prevents prompt_toolkit
+        from waiting for a follow-on key before dispatching.
+        """
+        if state.agent_running:
+            state.interrupt_requested = True
+            state.status_text = "interrupting..."
+            console.print(
+                "\n[bright_black]Esc — stopping at next checkpoint. "
+                "Ctrl-C to force-cancel.[/bright_black]"
+            )
+
     @kb.add("c-d")
     def _exit(event):  # type: ignore[no-untyped-def]
         if state.agent_task is not None and not state.agent_task.done():
@@ -1103,8 +1149,19 @@ async def run_repl(
     app = _build_application(writer, input_buffer, kb, state, config)
     app_ref[0] = app
 
-    # Wire up invalidation so output changes trigger redraws
-    writer.set_invalidate(app.invalidate)
+    # Wire up invalidation so output changes trigger redraws. Also
+    # autoscroll the output window to the bottom on every new chunk
+    # unless the user has explicitly scrolled up (output_scroll_locked).
+    # Once locked, new output accumulates off-screen until the user
+    # presses End (or scrolls back to the bottom manually) — matches
+    # the convention in every TUI that handles long logs.
+    def _invalidate_and_autoscroll() -> None:
+        if not state.output_scroll_locked and state.output_window is not None:
+            # Large sentinel; prompt_toolkit clamps to the document end.
+            state.output_window.vertical_scroll = 10_000_000
+        app.invalidate()
+
+    writer.set_invalidate(_invalidate_and_autoscroll)
 
     # Periodic status bar refresh (face ticker, duration timer, context bar)
     async def _refresh_status_bar() -> None:
