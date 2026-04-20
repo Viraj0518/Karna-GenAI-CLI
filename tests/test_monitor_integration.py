@@ -169,12 +169,30 @@ class TestNotificationFormat:
             task_id="mon_abc123",
             description="watching build",
             event_text="Build succeeded",
+            task_type=TaskType.MONITOR,
         )
         assert "<task-notification>" in result
         assert "<task-id>mon_abc123</task-id>" in result
         assert 'Monitor event: "watching build"' in result
         assert "<event>Build succeeded</event>" in result
         assert "</task-notification>" in result
+
+    def test_format_uses_task_type(self) -> None:
+        result = format_task_notification(
+            task_id="t1",
+            description="running tests",
+            event_text="done",
+            task_type=TaskType.BASH,
+        )
+        assert 'Bash event: "running tests"' in result
+
+    def test_format_default_type_label(self) -> None:
+        result = format_task_notification(
+            task_id="t1",
+            description="unknown work",
+            event_text="done",
+        )
+        assert 'Task event: "unknown work"' in result
 
     def test_format_with_special_chars(self) -> None:
         result = format_task_notification(

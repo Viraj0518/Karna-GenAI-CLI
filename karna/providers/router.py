@@ -140,10 +140,19 @@ class CostAwareRouterProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         input_tokens = self._estimate_input_tokens(messages, system_prompt)
         start = self._pick_start_tier(input_tokens)
         tiers_to_try = [start] + self._higher_tiers(start)
+
+        # Only forward thinking kwargs when actually requested so legacy
+        # providers that don't accept the kwargs still work.
+        extra: dict[str, Any] = {}
+        if thinking or thinking_budget is not None:
+            extra["thinking"] = thinking
+            extra["thinking_budget"] = thinking_budget
 
         last_exc: BaseException | None = None
         for tier in tiers_to_try:
@@ -156,6 +165,7 @@ class CostAwareRouterProvider(BaseProvider):
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    **extra,
                 )
                 self._track_usage(prov.cumulative_usage)
                 return msg
@@ -179,10 +189,19 @@ class CostAwareRouterProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         input_tokens = self._estimate_input_tokens(messages, system_prompt)
         start = self._pick_start_tier(input_tokens)
         tiers_to_try = [start] + self._higher_tiers(start)
+
+        # Only forward thinking kwargs when actually requested so legacy
+        # providers that don't accept the kwargs still work.
+        extra: dict[str, Any] = {}
+        if thinking or thinking_budget is not None:
+            extra["thinking"] = thinking
+            extra["thinking_budget"] = thinking_budget
 
         last_exc: BaseException | None = None
         for tier in tiers_to_try:
@@ -195,6 +214,7 @@ class CostAwareRouterProvider(BaseProvider):
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    **extra,
                 ):
                     first_event_seen = True
                     yield event

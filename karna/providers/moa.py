@@ -100,8 +100,16 @@ class MixtureOfAgentsProvider(BaseProvider):
         system_prompt: str | None,
         max_tokens: int | None,
         temperature: float | None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> list[Message]:
         """Run every instance in parallel and return successful candidates."""
+        # Only forward thinking kwargs when actually requested so legacy
+        # providers that don't accept the kwargs still work.
+        extra: dict[str, Any] = {}
+        if thinking or thinking_budget is not None:
+            extra["thinking"] = thinking
+            extra["thinking_budget"] = thinking_budget
 
         async def _one(prov: BaseProvider) -> Message | BaseException:
             try:
@@ -111,6 +119,7 @@ class MixtureOfAgentsProvider(BaseProvider):
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    **extra,
                 )
             except BaseException as exc:  # noqa: BLE001 — capture per-instance
                 logger.warning("MoA: instance %s failed: %s", prov.name, exc)
@@ -193,6 +202,8 @@ class MixtureOfAgentsProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> Message:
         candidates = await self._gather_candidates(
             messages,
@@ -200,6 +211,8 @@ class MixtureOfAgentsProvider(BaseProvider):
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
         )
         if self._strategy == "vote":
             return self._vote(candidates)
@@ -216,6 +229,8 @@ class MixtureOfAgentsProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        thinking: bool = False,
+        thinking_budget: int | None = None,
     ) -> AsyncIterator[StreamEvent]:
         # MoA requires all candidates before synthesis, so streaming is
         # simulated: run `complete`, emit the text as one event.
@@ -225,6 +240,8 @@ class MixtureOfAgentsProvider(BaseProvider):
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
         )
         if final.content:
             yield StreamEvent(type="text", text=final.content)

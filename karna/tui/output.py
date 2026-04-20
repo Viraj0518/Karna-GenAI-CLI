@@ -252,6 +252,8 @@ class OutputRenderer:
         # Buffers
         self._text_buffer: list[str] = []
         self._thinking_buffer: list[str] = []
+        # Code-fence tracking: True while inside a fenced code block
+        self._in_code_fence: bool = False
         # Live state
         self._live: Live | None = None
         self._live_kind: str | None = None  # "spinner" | "stream" | "tool"
@@ -300,6 +302,7 @@ class OutputRenderer:
         self._flush_thinking()
         self._flush_text()
         self._tool = None
+        self._in_code_fence = False
 
     # ── live display management ────────────────────────────────────────
 
@@ -331,10 +334,30 @@ class OutputRenderer:
             self._stop_live()
 
         self._text_buffer.append(delta)
-        # Flush to scrollback at sentence boundaries so we avoid flicker on
-        # Windows (Live redraws are expensive here) but still feel live.
+        # Buffer output and only flush on complete blocks to avoid flicker:
+        # - Double newline (paragraph break / blank line between blocks)
+        # - End of a fenced code block (closing ```)
+        # - Sentence boundary followed by whitespace
+        # Single newlines are NOT flushed — they cause mid-paragraph
+        # re-renders that flicker, especially on Windows where Live
+        # redraws are expensive.
         joined = "".join(self._text_buffer)
-        if _SENTENCE_RE.search(joined[-3:]) or joined.endswith("\n"):
+
+        # Track code-fence state: toggle on each line that starts with ```
+        # (with optional language tag). Only flush when transitioning from
+        # inside a fence to outside (i.e., the closing fence).
+        fence_closed = False
+        if joined.rstrip().endswith("```"):
+            # Check if this ``` is on a line by itself (or with only a
+            # language tag after the opening ```).
+            last_line = joined.rstrip().rsplit("\n", 1)[-1].strip()
+            if last_line.startswith("```"):
+                was_in_fence = self._in_code_fence
+                self._in_code_fence = not self._in_code_fence
+                # Only treat as a flush point when closing a fence
+                fence_closed = was_in_fence and not self._in_code_fence
+
+        if "\n\n" in joined[-3:] or fence_closed or _SENTENCE_RE.search(joined[-3:]):
             self._flush_text()
 
     def _flush_text(self) -> None:

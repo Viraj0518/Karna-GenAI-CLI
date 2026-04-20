@@ -210,7 +210,7 @@ class MonitorTool(BaseTool):
                 await proc.wait()
                 msg = f"[Monitor {monitor_id} timed out after {timeout}s]"
                 self._emit_event(monitor_id, msg)
-                registry.complete_task(monitor_id, msg)
+                registry.fail_task(monitor_id, msg)
                 return
 
             await proc.wait()
@@ -242,6 +242,7 @@ class MonitorTool(BaseTool):
             task_id=monitor_id,
             description=description,
             event_text=line,
+            task_type=TaskType.MONITOR,
         )
         registry.queue_notification(notification)
 
