@@ -116,8 +116,17 @@ def check_credential_permissions() -> list[str]:
     """Check that credential files and directory have safe permissions.
 
     Returns a list of warning strings. Empty list means everything is fine.
+
+    POSIX-only: NTFS on Windows reports mode 0o777 for everything, so
+    running this check on ``os.name == 'nt'`` produces a false-positive
+    warning on every load_config() call. Those warnings print to stderr
+    and corrupt the TUI input line when they fire mid-session. ACLs are
+    the Windows analogue for credential confidentiality; we skip the
+    mode check entirely there.
     """
     warnings: list[str] = []
+    if os.name == "nt":
+        return warnings
     if not CREDENTIALS_DIR.exists():
         return warnings
 
