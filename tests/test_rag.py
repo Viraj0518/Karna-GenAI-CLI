@@ -12,16 +12,12 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 from unittest import mock
-
-import pytest
 
 from karna.rag.chunker import Chunk, chunk_file, chunk_text
 from karna.rag.embedder import TFIDFEmbedder, get_embedder
 from karna.rag.store import KnowledgeStore
-
 
 # ------------------------------------------------------------------ #
 #  Helpers

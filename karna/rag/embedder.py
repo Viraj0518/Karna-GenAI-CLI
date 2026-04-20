@@ -1,6 +1,6 @@
 """Embedding generation for the RAG knowledge base.
 
-Supports three backends (tried in order):
+Supports two backends (tried in order):
 
 1. **sentence-transformers** — high-quality local embeddings via
    ``sentence_transformers.SentenceTransformer`` when the package is

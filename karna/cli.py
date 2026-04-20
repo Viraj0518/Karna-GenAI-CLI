@@ -39,6 +39,7 @@ mcp_app = typer.Typer(help="MCP server management commands.")
 history_app = typer.Typer(help="Session history commands.", invoke_without_command=True)
 cost_app = typer.Typer(help="Cost tracking commands.")
 cron_app = typer.Typer(help="Scheduled agent jobs.", invoke_without_command=True)
+index_app = typer.Typer(help="Knowledge base indexing commands.", invoke_without_command=True)
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(model_app, name="model")
@@ -47,6 +48,7 @@ app.add_typer(mcp_app, name="mcp")
 app.add_typer(history_app, name="history")
 app.add_typer(cost_app, name="cost")
 app.add_typer(cron_app, name="cron")
+app.add_typer(index_app, name="index")
 
 
 # --------------------------------------------------------------------------- #
@@ -919,6 +921,120 @@ def replay(
     rprint(f"[bold]Replaying {len(user_msgs)} user prompt(s) from {session_id}[/bold]")
     for i, m in enumerate(user_msgs, 1):
         rprint(f"[cyan]#{i}[/cyan] {m.content[:200]}")
+
+
+# --------------------------------------------------------------------------- #
+#  Index / knowledge base commands
+# --------------------------------------------------------------------------- #
+
+
+@index_app.callback(invoke_without_command=True)
+def index_root(
+    ctx: typer.Context,
+    path: str = typer.Argument(None, help="Path to index (file or directory)"),
+    status: bool = typer.Option(False, "--status", help="Show what is indexed"),
+    remove: str = typer.Option(None, "--remove", help="Remove a path from the index"),
+) -> None:
+    """Index files into the local knowledge base for RAG retrieval.
+
+    Examples::
+
+        nellie index .              # index current directory
+        nellie index ~/docs/        # index a specific directory
+        nellie index --status       # show what is indexed
+        nellie index --remove ./old # remove from index
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if status:
+        _index_status()
+        return
+
+    if remove is not None:
+        _index_remove(remove)
+        return
+
+    if path is not None:
+        _index_path(path)
+        return
+
+    # No arguments — show help.
+    rprint("[bright_black]Usage: nellie index <path> | --status | --remove <path>[/bright_black]")
+
+
+def _index_path(path_str: str) -> None:
+    """Index a file or directory."""
+    from karna.rag.store import KnowledgeStore
+
+    target = Path(path_str).resolve()
+    if not target.exists():
+        rprint(f"[red]Path not found: {target}[/red]")
+        raise typer.Exit(code=1)
+
+    store = KnowledgeStore()
+
+    if target.is_file():
+        rprint(f"[bright_black]Indexing file: {target}[/bright_black]")
+        count = asyncio.run(store.index_file(target))
+        rprint(f"[green]Indexed {count} chunk(s) from {target.name}[/green]")
+    else:
+        rprint(f"[bright_black]Indexing directory: {target}[/bright_black]")
+        count = asyncio.run(store.index_directory(target))
+        stats = store.stats()
+        rprint(f"[green]Indexed {count} chunk(s) across {stats['total_files']} file(s)[/green]")
+
+
+def _index_status() -> None:
+    """Show indexed files and stats."""
+    import datetime
+
+    from karna.rag.store import KnowledgeStore
+
+    store = KnowledgeStore()
+    indexed = store.list_indexed()
+    stats = store.stats()
+
+    if not indexed:
+        rprint("[bright_black]No files indexed.[/bright_black]")
+        rprint("[bright_black]Run `nellie index <path>` to add files to the knowledge base.[/bright_black]")
+        return
+
+    table = Table(title="Knowledge Base")
+    table.add_column("File", style="cyan", max_width=60)
+    table.add_column("Chunks", justify="right", style="white")
+    table.add_column("Indexed At", style="bright_black")
+
+    for f in indexed:
+        ts = datetime.datetime.fromtimestamp(f.indexed_at).strftime("%Y-%m-%d %H:%M")
+        # Shorten path for display.
+        display_path = f.path
+        home = str(Path.home())
+        if display_path.startswith(home):
+            display_path = "~" + display_path[len(home) :]
+        table.add_row(display_path, str(f.chunk_count), ts)
+
+    rprint(table)
+    rprint(
+        f"[bright_black]Total: {stats['total_files']} files, "
+        f"{stats['total_chunks']} chunks, "
+        f"{stats['store_size_bytes'] / 1024:.0f} KB on disk "
+        f"(backend: {stats['backend']})[/bright_black]"
+    )
+
+
+def _index_remove(path_str: str) -> None:
+    """Remove a path from the index."""
+    from karna.rag.store import KnowledgeStore
+
+    target = Path(path_str).resolve()
+    store = KnowledgeStore()
+    removed = asyncio.run(store.remove(target))
+
+    if removed:
+        rprint(f"[green]Removed {removed} chunk(s) for {target}[/green]")
+    else:
+        rprint(f"[yellow]No indexed entries found for {target}[/yellow]")
 
 
 # --------------------------------------------------------------------------- #

@@ -390,8 +390,20 @@ async def _agent_loop(
         # Build tools
         tools = get_all_tools()
 
-        # Build system prompt (with skills if available)
-        system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager)
+        # Query the RAG knowledge base for relevant context.
+        rag_context: str | None = None
+        try:
+            from karna.rag.context import build_rag_context
+
+            # Use the latest user message as the query.
+            user_msgs = [m for m in conversation.messages if m.role == "user"]
+            if user_msgs:
+                rag_context = await build_rag_context(user_msgs[-1].content, top_k=5)
+        except Exception:
+            pass  # RAG is best-effort — never block the agent loop.
+
+        # Build system prompt (with skills and RAG context if available)
+        system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager, rag_context=rag_context)
 
         # Re-use the caller-supplied compactor so the circuit breaker
         # persists across REPL turns.
