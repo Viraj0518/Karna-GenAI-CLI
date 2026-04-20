@@ -519,7 +519,13 @@ class DatabaseTool(BaseTool):
         if not sql or not sql.strip():
             return "[error] action=query requires a sql parameter."
 
-        params_raw = kwargs.get("params") or ()
+        # Treat omitted/None as "no bind values"; anything else must be
+        # a list/tuple. Using ``or ()`` here would silently coerce valid
+        # falsy inputs (``0``, ``""``, ``False``) into an empty tuple
+        # and mask a caller bug — require an explicit container.
+        params_raw = kwargs.get("params")
+        if params_raw is None:
+            params_raw = ()
         if not isinstance(params_raw, (list, tuple)):
             return "[error] `params` must be an array of bind values."
         params: tuple[Any, ...] = tuple(params_raw)
