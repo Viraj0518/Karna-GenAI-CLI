@@ -7,21 +7,17 @@ Falls back to a simple numbered list if the full prompt_toolkit dialog
 layout is not available (e.g. inside the split-pane Application).
 
 Public API:
-    pick_model(console) -> str | None   — returns "provider:model" or None
+    render_model_table(console) -> list[dict]
+    get_model_catalog() -> list[dict]
 """
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
 from karna.tui.design_tokens import SEMANTIC
-
-if TYPE_CHECKING:
-    pass
 
 # -- Known models with metadata -----------------------------------------------
 
@@ -62,7 +58,11 @@ def _filter_catalog(query: str) -> list[dict[str, str]]:
     if not query:
         return list(_MODEL_CATALOG)
     q = query.lower()
-    return [m for m in _MODEL_CATALOG if q in m["model"].lower() or q in m["provider"].lower() or q in m.get("notes", "").lower()]
+    return [
+        m
+        for m in _MODEL_CATALOG
+        if q in m["model"].lower() or q in m["provider"].lower() or q in m.get("notes", "").lower()
+    ]
 
 
 def render_model_table(
@@ -113,56 +113,10 @@ def render_model_table(
     if query:
         console.print(f"[bright_black]  Filter: {query}  ({len(filtered)} matches)[/bright_black]")
     console.print(
-        "[bright_black]  Enter a number to select, type to filter, "
-        "or press Enter/Esc to cancel.[/bright_black]"
+        "[bright_black]  Enter a number to select, type to filter, or press Enter/Esc to cancel.[/bright_black]"
     )
 
     return filtered
-
-
-def pick_model_numbered(console: Console) -> str | None:
-    """Non-interactive model picker: show a numbered list, read a number.
-
-    This is the fallback used inside the split-pane TUI where we cannot
-    run a nested prompt_toolkit Application.  The output goes through
-    the ``console.print()`` path (which routes to the output pane in
-    split-pane mode), and the selection is entered via the normal input
-    buffer.
-
-    Returns ``"provider:model"`` or ``None`` if cancelled.
-    """
-    filtered = render_model_table(console)
-    return _resolve_selection(filtered)
-
-
-def _resolve_selection(
-    filtered: list[dict[str, str]],
-    choice: str | None = None,
-) -> str | None:
-    """Given a user choice string, resolve it to a provider:model.
-
-    If *choice* is a number, look up the matching entry.
-    If it looks like a provider:model, return it directly.
-    Returns None on cancellation or invalid input.
-    """
-    if not choice:
-        return None
-
-    choice = choice.strip()
-
-    # Numeric selection
-    if choice.isdigit():
-        idx = int(choice) - 1
-        if 0 <= idx < len(filtered):
-            entry = filtered[idx]
-            return f"{entry['provider']}:{entry['model']}"
-        return None
-
-    # Direct model string
-    if ":" in choice or "/" in choice:
-        return choice
-
-    return None
 
 
 def get_model_catalog() -> list[dict[str, str]]:

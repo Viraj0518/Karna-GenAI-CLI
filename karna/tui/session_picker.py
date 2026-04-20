@@ -90,8 +90,7 @@ def render_session_table(
 
     console.print(table)
     console.print(
-        "[bright_black]  Enter a number or session ID to resume, "
-        "or press Enter/Esc to cancel.[/bright_black]"
+        "[bright_black]  Enter a number or session ID to resume, or press Enter/Esc to cancel.[/bright_black]"
     )
 
     return sessions

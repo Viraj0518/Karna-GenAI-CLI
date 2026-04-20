@@ -84,15 +84,16 @@ _ALL_PROVIDERS = [
 
 
 def _all_model_strings() -> list[str]:
-    """Return all known provider:model strings."""
+    """Return all known provider:model strings.
+
+    Always produces ``provider:model`` format. Model names that contain
+    ``/`` (e.g. ``openai/gpt-4o`` under the ``openrouter`` provider)
+    are kept as-is after the colon: ``openrouter:openai/gpt-4o``.
+    """
     results: list[str] = []
     for provider, models in _KNOWN_MODELS.items():
         for m in models:
-            if ":" not in m and "/" not in m:
-                results.append(f"{provider}:{m}")
-            else:
-                # Already qualified (e.g. "openrouter/auto") -- convert / to :
-                results.append(m.replace("/", ":", 1) if "/" in m else m)
+            results.append(f"{provider}:{m}")
     return results
 
 
@@ -147,7 +148,7 @@ class NellieCompleter(Completer):
         text = document.text_before_cursor
         stripped = text.lstrip()
 
-        # -- 1. Slash command completion (/...) ---------------------------------
+        # -- 1. Slash command completion (/...) --------------------------------
         if stripped.startswith("/") and " " not in stripped:
             prefix = stripped
             for cmd in self._slash_commands:
@@ -159,7 +160,7 @@ class NellieCompleter(Completer):
                     )
             return
 
-        # -- 2. Model name completion after "/model " --------------------------
+        # -- 2. Model name completion after "/model " -------------------------
         if stripped.lower().startswith("/model "):
             model_part = stripped[len("/model ") :]
 
@@ -190,13 +191,13 @@ class NellieCompleter(Completer):
                         )
             return
 
-        # -- 3. File path completion (./  ~/  /path) ----------------------------
+        # -- 3. File path completion (./  ~/  /path) ---------------------------
         word = document.get_word_before_cursor(WORD=True)
         if word and (word.startswith("./") or word.startswith("~/") or word.startswith("/")):
             yield from self._complete_path(word)
             return
 
-    # -- helpers ----------------------------------------------------------------
+    # -- helpers ---------------------------------------------------------------
 
     @staticmethod
     def _slash_meta(cmd: str) -> str:
