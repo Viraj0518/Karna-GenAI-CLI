@@ -15,7 +15,6 @@ from __future__ import annotations
 import os
 import stat
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -23,7 +22,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from karna.config import KarnaConfig, load_config, save_config
-
 
 # --------------------------------------------------------------------------- #
 #  Fixtures
@@ -228,7 +226,7 @@ class TestKarnaMd:
 
     def test_init_creates_karna_md(self, fresh_project: Path) -> None:
         """nellie init should create KARNA.md."""
-        from karna.init import generate_karna_md_for_path, detect_project_type
+        from karna.init import detect_project_type, generate_karna_md_for_path
 
         project_type = detect_project_type(fresh_project)
         content = generate_karna_md_for_path(fresh_project, project_type)
@@ -239,7 +237,7 @@ class TestKarnaMd:
 
     def test_karna_md_has_structure(self, fresh_project: Path) -> None:
         """KARNA.md should have key sections."""
-        from karna.init import generate_karna_md_for_path, detect_project_type
+        from karna.init import detect_project_type, generate_karna_md_for_path
 
         project_type = detect_project_type(fresh_project)
         content = generate_karna_md_for_path(fresh_project, project_type)
@@ -306,9 +304,7 @@ class TestSecurityGuardrails:
         # This should be flagged as dangerous
         import asyncio
 
-        proceed, warning = asyncio.get_event_loop().run_until_complete(
-            pre_tool_check(tool, {"command": "rm -rf /"})
-        )
+        proceed, warning = asyncio.get_event_loop().run_until_complete(pre_tool_check(tool, {"command": "rm -rf /"}))
         # Should either block or warn
         assert not proceed or warning
 
@@ -341,9 +337,7 @@ class TestSessionDB:
         db = SessionDB(db_path=sessions_dir / "sessions.db")
 
         conn = sqlite3.connect(sessions_dir / "sessions.db")
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         table_names = {t[0] for t in tables}
         conn.close()
 
@@ -364,9 +358,21 @@ class TestToolRegistry:
         from karna.tools import TOOLS
 
         expected = {
-            "bash", "read", "write", "edit", "grep", "glob", "git",
-            "web_search", "web_fetch", "clipboard", "image", "notebook",
-            "monitor", "task", "mcp",
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "grep",
+            "glob",
+            "git",
+            "web_search",
+            "web_fetch",
+            "clipboard",
+            "image",
+            "notebook",
+            "monitor",
+            "task",
+            "mcp",
         }
         registered = set(TOOLS.keys())
         missing = expected - registered
@@ -378,10 +384,10 @@ class TestToolRegistry:
 
         tools = get_all_tools()
         for tool in tools:
-            assert hasattr(tool, "name"), f"Tool missing name"
+            assert hasattr(tool, "name"), "Tool missing name"
             assert hasattr(tool, "description"), f"{tool} missing description"
             assert hasattr(tool, "parameters"), f"{tool.name} missing parameters"
-            assert tool.name, f"Tool has empty name"
+            assert tool.name, "Tool has empty name"
             assert tool.description, f"{tool.name} has empty description"
 
 

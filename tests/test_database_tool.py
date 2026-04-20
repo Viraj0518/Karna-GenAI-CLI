@@ -15,12 +15,11 @@ import pytest
 from karna.tools import get_all_tools, get_tool
 from karna.tools.database import (
     DatabaseTool,
-    _SQLiteConn,
     _format_markdown_table,
     _is_read_only_sql,
     _parse_connection_string,
+    _SQLiteConn,
 )
-
 
 # ======================================================================= #
 #  Fixtures

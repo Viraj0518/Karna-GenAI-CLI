@@ -427,4 +427,7 @@ class TestRegistry:
             "notebook",
             "task",
             "comms",
+            "db",
+            "browser",
+            "document",
         }

@@ -58,6 +58,7 @@ def get_all_tools() -> list["BaseTool"]:
     """Instantiate and return one instance of every registered tool."""
     return [get_tool(name) for name in _TOOL_PATHS]
 
+
 # test marker 12345
 
 # test marker 12345

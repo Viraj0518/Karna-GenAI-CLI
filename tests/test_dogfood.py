@@ -22,10 +22,8 @@ Test categories:
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
-import tempfile
 from io import StringIO
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -34,10 +32,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from karna.config import KarnaConfig, save_config
-from karna.models import Conversation, Message, StreamEvent, ToolCall, ToolResult
+from karna.config import KarnaConfig
+from karna.models import Conversation, Message, StreamEvent, ToolCall
 from karna.providers.base import BaseProvider
-
 
 # --------------------------------------------------------------------------- #
 #  Mock provider for testing
@@ -55,11 +52,13 @@ class DogfoodProvider(BaseProvider):
         self.calls: list[dict] = []
 
     def add_response(self, content: str = "", tool_calls: list[ToolCall] | None = None):
-        self._responses.append(Message(
-            role="assistant",
-            content=content,
-            tool_calls=tool_calls or [],
-        ))
+        self._responses.append(
+            Message(
+                role="assistant",
+                content=content,
+                tool_calls=tool_calls or [],
+            )
+        )
 
     async def complete(
         self,
@@ -143,9 +142,7 @@ class TestAgentLoop:
         from karna.tools.bash import BashTool
 
         # First response: call a tool
-        provider.add_response(
-            tool_calls=[ToolCall(id="tc1", name="bash", arguments={"command": "echo hello"})]
-        )
+        provider.add_response(tool_calls=[ToolCall(id="tc1", name="bash", arguments={"command": "echo hello"})])
         # Second response: final text
         provider.add_response("The command returned hello.")
 
@@ -168,9 +165,7 @@ class TestAgentLoop:
 
         # Keep calling tools forever
         for _ in range(30):
-            provider.add_response(
-                tool_calls=[ToolCall(id=f"tc{_}", name="bash", arguments={"command": "echo loop"})]
-            )
+            provider.add_response(tool_calls=[ToolCall(id=f"tc{_}", name="bash", arguments={"command": "echo loop"})])
 
         conv = Conversation(messages=[Message(role="user", content="loop")])
         tools = [BashTool()]
@@ -263,7 +258,9 @@ class TestToolExecution:
     async def test_git_tool(self, tmp_path: Path) -> None:
         from karna.tools.git_ops import GitTool
 
-        os.system(f"cd {tmp_path} && git init -q && git config user.email 'test@test.com' && git config user.name 'Test'")
+        os.system(
+            f"cd {tmp_path} && git init -q && git config user.email 'test@test.com' && git config user.name 'Test'"
+        )
         (tmp_path / "file.txt").write_text("hello")
         os.system(f"cd {tmp_path} && git add . && git commit -q -m 'init'")
 
@@ -284,9 +281,27 @@ class TestSlashCommands:
     def test_all_commands_registered(self) -> None:
         from karna.tui.slash import COMMANDS
 
-        expected = {"help", "model", "clear", "history", "cost", "exit", "quit",
-                    "compact", "tools", "system", "resume", "paste", "copy",
-                    "sessions", "skills", "memory", "loop", "plan", "do"}
+        expected = {
+            "help",
+            "model",
+            "clear",
+            "history",
+            "cost",
+            "exit",
+            "quit",
+            "compact",
+            "tools",
+            "system",
+            "resume",
+            "paste",
+            "copy",
+            "sessions",
+            "skills",
+            "memory",
+            "loop",
+            "plan",
+            "do",
+        }
         registered = set(COMMANDS.keys())
         missing = expected - registered
         assert not missing, f"Missing slash commands: {missing}"
@@ -295,9 +310,7 @@ class TestSlashCommands:
     async def test_clear_resets_conversation(self) -> None:
         from karna.tui.slash import handle_slash_command
 
-        console = __import__("rich.console", fromlist=["Console"]).Console(
-            file=StringIO(), force_terminal=True
-        )
+        console = __import__("rich.console", fromlist=["Console"]).Console(file=StringIO(), force_terminal=True)
         config = KarnaConfig()
         conv = Conversation(messages=[Message(role="user", content="hi")])
         assert len(conv.messages) == 1
@@ -476,19 +489,25 @@ class TestTUIRendering:
         buf = StringIO()
         console = Console(file=buf, force_terminal=True, width=80)
         renderer = OutputRenderer(console)
-        renderer.handle(TUIStreamEvent(
-            kind=EventKind.TOOL_CALL_START,
-            data={"name": "bash", "id": "tc1"},
-        ))
-        renderer.handle(TUIStreamEvent(
-            kind=EventKind.TOOL_CALL_ARGS_DELTA,
-            data='{"command": "ls"}',
-        ))
+        renderer.handle(
+            TUIStreamEvent(
+                kind=EventKind.TOOL_CALL_START,
+                data={"name": "bash", "id": "tc1"},
+            )
+        )
+        renderer.handle(
+            TUIStreamEvent(
+                kind=EventKind.TOOL_CALL_ARGS_DELTA,
+                data='{"command": "ls"}',
+            )
+        )
         renderer.handle(TUIStreamEvent(kind=EventKind.TOOL_CALL_END))
-        renderer.handle(TUIStreamEvent(
-            kind=EventKind.TOOL_RESULT,
-            data={"content": "file.txt", "is_error": False},
-        ))
+        renderer.handle(
+            TUIStreamEvent(
+                kind=EventKind.TOOL_RESULT,
+                data={"content": "file.txt", "is_error": False},
+            )
+        )
         renderer.finish()
         output = buf.getvalue()
         assert "terminal" in output or "bash" in output  # verb mapping shows "terminal" for bash
@@ -524,7 +543,13 @@ class TestSecurityDogfood:
         tool = ReadTool()
         result = await tool.execute(file_path="/etc/shadow")
         # Should either raise or return an error
-        assert "denied" in result.lower() or "blocked" in result.lower() or "error" in result.lower() or "not found" in result.lower() or "permission" in result.lower()
+        assert (
+            "denied" in result.lower()
+            or "blocked" in result.lower()
+            or "error" in result.lower()
+            or "not found" in result.lower()
+            or "permission" in result.lower()
+        )
 
     @pytest.mark.asyncio
     async def test_secret_scrubbing_in_output(self) -> None:

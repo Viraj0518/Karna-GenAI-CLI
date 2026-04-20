@@ -13,7 +13,6 @@ Each test makes a real API call, so they:
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 from pathlib import Path
@@ -22,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from karna.models import Conversation, Message, ToolCall
+from karna.models import Conversation, Message
 
 # Skip all tests if no API key
 pytestmark = pytest.mark.skipif(
@@ -96,7 +95,10 @@ class TestProviderConnectivity:
     @pytest.mark.asyncio
     async def test_tool_call_generation(self, provider, tools) -> None:
         """Provider should generate tool calls when appropriate."""
-        tool_defs = [{"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}} for t in tools]
+        tool_defs = [
+            {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}}
+            for t in tools
+        ]
 
         response = await provider.complete(
             [Message(role="user", content="What files are in the current directory? Use the bash tool to run 'ls'.")],
@@ -120,9 +122,11 @@ class TestAgentLoopLive:
         """Agent loop should complete with a text response."""
         from karna.agents.loop import agent_loop
 
-        conv = Conversation(messages=[
-            Message(role="user", content="What is 2+2? Answer with just the number."),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="What is 2+2? Answer with just the number."),
+            ]
+        )
 
         events = []
         async for event in agent_loop(provider, conv, [], max_iterations=3):
@@ -136,19 +140,23 @@ class TestAgentLoopLive:
     async def test_agent_with_tool_use(self, provider, tools) -> None:
         """Agent should use tools and return results."""
         from karna.agents.loop import agent_loop
-        from karna.prompts import build_system_prompt
         from karna.config import KarnaConfig
+        from karna.prompts import build_system_prompt
 
         config = KarnaConfig()
         system_prompt = build_system_prompt(config, tools)
 
-        conv = Conversation(messages=[
-            Message(role="user", content="Run 'echo LIVE_TEST_OK' in bash and tell me what it returned."),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="Run 'echo LIVE_TEST_OK' in bash and tell me what it returned."),
+            ]
+        )
 
         events = []
         async for event in agent_loop(
-            provider, conv, tools,
+            provider,
+            conv,
+            tools,
             system_prompt=system_prompt,
             max_iterations=5,
         ):
@@ -164,8 +172,8 @@ class TestAgentLoopLive:
     async def test_agent_reads_file(self, provider, tools, tmp_path: Path) -> None:
         """Agent should be able to read a file we create."""
         from karna.agents.loop import agent_loop
-        from karna.prompts import build_system_prompt
         from karna.config import KarnaConfig
+        from karna.prompts import build_system_prompt
 
         # Create a test file
         test_file = tmp_path / "secret_message.txt"
@@ -174,13 +182,17 @@ class TestAgentLoopLive:
         config = KarnaConfig()
         system_prompt = build_system_prompt(config, tools)
 
-        conv = Conversation(messages=[
-            Message(role="user", content=f"Read the file at {test_file} and tell me the secret code."),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content=f"Read the file at {test_file} and tell me the secret code."),
+            ]
+        )
 
         events = []
         async for event in agent_loop(
-            provider, conv, tools,
+            provider,
+            conv,
+            tools,
             system_prompt=system_prompt,
             max_iterations=5,
         ):
@@ -194,21 +206,25 @@ class TestAgentLoopLive:
     async def test_agent_writes_and_verifies(self, provider, tools, tmp_path: Path) -> None:
         """Agent should write a file and confirm it exists."""
         from karna.agents.loop import agent_loop
-        from karna.prompts import build_system_prompt
         from karna.config import KarnaConfig
+        from karna.prompts import build_system_prompt
 
         target = tmp_path / "agent_output.txt"
 
         config = KarnaConfig()
         system_prompt = build_system_prompt(config, tools)
 
-        conv = Conversation(messages=[
-            Message(role="user", content=f"Write 'AGENT_WROTE_THIS' to {target} and confirm it was written."),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content=f"Write 'AGENT_WROTE_THIS' to {target} and confirm it was written."),
+            ]
+        )
 
         events = []
         async for event in agent_loop(
-            provider, conv, tools,
+            provider,
+            conv,
+            tools,
             system_prompt=system_prompt,
             max_iterations=5,
         ):
@@ -233,9 +249,11 @@ class TestMultiTurnLive:
         """Agent should remember context from earlier turns."""
         from karna.agents.loop import agent_loop
 
-        conv = Conversation(messages=[
-            Message(role="user", content="My name is TestBot42. Remember this."),
-        ])
+        conv = Conversation(
+            messages=[
+                Message(role="user", content="My name is TestBot42. Remember this."),
+            ]
+        )
 
         # First turn
         async for event in agent_loop(provider, conv, [], max_iterations=2):
