@@ -19,7 +19,14 @@ from __future__ import annotations
 from rich.style import Style
 from rich.theme import Theme
 
-from karna.tui.design_tokens import COLORS, SEMANTIC, TYPOGRAPHY
+from karna.tui.design_tokens import (
+    COLORS,
+    SEMANTIC,
+    TYPOGRAPHY,
+    SkinConfig,
+    get_active_skin,
+    set_active_skin,
+)
 
 # --------------------------------------------------------------------------- #
 #  Helpers
@@ -228,4 +235,8 @@ __all__ = [
     "BANNER_VALUE",
     # Theme
     "KARNA_THEME",
+    # Skin engine (re-exported from design_tokens)
+    "SkinConfig",
+    "get_active_skin",
+    "set_active_skin",
 ]

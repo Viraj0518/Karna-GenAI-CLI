@@ -2,17 +2,22 @@
 
 Renders assistant text deltas, reasoning/thinking, tool calls with live
 status, tool results, errors, and per-turn cost with a cohesive visual
-rhythm inspired by Claude Code Ink, Warp, and bubbletea.
+rhythm. Includes hermes-style tool previews, KawaiiSpinner, and inline
+diffs for file-edit operations.
 
 Key design moves:
 
 * **Live windows are scoped.** Only the currently-active block (spinner,
   streaming text, pending tool status) lives inside a ``rich.live.Live``.
   Completed content flushes to scrollback so it never flickers.
-* **Tool calls are stateful widgets.** Pending → running → ok/err, with a
-  single-line status, collapsible JSON args, and a success/failure glyph.
+* **Tool calls use hermes-style previews.** One-line emoji + preview of
+  the primary argument instead of a full JSON panel.
+* **Inline diffs** for write/edit operations show before/after changes
+  directly in the tool output stream.
+* **KawaiiSpinner** with kawaii faces and thinking verbs replaces the
+  basic dots spinner during thinking/loading states.
 * **Thinking is separated.** Italic + purple + collapsed to one line by
-  default — stops it blurring into normal assistant prose.
+  default -- stops it blurring into normal assistant prose.
 * **Errors gain context.** Title, primary message, secondary tool/provider
   line, and a pattern-matched recovery hint where we can.
 * **Turn rhythm.** A dimmed divider and blank line between turns.
@@ -24,13 +29,14 @@ Public API (preserved):
 * ``handle(event: StreamEvent)``
 * ``finish()``
 
-``StreamEvent`` / ``EventKind`` are also exported — other modules import
+``StreamEvent`` / ``EventKind`` are also exported -- other modules import
 them from here.
 """
 
 from __future__ import annotations
 
 import json as _json
+import random
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -54,9 +60,8 @@ from karna.tui.themes import (
 )
 
 # --------------------------------------------------------------------------- #
-#  Optional sibling modules (another agent is creating these). Import
-#  defensively so the renderer keeps working if they're not present yet,
-#  falling back to sensible string defaults.
+#  Optional sibling modules. Import defensively so the renderer keeps
+#  working if they're not present yet, falling back to sensible defaults.
 # --------------------------------------------------------------------------- #
 
 try:  # pragma: no cover - defensive import
@@ -68,6 +73,12 @@ try:  # pragma: no cover - defensive import
     from karna.tui import icons as _icons  # type: ignore[attr-defined]
 except Exception:  # noqa: BLE001
     _icons = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - defensive import
+    from karna.tui.tool_preview import build_tool_preview, get_tool_emoji
+except Exception:  # noqa: BLE001
+    build_tool_preview = None  # type: ignore[assignment]
+    get_tool_emoji = None  # type: ignore[assignment]
 
 
 def _token(name: str, default: str) -> str:
@@ -106,15 +117,58 @@ _STYLE_DIVIDER = _token("divider", "bright_black")
 # Semantic icon roles -- resolved once at import time.
 _ICON_USER = _icon("user", ">")
 _ICON_ASSISTANT = _icon("assistant", "*")
-_ICON_THINKING = _icon("thinking", "✦")
-_ICON_TOOL = _icon("tool", "⚒")
-_ICON_OK = _icon("success", "✓")
-_ICON_ERR = _icon("failure", "✗")
-_ICON_CURSOR = _icon("cursor", "▌")
+_ICON_THINKING = _icon("thinking", "\u2726")
+_ICON_TOOL = _icon("tool", "\u2692")
+_ICON_OK = _icon("success", "\u2713")
+_ICON_ERR = _icon("failure", "\u2717")
+_ICON_CURSOR = _icon("cursor", "\u258c")
 
 
 # --------------------------------------------------------------------------- #
-#  Event protocol — provider layer yields these to the REPL
+#  KawaiiSpinner -- kawaii faces + thinking verbs (ported from hermes)
+# --------------------------------------------------------------------------- #
+
+KAWAII_THINKING_FACES = [
+    "(\u00b7\u0323\u0323 \u00b7\u0323\u0323)",
+    "(\u25d5\u203f\u25d5\u273f)",
+    "\u0669(\u25d5\u203f\u25d5\u3002)\u06f6",
+    "(\u273f\u25e0\u203f\u25e0)",
+    "( \u02d8\u25bd\u02d8)\u3063",
+    "(\u25d4_\u25d4)",
+    "(\u00ac\u203f\u00ac)",
+    "( \u2022_\u2022)\u203a\u2310\u25a0-\u25a0",
+    "(\u2310\u25a0_\u25a0)",
+    "(\u00b4\u30fb_\u30fb`)",
+]
+
+KAWAII_THINKING_VERBS = [
+    "pondering",
+    "contemplating",
+    "musing",
+    "cogitating",
+    "ruminating",
+    "deliberating",
+    "mulling",
+    "reflecting",
+    "processing",
+    "reasoning",
+    "analyzing",
+    "computing",
+    "synthesizing",
+    "formulating",
+    "brainstorming",
+]
+
+
+def _kawaii_thinking_text() -> str:
+    """Generate a kawaii thinking message with random face and verb."""
+    face = random.choice(KAWAII_THINKING_FACES)  # noqa: S311
+    verb = random.choice(KAWAII_THINKING_VERBS)  # noqa: S311
+    return f"{face} {verb}..."
+
+
+# --------------------------------------------------------------------------- #
+#  Event protocol -- provider layer yields these to the REPL
 # --------------------------------------------------------------------------- #
 
 
@@ -166,7 +220,7 @@ def _truncate_args_json(raw: str) -> str:
         return pretty
 
     hidden = len(lines) - _ARG_HEAD - _ARG_TAIL
-    return "\n".join(lines[:_ARG_HEAD] + [f"  … {hidden} more lines …"] + lines[-_ARG_TAIL:])
+    return "\n".join(lines[:_ARG_HEAD] + [f"  \u2026 {hidden} more lines \u2026"] + lines[-_ARG_TAIL:])
 
 
 def _looks_like_json(s: str) -> bool:
@@ -180,18 +234,27 @@ def _error_hint(msg: str) -> str | None:
     if "401" in m or "unauthorized" in m or "invalid api key" in m:
         return "hint: check your API key with `nellie auth list`"
     if "403" in m or "forbidden" in m:
-        return "hint: key lacks permission — check provider dashboard"
+        return "hint: key lacks permission -- check provider dashboard"
     if "404" in m and "model" in m:
-        return "hint: model not found — run `/model` to pick another"
+        return "hint: model not found -- run `/model` to pick another"
     if "429" in m or "rate limit" in m:
-        return "hint: rate-limited — wait a moment or switch providers"
+        return "hint: rate-limited -- wait a moment or switch providers"
     if "connection refused" in m or "econnrefused" in m:
-        return "hint: endpoint unreachable — check the RPC/base URL"
+        return "hint: endpoint unreachable -- check the RPC/base URL"
     if "timeout" in m or "timed out" in m:
-        return "hint: request timed out — network or model may be slow"
+        return "hint: request timed out -- network or model may be slow"
     if "ssl" in m or "certificate" in m:
-        return "hint: TLS failure — check system certs or proxy"
+        return "hint: TLS failure -- check system certs or proxy"
     return None
+
+
+def _parse_args_dict(raw: str) -> dict:
+    """Attempt to parse a JSON args string into a dict. Return {} on failure."""
+    try:
+        parsed = _json.loads(raw) if raw else {}
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 # --------------------------------------------------------------------------- #
@@ -208,13 +271,32 @@ class _ToolState:
     status_text: str = "preparing..."
 
     def header(self, spinner_frame: str | None = None) -> Text:
-        """Render the single-line status header for this tool call."""
+        """Render the single-line status header for this tool call.
+
+        Hermes-style: emoji + tool name + one-line preview of primary arg.
+        """
         line = Text()
-        line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
+
+        # Emoji for tool type
+        emoji = "\u26a1"
+        if get_tool_emoji is not None:
+            emoji = get_tool_emoji(self.name)
+        line.append(f"{emoji} ", style=_STYLE_META)
+
         line.append(self.name, style="bold")
+
+        # One-line preview of the primary argument
+        preview = None
+        if build_tool_preview is not None:
+            args = _parse_args_dict(self.args_buffer)
+            preview = build_tool_preview(self.name, args)
+
+        if preview:
+            line.append("  ")
+            line.append(preview, style=_STYLE_BRAND_DIM)
+
         line.append("  ")
         if self.status in ("pending", "running"):
-            # Spinner slot
             if spinner_frame:
                 line.append(spinner_frame, style=_STYLE_BRAND_DIM)
             line.append("  ")
@@ -237,6 +319,11 @@ class _ToolState:
 
 class OutputRenderer:
     """Stateful renderer that processes ``StreamEvent`` objects.
+
+    Features ported from hermes-agent:
+    * KawaiiSpinner with random faces/verbs during thinking
+    * Hermes-style tool previews (emoji + one-line primary arg)
+    * Inline diffs for file-edit operations
 
     Usage::
 
@@ -262,14 +349,15 @@ class OutputRenderer:
         # Turn rhythm
         self._turn_started: bool = False
 
-    # ── public API ─────────────────────────────────────────────────────
+    # -- public API ---------------------------------------------------------
 
     def show_spinner(self) -> None:
-        """Display a transient waiting spinner until the first event."""
+        """Display a transient KawaiiSpinner until the first event."""
         if self._live is not None:
             return
         self._ensure_turn_break()
-        spinner = Spinner("dots", text=Text("thinking...", style=_STYLE_BRAND_DIM))
+        kawaii_text = _kawaii_thinking_text()
+        spinner = Spinner("dots", text=Text(kawaii_text, style=_STYLE_BRAND_DIM))
         self._live = Live(
             spinner,
             console=self.console,
@@ -304,7 +392,7 @@ class OutputRenderer:
         self._tool = None
         self._in_code_fence = False
 
-    # ── live display management ────────────────────────────────────────
+    # -- live display management --------------------------------------------
 
     def _stop_live(self) -> None:
         if self._live is not None:
@@ -321,10 +409,10 @@ class OutputRenderer:
             return
         self._turn_started = True
         self.console.print()
-        self.console.print(Rule(style=_STYLE_DIVIDER, characters="─"))
+        self.console.print(Rule(style=_STYLE_DIVIDER, characters="\u2500"))
         self.console.print()
 
-    # ── streaming text ─────────────────────────────────────────────────
+    # -- streaming text -----------------------------------------------------
 
     def _on_text_delta(self, delta: str) -> None:
         if not delta:
@@ -334,27 +422,15 @@ class OutputRenderer:
             self._stop_live()
 
         self._text_buffer.append(delta)
-        # Buffer output and only flush on complete blocks to avoid flicker:
-        # - Double newline (paragraph break / blank line between blocks)
-        # - End of a fenced code block (closing ```)
-        # - Sentence boundary followed by whitespace
-        # Single newlines are NOT flushed — they cause mid-paragraph
-        # re-renders that flicker, especially on Windows where Live
-        # redraws are expensive.
         joined = "".join(self._text_buffer)
 
-        # Track code-fence state: toggle on each line that starts with ```
-        # (with optional language tag). Only flush when transitioning from
-        # inside a fence to outside (i.e., the closing fence).
+        # Track code-fence state
         fence_closed = False
         if joined.rstrip().endswith("```"):
-            # Check if this ``` is on a line by itself (or with only a
-            # language tag after the opening ```).
             last_line = joined.rstrip().rsplit("\n", 1)[-1].strip()
             if last_line.startswith("```"):
                 was_in_fence = self._in_code_fence
                 self._in_code_fence = not self._in_code_fence
-                # Only treat as a flush point when closing a fence
                 fence_closed = was_in_fence and not self._in_code_fence
 
         if "\n\n" in joined[-3:] or fence_closed or _SENTENCE_RE.search(joined[-3:]):
@@ -376,7 +452,7 @@ class OutputRenderer:
         self.console.print(label)
         self.console.print(Markdown(full), style=ASSISTANT_TEXT)
 
-    # ── thinking / reasoning ───────────────────────────────────────────
+    # -- thinking / reasoning -----------------------------------------------
 
     def _on_thinking_delta(self, delta: str) -> None:
         if not delta:
@@ -398,18 +474,21 @@ class OutputRenderer:
         first = lines[0] if lines else ""
         char_count = len(full)
 
+        # Pick a kawaii face for the thinking line
+        face = random.choice(KAWAII_THINKING_FACES)  # noqa: S311
+
         body = Text()
-        body.append(f"{_ICON_THINKING} ", style=_STYLE_THINKING)
+        body.append(f"{face} ", style=_STYLE_THINKING)
         body.append("thinking ", style=_STYLE_THINKING)
         body.append(first, style=_STYLE_THINKING_DIM)
         if len(lines) > 1:
             body.append(
-                f"  … ({char_count} chars)",
+                f"  \u2026 ({char_count} chars)",
                 style=_STYLE_META,
             )
         self.console.print(body)
 
-    # ── tool calls ─────────────────────────────────────────────────────
+    # -- tool calls ---------------------------------------------------------
 
     def _on_tool_call_start(self, data: dict[str, Any] | None) -> None:
         # Close out any in-flight assistant text / thinking first.
@@ -459,35 +538,30 @@ class OutputRenderer:
         if self._tool is None:
             return
 
-        # Stop the live spinner — we're about to commit to scrollback.
+        # Stop the live spinner -- we're about to commit to scrollback.
         self._stop_live()
 
         tool = self._tool
-        # Render the committed header (no spinner) plus a syntax block for args.
+        args_dict = _parse_args_dict(tool.args_buffer)
+
+        # Hermes-style one-line preview: emoji + tool name + primary arg
+        emoji = "\u26a1"
+        if get_tool_emoji is not None:
+            emoji = get_tool_emoji(tool.name)
+
+        preview = None
+        if build_tool_preview is not None:
+            preview = build_tool_preview(tool.name, args_dict)
+
         header = Text()
-        header.append(f"{_ICON_TOOL} ", style=_STYLE_META)
+        header.append(f"{emoji} ", style=_STYLE_META)
         header.append(tool.name, style="bold")
-        header.append("  ")
-        header.append("…", style=_STYLE_BRAND_DIM)
-        header.append("  ")
-        header.append(f"called {tool.name}", style=_STYLE_META)
+        if preview:
+            header.append("  ")
+            header.append(preview, style=_STYLE_BRAND_DIM)
 
-        parts: list[RenderableType] = [header]
-        pretty = _truncate_args_json(tool.args_buffer)
-        if pretty and pretty != "(no arguments)":
-            parts.append(
-                Syntax(
-                    pretty,
-                    "json",
-                    theme="ansi_dark",
-                    line_numbers=False,
-                    word_wrap=True,
-                    background_color="default",
-                )
-            )
-
-        self.console.print(Group(*parts))
-        # Keep _tool around — TOOL_RESULT will update its status.
+        self.console.print(header)
+        # Keep _tool around -- TOOL_RESULT will update its status.
 
     def _on_tool_result(self, data: dict[str, Any] | None) -> None:
         data = data or {}
@@ -499,13 +573,18 @@ class OutputRenderer:
         status_icon = _ICON_ERR if is_error else _ICON_OK
         status_style = _STYLE_DANGER if is_error else _STYLE_SUCCESS
 
+        # Emoji for tool
+        emoji = "\u26a1"
+        if get_tool_emoji is not None:
+            emoji = get_tool_emoji(tool_name)
+
         # Short summary of result for the status line.
         summary = content.strip().splitlines()[0] if content.strip() else ("error" if is_error else "done")
         if len(summary) > 80:
             summary = summary[:77] + "..."
 
         status_line = Text()
-        status_line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
+        status_line.append(f"{emoji} ", style=_STYLE_META)
         status_line.append(tool_name, style="bold")
         status_line.append("  ")
         status_line.append(status_icon, style=status_style)
@@ -518,7 +597,8 @@ class OutputRenderer:
         if stripped and len(stripped) > _RESULT_INLINE_LIMIT:
             display = stripped
             if len(display) > _RESULT_PANEL_LIMIT:
-                display = display[:_RESULT_PANEL_LIMIT] + f"\n… ({len(stripped) - _RESULT_PANEL_LIMIT} chars truncated)"
+                remainder = len(stripped) - _RESULT_PANEL_LIMIT
+                display = display[:_RESULT_PANEL_LIMIT] + f"\n\u2026 ({remainder} chars truncated)"
 
             body: RenderableType
             if _looks_like_json(display):
@@ -534,9 +614,9 @@ class OutputRenderer:
                 body = Text(display, style=TOOL_RESULT if not is_error else ERROR)
 
             title = (
-                f"[{_STYLE_DANGER}]tool error · {tool_name}[/]"
+                f"[{_STYLE_DANGER}]tool error \u00b7 {tool_name}[/]"
                 if is_error
-                else f"[{_STYLE_META}]output · {tool_name}[/]"
+                else f"[{_STYLE_META}]output \u00b7 {tool_name}[/]"
             )
             self.console.print(
                 Panel(
@@ -551,7 +631,7 @@ class OutputRenderer:
 
         self._tool = None
 
-    # ── errors ─────────────────────────────────────────────────────────
+    # -- errors -------------------------------------------------------------
 
     def _on_error(self, data: Any = None) -> None:
         self._stop_live()
@@ -587,7 +667,7 @@ class OutputRenderer:
             )
         )
 
-    # ── usage / done ───────────────────────────────────────────────────
+    # -- usage / done -------------------------------------------------------
 
     def _on_usage(self, data: dict[str, Any] | None) -> None:
         data = data or {}
@@ -602,7 +682,7 @@ class OutputRenderer:
             parts.append(f"${total_usd:.4f}")
 
         if parts:
-            self.console.print(Text("  " + " · ".join(parts), style=COST_INFO))
+            self.console.print(Text("  " + " \u00b7 ".join(parts), style=COST_INFO))
 
     def _on_done(self, _data: Any = None) -> None:
         self._stop_live()

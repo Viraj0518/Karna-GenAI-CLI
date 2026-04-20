@@ -209,55 +209,107 @@ class PermissionManager:
     ) -> bool:
         """Prompt the user for approval of a tool call.
 
-        Options presented:
-            * ``y`` / ``yes``     — allow this call only
-            * ``Y`` / ``always``  — allow this call and remember permanently
-                                    (persists to ``~/.karna/permissions.toml``)
-            * ``n`` / ``no``      — deny this call only (default)
-            * ``N`` / ``never``   — deny this call and remember for the session
+        Hermes-style interactive selection with choices:
+            * ``once``    -- allow this call only
+            * ``session`` -- allow this tool for the rest of the session
+            * ``always``  -- allow this tool permanently
+                             (persists to ``~/.karna/permissions.toml``)
+            * ``deny``    -- deny this call (default on timeout/interrupt)
+
+        Falls back to simple y/n prompt when Rich is not available.
 
         Returns True if approved.
-
-        If *console* is a ``rich.console.Console``, uses Rich formatting;
-        otherwise falls back to plain ``input()``.
         """
         summary = _format_call_summary(tool_name, arguments)
-        prompt_text = "Allow? [y]es / [Y]es always / [n]o / [N]o always "
 
-        # We keep case-sensitivity for the "always" variants so the user can
-        # say "yes this time" vs "yes forever" with a single keystroke.
-        raw: str
+        # Try hermes-style interactive selection via Rich
         if console is not None:
-            try:
-                console.print("\n[bold yellow]Permission required[/bold yellow]")
-                console.print(f"  Tool:  [cyan]{tool_name}[/cyan]")
-                console.print(f"  Args:  {summary}")
-                raw = console.input(f"[bold]{prompt_text}[/bold]").strip()
-            except (EOFError, KeyboardInterrupt):
-                return False
-        else:
-            try:
-                print("\nPermission required")
-                print(f"  Tool:  {tool_name}")
-                print(f"  Args:  {summary}")
-                raw = input(prompt_text).strip()
-            except (EOFError, KeyboardInterrupt):
-                return False
+            return await self._approval_rich(tool_name, summary, console)
 
-        # Case-sensitive variants first so "Y" isn't swallowed by the
-        # case-insensitive match below.
-        if raw == "Y" or raw.lower() == "always":
+        # Plain fallback
+        return await self._approval_plain(tool_name, summary)
+
+    async def _approval_rich(
+        self,
+        tool_name: str,
+        summary: str,
+        console: Any,
+    ) -> bool:
+        """Rich-formatted hermes-style approval prompt.
+
+        Shows the tool call details and presents interactive choices.
+        """
+        try:
+            from rich.panel import Panel
+            from rich.text import Text
+
+            # Build the approval panel content
+            body = Text()
+            body.append("  Tool:  ", style="dim")
+            body.append(tool_name, style="bold #3C73BD")
+            body.append("\n  Args:  ", style="dim")
+            body.append(summary, style="#87CEEB")
+
+            console.print(
+                Panel(
+                    body,
+                    title="[bold #E8C26B]Permission Required[/bold #E8C26B]",
+                    title_align="left",
+                    border_style="#3C73BD",
+                    padding=(0, 1),
+                )
+            )
+
+            # Present choices hermes-style
+            choices_display = (
+                "  [bold #87CEEB][o]nce[/]  "
+                "[bold #5A8FCC][s]ession[/]  "
+                "[bold #7DCFA1][a]lways[/]  "
+                "[bold #E87C7C][d]eny[/]"
+            )
+            console.print(choices_display)
+            raw = console.input("[bold #3C73BD]> [/]").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return False
+
+        return self._resolve_approval(tool_name, raw)
+
+    async def _approval_plain(
+        self,
+        tool_name: str,
+        summary: str,
+    ) -> bool:
+        """Plain-text fallback approval prompt."""
+        try:
+            print("\nPermission required")
+            print(f"  Tool:  {tool_name}")
+            print(f"  Args:  {summary}")
+            print("  [o]nce / [s]ession / [a]lways / [d]eny")
+            raw = input("> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return False
+
+        return self._resolve_approval(tool_name, raw)
+
+    def _resolve_approval(self, tool_name: str, raw: str) -> bool:
+        """Resolve user's approval choice into permission action."""
+        if raw in ("a", "always"):
             self.session_allows.add(tool_name)
             self._persist_decision(tool_name, PermissionLevel.ALLOW)
             logger.info("Permanent-allow granted for tool: %s", tool_name)
             return True
-        if raw == "N" or raw.lower() == "never":
+        if raw in ("s", "session"):
+            self.session_allows.add(tool_name)
+            logger.info("Session-allow granted for tool: %s", tool_name)
+            return True
+        if raw in ("o", "once", "y", "yes"):
+            return True
+        if raw in ("d", "deny", "n", "no", "N", "never"):
             self.session_denies.add(tool_name)
-            self._persist_decision(tool_name, PermissionLevel.DENY)
-            logger.info("Permanent-deny set for tool: %s", tool_name)
+            logger.info("Denied tool: %s", tool_name)
             return False
-
-        return raw.lower() in ("y", "yes")
+        # Default: deny on unrecognised input
+        return False
 
     # ------------------------------------------------------------------ #
     #  Persistent decisions (~/.karna/permissions.toml)

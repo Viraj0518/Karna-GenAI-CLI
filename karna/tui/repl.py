@@ -400,7 +400,6 @@ async def run_repl(
                 skill_preamble = "\n\n".join(skill_preamble_parts)
                 user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
 
-
         # ── Regular message ─────────────────────────────────────────────
         user_msg = Message(role="user", content=user_input)
         conversation.messages.append(user_msg)
