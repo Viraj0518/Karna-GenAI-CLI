@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.security import is_safe_path
 from karna.tools.base import BaseTool
 
 _MAX_CHARS = 50_000
@@ -287,6 +288,9 @@ class DocumentTool(BaseTool):
             return "[error] No file_path provided."
 
         path = Path(os.path.expanduser(file_path_str)).resolve()
+
+        if not is_safe_path(file_path_str):
+            return "[error] Blocked: path points to a sensitive or disallowed location."
 
         if not path.exists():
             return f"[error] File not found: {path}"

@@ -26,16 +26,24 @@ class TestDocumentTool:
     async def test_file_not_found(self):
         """Should return error for missing files."""
         tool = DocumentTool()
-        result = await tool.execute(file_path="/nonexistent/document.pdf")
+        result = await tool.execute(file_path="nonexistent/document.pdf")
         assert "[error]" in result
         assert "not found" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_path_outside_cwd_blocked(self):
+        """Should block paths outside the allowed root."""
+        tool = DocumentTool()
+        result = await tool.execute(file_path="/etc/shadow")
+        assert "[error]" in result
+        assert "blocked" in result.lower()
 
     @pytest.mark.asyncio
     async def test_unsupported_format(self):
         """Should return error for unsupported file extensions."""
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".xyz", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".xyz", delete=False, dir=".") as f:
             f.write(b"some data")
             f.flush()
             path = f.name
@@ -60,7 +68,7 @@ class TestDocumentTool:
         """Should extract CSV content as a markdown table."""
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w", newline="") as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w", newline="", dir=".") as f:
             writer = csv.writer(f)
             writer.writerow(["Name", "Age", "City"])
             writer.writerow(["Alice", "30", "New York"])
@@ -85,7 +93,7 @@ class TestDocumentTool:
         """Should handle empty CSV files."""
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, dir=".") as f:
             f.flush()
             path = f.name
 
@@ -99,7 +107,9 @@ class TestDocumentTool:
     async def test_not_a_file(self):
         """Should return error for directories."""
         tool = DocumentTool()
-        result = await tool.execute(file_path="/tmp")
+        # Use a directory inside cwd so path safety check passes
+        subdir = os.path.join(os.getcwd(), "tests")
+        result = await tool.execute(file_path=subdir)
         assert "[error]" in result
         assert "Not a file" in result
 
@@ -154,7 +164,7 @@ class TestTruncation:
         """Should truncate very large CSV files."""
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w", newline="") as f:
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w", newline="", dir=".") as f:
             writer = csv.writer(f)
             writer.writerow(["Col1", "Col2", "Col3"])
             # Write enough rows to exceed 50K chars
@@ -233,7 +243,7 @@ class TestPDFExtraction:
 
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, dir=".") as f:
             f.write(b"%PDF-1.4 dummy")
             f.flush()
             path = f.name
@@ -261,7 +271,7 @@ class TestPDFExtraction:
 
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, dir=".") as f:
             f.write(b"%PDF-1.4 dummy")
             f.flush()
             path = f.name
@@ -290,7 +300,7 @@ class TestDocxExtraction:
 
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False, dir=".") as f:
             f.write(b"PK dummy")
             f.flush()
             path = f.name
@@ -320,7 +330,7 @@ class TestPptxExtraction:
 
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False, dir=".") as f:
             f.write(b"PK dummy")
             f.flush()
             path = f.name
@@ -350,7 +360,7 @@ class TestXlsxExtraction:
 
         tool = DocumentTool()
 
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False, dir=".") as f:
             f.write(b"PK dummy")
             f.flush()
             path = f.name
