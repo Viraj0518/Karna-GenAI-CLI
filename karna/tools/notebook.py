@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -334,7 +335,8 @@ class NotebookTool(BaseTool):
 
     def _execute_full(self, path: Path) -> str:
         """Execute the entire notebook via nbconvert or papermill."""
-        out_path = path.with_suffix(".out.ipynb")
+        nonce = secrets.token_hex(4)
+        out_path = path.with_suffix(f".{nonce}.out.ipynb")
         try:
             executed, diagnostics = _run_subprocess_execution(path, out_path)
         finally:
@@ -375,8 +377,13 @@ class NotebookTool(BaseTool):
         # splice the outputs back into the original.
         single_nb = _new_nb()
         single_nb["cells"] = [cell]
-        tmp_in = path.with_suffix(f".cell{cell_index}.in.ipynb")
-        tmp_out = path.with_suffix(f".cell{cell_index}.out.ipynb")
+        # Per-invocation nonce on the temp paths so concurrent executes
+        # (two cells in the same notebook, or overlapping full- and
+        # single-cell runs, or two agent turns racing on the same file)
+        # don't collide on deterministic filenames.
+        nonce = secrets.token_hex(4)
+        tmp_in = path.with_suffix(f".cell{cell_index}.{nonce}.in.ipynb")
+        tmp_out = path.with_suffix(f".cell{cell_index}.{nonce}.out.ipynb")
         _write_nb(tmp_in, single_nb)
 
         try:
