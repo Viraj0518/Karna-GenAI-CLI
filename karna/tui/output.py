@@ -537,18 +537,48 @@ class OutputRenderer:
 
     def _on_tool_result(self, data: dict[str, Any] | None) -> None:
         data = data or {}
-        content = str(data.get("content", ""))
-        is_error = bool(data.get("is_error", False))
-        tool_name = self._tool.name if self._tool else str(data.get("name", "tool"))
+        # Handle both dict and string data
+        if isinstance(data, str):
+            content = data
+            is_error = False
+        else:
+            content = str(data.get("content", ""))
+            is_error = bool(data.get("is_error", False))
+        if self._tool:
+            tool_name = self._tool.name
+        elif isinstance(data, dict):
+            tool_name = str(data.get("name", "tool"))
+        else:
+            tool_name = "tool"
+
+        # For write/edit tools, don't dump the full file content — just show success
+        if tool_name in ("write", "edit") and not is_error:
+            # Extract file path from tool args if available
+            file_hint = ""
+            if self._tool and self._tool.args_buffer:
+                try:
+                    args = _json.loads(self._tool.args_buffer)
+                    file_hint = f" {args.get('file_path', '')}"
+                except Exception:  # noqa: BLE001
+                    pass
+            status_line = Text()
+            status_line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
+            status_line.append(tool_name, style="bold")
+            status_line.append("  ")
+            status_line.append(_ICON_OK, style=_STYLE_SUCCESS)
+            status_line.append(f"  {file_hint.strip()}", style=_STYLE_META)
+            self.console.print(status_line)
+            self._tool = None
+            return
 
         # Update + render the terminal status line.
         status_icon = _ICON_ERR if is_error else _ICON_OK
         status_style = _STYLE_DANGER if is_error else _STYLE_SUCCESS
 
         # Short summary of result for the status line.
-        summary = content.strip().splitlines()[0] if content.strip() else ("error" if is_error else "done")
-        if len(summary) > 80:
-            summary = summary[:77] + "..."
+        stripped = content.strip()
+        first_line = stripped.splitlines()[0] if stripped else ("error" if is_error else "done")
+        summary = first_line if len(first_line) <= 80 else first_line[:77] + "..."
 
         status_line = Text()
         status_line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
@@ -560,17 +590,37 @@ class OutputRenderer:
         self.console.print(status_line)
 
         # Long results get a full panel; short ones are already covered.
-        stripped = content.strip()
         if stripped and len(stripped) > _RESULT_INLINE_LIMIT:
             display = stripped
             if len(display) > _RESULT_PANEL_LIMIT:
                 display = display[:_RESULT_PANEL_LIMIT] + f"\n… ({len(stripped) - _RESULT_PANEL_LIMIT} chars truncated)"
 
-            body: RenderableType
+            # Detect language for syntax highlighting
+            lang = "text"
             if _looks_like_json(display):
+                lang = "json"
+            elif self._tool and self._tool.args_buffer:
+                try:
+                    args = _json.loads(self._tool.args_buffer)
+                    fp = args.get("file_path", "") or args.get("path", "")
+                    ext = fp.rsplit(".", 1)[-1].lower() if "." in fp else ""
+                    lang_map = {
+                        "py": "python", "js": "javascript", "ts": "typescript",
+                        "rs": "rust", "go": "go", "java": "java", "rb": "ruby",
+                        "sh": "bash", "bash": "bash", "zsh": "bash",
+                        "yaml": "yaml", "yml": "yaml", "toml": "toml",
+                        "json": "json", "md": "markdown", "sql": "sql",
+                        "html": "html", "css": "css", "xml": "xml",
+                    }
+                    lang = lang_map.get(ext, "text")
+                except Exception:  # noqa: BLE001
+                    pass
+
+            body: RenderableType
+            if lang != "text":
                 body = Syntax(
                     display,
-                    "json",
+                    lang,
                     theme="ansi_dark",
                     line_numbers=False,
                     word_wrap=True,
