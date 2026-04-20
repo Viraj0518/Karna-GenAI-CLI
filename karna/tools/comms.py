@@ -19,6 +19,20 @@ from karna.tools.base import BaseTool
 _MAX_MESSAGE_BYTES = 1_000_000
 
 
+def _body_exceeds_limit(body: str) -> bool:
+    """Return True iff ``body`` would serialise to more than the cap.
+
+    UTF-8 uses 1–4 bytes per code point, so a string with fewer than
+    ``_MAX_MESSAGE_BYTES // 4`` characters cannot possibly exceed the
+    cap — short-circuit without allocating the full ``.encode("utf-8")``
+    copy in the common case. Only strings past that threshold pay the
+    encoding cost to confirm exactly.
+    """
+    if len(body) * 4 <= _MAX_MESSAGE_BYTES:
+        return False
+    return len(body.encode("utf-8")) > _MAX_MESSAGE_BYTES
+
+
 class CommsTool(BaseTool):
     """Send, check, read, and reply to inter-agent messages.
 
@@ -94,7 +108,7 @@ class CommsTool(BaseTool):
             return "[error] 'subject' is required for send action."
         if not body:
             return "[error] 'body' is required for send action."
-        if len(body.encode("utf-8")) > _MAX_MESSAGE_BYTES:
+        if _body_exceeds_limit(body):
             return (
                 f"[error] Message body exceeds the {_MAX_MESSAGE_BYTES:,}-byte "
                 "limit. Split the content across multiple messages or save it "
@@ -155,7 +169,7 @@ class CommsTool(BaseTool):
             return "[error] 'message_id' is required for reply action."
         if not body:
             return "[error] 'body' is required for reply action."
-        if len(body.encode("utf-8")) > _MAX_MESSAGE_BYTES:
+        if _body_exceeds_limit(body):
             return (
                 f"[error] Reply body exceeds the {_MAX_MESSAGE_BYTES:,}-byte "
                 "limit. Split the content across multiple messages or save it "
