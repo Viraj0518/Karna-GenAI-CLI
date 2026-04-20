@@ -202,7 +202,7 @@ Every conversation is saved with full-text search.
 
 ## Available Tools
 
-Nellie has 20 built-in tools it uses automatically:
+Nellie has 19 built-in tools it uses automatically:
 
 | Tool | What it does |
 |---|---|
@@ -225,7 +225,6 @@ Nellie has 20 built-in tools it uses automatically:
 | `db` | Query SQLite / PostgreSQL / MySQL with read-only default + parameter binding |
 | `comms` | Inter-agent messaging via the file-based inbox (`send` / `check` / `read` / `reply`) |
 | `document` | Extract text and tables from PDF, Office, CSV, and HTML files |
-| `voice` | Voice input/output (experimental) |
 
 When Nellie needs multiple reads/greps at once, they run in parallel — fast.
 

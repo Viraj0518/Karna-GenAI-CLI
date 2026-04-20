@@ -263,7 +263,7 @@ Abstract base class. Fields: `name`, `description`, `parameters` (JSON Schema), 
 
 #### Tool Inventory
 
-20 tools, registered in [karna/tools/__init__.py](../karna/tools/__init__.py).
+19 tools registered in [karna/tools/__init__.py](../karna/tools/__init__.py). A 20th file — [`voice.py`](../karna/tools/voice.py) — sits on disk but is deliberately unregistered; see the note at the bottom of this table.
 
 | Tool | File | Sequential | Description |
 |---|---|---|---|
@@ -285,8 +285,9 @@ Abstract base class. Fields: `name`, `description`, `parameters` (JSON Schema), 
 | `db` | [database.py](../karna/tools/database.py) | No | SQLite / PostgreSQL / MySQL connector — parameterised queries, DSN SSRF guard, credential scrubbing |
 | `browser` | [browser.py](../karna/tools/browser.py) | Yes | Headless Chromium via Playwright — per-request SSRF guard via `page.route()` |
 | `comms` | [comms.py](../karna/tools/comms.py) | No | Inter-agent inbox: send/check/read/reply — 1 MB body cap |
-| `voice` | [voice.py](../karna/tools/voice.py) | No | Voice input/output (optional dependency) |
 | `mcp` | [mcp.py](../karna/tools/mcp.py) | No | MCP server connection, tool discovery, and proxying via JSON-RPC over stdio |
+
+**Unregistered file:** [`voice.py`](../karna/tools/voice.py) defines a `VoiceTool` for TTS/STT via `pyttsx3` + `SpeechRecognition`, with graceful fallback when deps are absent. Its docstring flags it as a deliberate "register me later" handoff — it is **not** listed in `_TOOL_PATHS`, so `get_all_tools()` won't return it. Wiring it in is a one-line change once someone signs off.
 
 The shared [`TaskRegistry`](../karna/tools/task_registry.py) singleton tracks monitors, background bash, and subagents in one place and drains pending notifications into the conversation between agent-loop turns.
 

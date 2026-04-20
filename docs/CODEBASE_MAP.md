@@ -56,7 +56,7 @@
 - [karna/tools/database.py](../karna/tools/database.py) — SQLite / PostgreSQL / MySQL connector: read-only by default, **parameterised queries**, DSN SSRF guard, credential scrubbing on error.
 - [karna/tools/browser.py](../karna/tools/browser.py) — Headless Chromium via Playwright: navigate/click/fill/screenshot; **per-request SSRF via `page.route()`** (closes DNS-rebinding + redirect holes).
 - [karna/tools/comms.py](../karna/tools/comms.py) — Inter-agent inbox: send/check/read/reply; 1 MB body cap.
-- [karna/tools/voice.py](../karna/tools/voice.py) — Voice input/output support (optional dependency).
+- [karna/tools/voice.py](../karna/tools/voice.py) — Voice TTS/STT prototype (pyttsx3 + SpeechRecognition). **Not currently registered** in `karna/tools/__init__.py`; file sits on disk awaiting a future registry pass.
 - [karna/tools/mcp.py](../karna/tools/mcp.py) — MCP client: JSON-RPC over stdio, server lifecycle, tool discovery, `MCPProxyTool` wrapper.
 
 ## Auth
