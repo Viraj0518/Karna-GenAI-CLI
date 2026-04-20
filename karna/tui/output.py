@@ -114,13 +114,13 @@ _STYLE_DIVIDER = _token("divider", "bright_black")
 
 _ICON_SETS = {
     "nerd": {
-        "user": "\uf061",       # nf-fa-arrow_right
+        "user": "\uf061",  # nf-fa-arrow_right
         "assistant": "\uf005",  # nf-fa-star
-        "thinking": "\uf0eb",   # nf-fa-lightbulb_o
-        "tool": "\uf085",       # nf-fa-cogs
-        "success": "\uf00c",    # nf-fa-check
-        "failure": "\uf00d",    # nf-fa-times
-        "cursor": "\u258c",     # left half block
+        "thinking": "\uf0eb",  # nf-fa-lightbulb_o
+        "tool": "\uf085",  # nf-fa-cogs
+        "success": "\uf00c",  # nf-fa-check
+        "failure": "\uf00d",  # nf-fa-times
+        "cursor": "\u258c",  # left half block
     },
     "emoji": {
         "user": ">",
@@ -236,34 +236,55 @@ TOOL_VERBS = {
 
 _TOOL_EMOJI_SETS = {
     "nerd": {
-        "bash": "\uf120",       # nf-fa-terminal
-        "read": "\uf06e",       # nf-fa-eye
-        "write": "\uf044",      # nf-fa-pencil_square_o
-        "edit": "\uf440",       # nf-oct-diff
-        "grep": "\uf002",       # nf-fa-search
-        "glob": "\uf07b",       # nf-fa-folder
-        "git": "\ue725",        # nf-dev-git_branch
-        "web_search": "\uf0ac", # nf-fa-globe
+        "bash": "\uf120",  # nf-fa-terminal
+        "read": "\uf06e",  # nf-fa-eye
+        "write": "\uf044",  # nf-fa-pencil_square_o
+        "edit": "\uf440",  # nf-oct-diff
+        "grep": "\uf002",  # nf-fa-search
+        "glob": "\uf07b",  # nf-fa-folder
+        "git": "\ue725",  # nf-dev-git_branch
+        "web_search": "\uf0ac",  # nf-fa-globe
         "web_fetch": "\uf0ed",  # nf-fa-cloud_download
-        "monitor": "\uf0e7",    # nf-fa-bolt
-        "task": "\uf0c1",       # nf-fa-link
-        "mcp": "\uf0e7",        # nf-fa-bolt
-        "image": "\uf03e",      # nf-fa-image
+        "monitor": "\uf0e7",  # nf-fa-bolt
+        "task": "\uf0c1",  # nf-fa-link
+        "mcp": "\uf0e7",  # nf-fa-bolt
+        "image": "\uf03e",  # nf-fa-image
         "clipboard": "\uf0ea",  # nf-fa-clipboard
-        "notebook": "\ue736",   # nf-dev-notebook
+        "notebook": "\ue736",  # nf-dev-notebook
     },
     "emoji": {
-        "bash": "\U0001f4bb", "read": "\U0001f4d6", "write": "\u270d\ufe0f",
-        "edit": "\U0001f527", "grep": "\U0001f50e", "glob": "\U0001f4c1",
-        "git": "\U0001f500", "web_search": "\U0001f50d", "web_fetch": "\U0001f4c4",
-        "monitor": "\U0001f4e1", "task": "\U0001f500", "mcp": "\u26a1",
-        "image": "\U0001f5bc\ufe0f", "clipboard": "\U0001f4cb", "notebook": "\U0001f4d3",
+        "bash": "\U0001f4bb",
+        "read": "\U0001f4d6",
+        "write": "\u270d\ufe0f",
+        "edit": "\U0001f527",
+        "grep": "\U0001f50e",
+        "glob": "\U0001f4c1",
+        "git": "\U0001f500",
+        "web_search": "\U0001f50d",
+        "web_fetch": "\U0001f4c4",
+        "monitor": "\U0001f4e1",
+        "task": "\U0001f500",
+        "mcp": "\u26a1",
+        "image": "\U0001f5bc\ufe0f",
+        "clipboard": "\U0001f4cb",
+        "notebook": "\U0001f4d3",
     },
     "ascii": {
-        "bash": "$", "read": "R", "write": "W", "edit": "E", "grep": "?",
-        "glob": "F", "git": "G", "web_search": "S", "web_fetch": "D",
-        "monitor": "M", "task": "T", "mcp": "X", "image": "I",
-        "clipboard": "C", "notebook": "N",
+        "bash": "$",
+        "read": "R",
+        "write": "W",
+        "edit": "E",
+        "grep": "?",
+        "glob": "F",
+        "git": "G",
+        "web_search": "S",
+        "web_fetch": "D",
+        "monitor": "M",
+        "task": "T",
+        "mcp": "X",
+        "image": "I",
+        "clipboard": "C",
+        "notebook": "N",
     },
 }
 TOOL_EMOJI = _TOOL_EMOJI_SETS.get(_ACTIVE_ICON_SET, _TOOL_EMOJI_SETS["nerd"])

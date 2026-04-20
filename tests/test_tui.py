@@ -66,6 +66,7 @@ def test_slash_commands_registered() -> None:
         "plan",
         "do",
         "tasks",
+        "comms",
     }
     assert expected == set(COMMANDS.keys())
 

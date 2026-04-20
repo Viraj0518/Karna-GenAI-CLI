@@ -189,6 +189,13 @@ def _build_commands() -> dict[str, SlashCommand]:
             category="advanced",
             icon=ic_running,
         ),
+        SlashCommand(
+            "comms",
+            "/comms [check|read|send|reply]",
+            "Inter-agent messaging inbox",
+            category="advanced",
+            icon=ic_running,
+        ),
         # ── Context (continued) ────────────────────────────────────────
         SlashCommand(
             "memory",
@@ -924,6 +931,110 @@ def _fuzzy_match(partial: str) -> str | None:
 #  Dispatcher
 # --------------------------------------------------------------------------- #
 
+
+def _cmd_comms(console: Console, config: KarnaConfig, args: str, **_kw) -> None:
+    """``/comms`` -- check, read, send, or reply to inter-agent messages."""
+    from karna.comms.inbox import AgentInbox
+
+    agent_name = config.agent.name
+    inbox = AgentInbox(agent_name)
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+
+    parts = args.strip().split(None, 1) if args.strip() else []
+    subcmd = parts[0].lower() if parts else ""
+    subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "send":
+        send_parts = subargs.split(None, 1) if subargs else []
+        if len(send_parts) < 2:
+            console.print("[red]Usage: /comms send <agent> <subject>: <body>[/red]")
+            return
+        to_agent = send_parts[0]
+        rest = send_parts[1]
+        if ":" in rest:
+            subject, _, body = rest.partition(":")
+            subject = subject.strip()
+            body = body.strip()
+        else:
+            subject = rest
+            body = ""
+        if not body:
+            console.print("[red]Usage: /comms send <agent> <subject>: <body>[/red]")
+            return
+        msg = inbox.send(to_agent, subject, body)
+        console.print(f"[green]Sent message {msg.id} to {to_agent}: {subject}[/green]")
+        return
+
+    if subcmd == "read":
+        if not subargs:
+            console.print("[red]Usage: /comms read <message-id>[/red]")
+            return
+        msg = inbox.read_message(subargs)
+        if msg is None:
+            console.print(f"[red]Message not found: {subargs}[/red]")
+            return
+        nl = chr(10)
+        detail = (
+            f"[bright_black]From:[/] {msg.from_agent}"
+            + nl
+            + f"[bright_black]To:[/] {msg.to_agent}"
+            + nl
+            + f"[bright_black]Subject:[/] {msg.subject}"
+            + nl
+            + f"[bright_black]Time:[/] {msg.timestamp.isoformat()}"
+            + nl
+            + f"[bright_black]Reply to:[/] {msg.in_reply_to or chr(45)}"
+            + nl
+            + nl
+            + f"{msg.body}"
+        )
+        console.print(
+            Panel(
+                detail,
+                title=f"[bold {cyan}]Message {msg.id}[/]",
+                border_style=border,
+                expand=False,
+            )
+        )
+        return
+
+    if subcmd == "reply":
+        reply_parts = subargs.split(None, 1) if subargs else []
+        if len(reply_parts) < 2:
+            console.print("[red]Usage: /comms reply <message-id> <body>[/red]")
+            return
+        msg_id = reply_parts[0]
+        body = reply_parts[1]
+        original = inbox.read_message(msg_id)
+        if original is None:
+            console.print(f"[red]Message not found: {msg_id}[/red]")
+            return
+        reply_msg = inbox.reply(original, body)
+        console.print(f"[green]Reply {reply_msg.id} sent to {reply_msg.to_agent}[/green]")
+        return
+
+    # Default: check inbox (list unread)
+    messages = inbox.check()
+    if not messages:
+        console.print(f"[bright_black]No unread messages for {agent_name}.[/bright_black]")
+        return
+    table = Table(
+        show_header=True,
+        header_style=f"bold {cyan}",
+        border_style=border,
+        expand=False,
+        title=f"Inbox ({agent_name})",
+    )
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("From", style="white")
+    table.add_column("Subject", style="white", max_width=40)
+    table.add_column("Time", style="bright_black")
+    for msg in messages:
+        table.add_row(msg.id, msg.from_agent, msg.subject, msg.timestamp.strftime("%Y-%m-%d %H:%M"))
+    console.print(table)
+
+
 _HANDLERS: dict[str, Callable[..., None]] = {
     "help": _cmd_help,
     "model": _cmd_model,
@@ -945,6 +1056,7 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "plan": _cmd_plan,
     "do": _cmd_do,
     "tasks": _cmd_tasks,
+    "comms": _cmd_comms,
 }
 
 
