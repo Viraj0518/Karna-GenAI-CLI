@@ -166,12 +166,25 @@ def print_banner(
     hint.append("  -  ", style=t_tertiary)
     hint.append("karna's AI assistant", style=f"italic {t_tertiary}")
 
+    # ── Fortune / daily message ─────────────────────────────────────────
+    try:
+        from karna.tui.fortunes import pick_fortune
+
+        fortune = pick_fortune()
+    except Exception:  # pragma: no cover - defensive
+        fortune = None
+
     # ── Emit with generous vertical breathing room ───────────────────────
     console.print()
     console.print(header)
     console.print(Rule(style=divider))
     console.print(info)
     console.print()
+    if fortune:
+        fortune_text = Text("  ")
+        fortune_text.append("\U0001f52e ", style=f"dim {t_tertiary}")
+        fortune_text.append(fortune, style=f"italic dim {t_tertiary}")
+        console.print(fortune_text)
     console.print(hint)
     console.print()
 

@@ -25,6 +25,9 @@ from __future__ import annotations
 import asyncio
 import os
 import random
+import re as _re_mod
+import subprocess as _subprocess_mod
+import tempfile as _tempfile_mod
 import time
 from io import StringIO
 from pathlib import Path
@@ -93,6 +96,41 @@ PLACEHOLDERS = [
     'Try "refactor the auth module"',
     'Try "how does the config work?"',
 ]
+
+
+# --------------------------------------------------------------------------- #
+#  Shell interpolation: {!command} -> stdout
+# --------------------------------------------------------------------------- #
+
+_SHELL_INTERP_RE = _re_mod.compile(r"\{!([^}]+)\}")
+
+
+def _interpolate_shell(text: str) -> str:
+    """Replace ``{!command}`` patterns with the command's stdout.
+
+    Example::
+
+        >>> _interpolate_shell("explain {!echo hello}")
+        'explain hello'
+
+    Commands that fail or time out are replaced with an error marker.
+    """
+
+    def _run(m: _re_mod.Match[str]) -> str:
+        cmd = m.group(1)
+        try:
+            result = _subprocess_mod.run(
+                cmd,
+                shell=True,  # noqa: S602
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return f"(error running: {cmd})"
+
+    return _SHELL_INTERP_RE.sub(_run, text)
 
 
 # --------------------------------------------------------------------------- #
@@ -899,6 +937,10 @@ async def run_repl(
                 skill_preamble = "\n\n".join(skill_preamble_parts)
                 user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
 
+        # ── Shell interpolation: {!cmd} -> stdout ──────────────────
+        if _SHELL_INTERP_RE.search(user_input):
+            user_input = _interpolate_shell(user_input)
+
         # ── Start new agent turn ────────────────────────────────────
         from rich.text import Text as RichText
 
@@ -964,6 +1006,20 @@ async def run_repl(
             state.agent_task.cancel()
         console.print("\n[bright_black]Goodbye.[/bright_black]")
         event.app.exit()
+
+    @kb.add("c-g")
+    def _open_editor(event):  # type: ignore[no-untyped-def]
+        """Open $EDITOR with the current input buffer for long-form editing."""
+        editor = os.environ.get("EDITOR", "vim")
+        with _tempfile_mod.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as f:
+            f.write(event.app.current_buffer.text)
+            f.flush()
+            path = f.name
+        event.app.suspend_to_background()
+        _subprocess_mod.call([editor, path])  # noqa: S603
+        with open(path) as f:
+            event.app.current_buffer.text = f.read()
+        os.unlink(path)
 
     # Build the application
     app = _build_application(writer, input_buffer, kb, state, config)
