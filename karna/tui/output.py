@@ -522,14 +522,20 @@ class OutputRenderer:
         # Keep _tool around — TOOL_RESULT will update its status.
 
     def _on_tool_result(self, data: dict[str, Any] | None) -> None:
-        data = data or {}
-        # Handle both dict and string data
+        # --- robust extraction: data may be str, dict, or None ---
         if isinstance(data, str):
             content = data
             is_error = False
-        else:
-            content = str(data.get("content", ""))
+        elif isinstance(data, dict):
+            content = data.get("content", "")
+            if isinstance(content, dict):
+                content = str(content)
+            else:
+                content = str(content) if content else ""
             is_error = bool(data.get("is_error", False))
+        else:
+            content = str(data) if data else ""
+            is_error = False
         if self._tool:
             tool_name = self._tool.name
         elif isinstance(data, dict):

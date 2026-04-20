@@ -253,8 +253,7 @@ class PermissionManager:
             return True
         if raw == "N" or raw.lower() == "never":
             self.session_denies.add(tool_name)
-            self._persist_decision(tool_name, PermissionLevel.DENY)
-            logger.info("Permanent-deny set for tool: %s", tool_name)
+            logger.info("Session-deny set for tool: %s", tool_name)
             return False
 
         return raw.lower() in ("y", "yes")
