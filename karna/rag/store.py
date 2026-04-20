@@ -456,6 +456,10 @@ class KnowledgeStore:
 
         chunks = chunk_file(path)
         if not chunks:
+            # File is now empty/unreadable — purge stale metadata.
+            if str_path in self._indexed_files:
+                del self._indexed_files[str_path]
+                self._save_meta()
             return 0
 
         self._backend.add(chunks)

@@ -95,22 +95,33 @@ def chunk_text(
     chunks: list[Chunk] = []
     current_segments: list[str] = []
     current_tokens = 0
+    # Forward cursor — ensures each chunk's position search starts past
+    # the previous chunk's start, avoiding false matches when identical
+    # text appears earlier in the document.
+    _search_cursor = 0
 
     def _flush() -> None:
         """Emit the accumulated segments as a chunk."""
+        nonlocal _search_cursor
         if not current_segments:
             return
         chunk_text_str = "\n\n".join(current_segments)
 
-        # Compute line range by finding the chunk text in the original.
-        start_offset = text.find(current_segments[0])
+        # Compute line range by finding the chunk text in the original,
+        # searching forward from the cursor to avoid matching earlier
+        # occurrences of the same text.
+        start_offset = text.find(current_segments[0], _search_cursor)
         if start_offset < 0:
-            start_offset = 0
+            start_offset = _search_cursor
         end_segment = current_segments[-1]
         end_offset = text.find(end_segment, start_offset)
         if end_offset < 0:
             end_offset = start_offset
         end_offset += len(end_segment)
+
+        # Advance cursor past this chunk's start so the next chunk
+        # searches further into the document.
+        _search_cursor = start_offset + 1
 
         start_line = _line_number_at_offset(text, start_offset)
         end_line = _line_number_at_offset(text, end_offset)
