@@ -280,6 +280,17 @@ class REPLState:
         # Long-run charm tracking
         self.long_run_start: float = 0.0
         self.long_run_charm_shown: bool = False
+        # Output scroll control — populated by _build_application so key handlers
+        # (PgUp/PgDn/Home/End/Ctrl-Up/Ctrl-Down/mouse-wheel) can move the view.
+        # Keep typed as Any to avoid a prompt_toolkit import cycle in the header.
+        self.output_window: Any = None
+        # True when the user has manually scrolled back — suppresses autoscroll
+        # until they return to the bottom (Home-to-bottom or End).
+        self.output_scroll_locked: bool = False
+        # Interrupt flag — set by Esc handler, polled by the agent loop so a
+        # long thinking/tool-use cycle can be cancelled without Ctrl-C which
+        # also kills the input buffer.
+        self.interrupt_requested: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -656,15 +667,27 @@ def _build_application(
     from karna.tui.design_tokens import SEMANTIC
 
     # Output window -- scrollable, shows all agent output, with scrollbar.
-    # display_arrows=False for a cleaner thumb-only scrollbar (no ASCII ^/v arrows).
+    #
+    # focusable=True is REQUIRED even though the input stays focused by default
+    # (see `focused_element=input_window` below). Without it, prompt_toolkit
+    # never tracks `vertical_scroll` on this window, which makes both the
+    # ScrollbarMargin and the mouse-wheel/PgUp/PgDn handlers no-ops. Regression
+    # fixed: commit ccb866a added the scrollbar without this flag; the arrows
+    # rendered but nothing scrolled. See TUI_AUDIT_20260420.md §A.
+    #
+    # display_arrows=False keeps the scrollbar as a clean thumb only.
     output_window = Window(
         content=FormattedTextControl(
             lambda: ANSI(writer.get_text()),
-            focusable=False,
+            focusable=True,
         ),
         wrap_lines=True,
         right_margins=[ScrollbarMargin(display_arrows=False)],
+        allow_scroll_beyond_bottom=False,
     )
+    # Publish the reference so key handlers + the agent loop (autoscroll) can
+    # read/write its scroll state. Typed as Any on state to avoid header churn.
+    state.output_window = output_window
 
     # Status bar -- 1-line, shows model + animated face/verb + context bar + cost + timer
     def _status_bar_text():
@@ -999,6 +1022,68 @@ async def run_repl(
             state.agent_task.cancel()
         console.print("\n[bright_black]Goodbye.[/bright_black]")
         event.app.exit()
+
+    # ---- Scroll the output window without moving keyboard focus off input ----
+    #
+    # PgUp/PgDn  — page scroll (uses the visible window height)
+    # Home/End   — jump to top / bottom (End also re-enables autoscroll)
+    # c-up/c-down — single-line scroll (Ctrl-Up / Ctrl-Down)
+    # Mouse wheel is handled by prompt_toolkit automatically because the
+    # output window is now focusable, but we also honor scroll events via
+    # the Window's built-in wheel handler when mouse_support=True.
+    def _win_height(w) -> int:
+        """Best-effort current render height; fall back to a sane default."""
+        try:
+            info = w.render_info
+            if info is not None:
+                return max(1, info.window_height)
+        except Exception:
+            pass
+        return 20
+
+    def _scroll(win, delta: int) -> None:
+        if win is None:
+            return
+        cur = getattr(win, "vertical_scroll", 0) or 0
+        win.vertical_scroll = max(0, cur + delta)
+        # A negative delta = scrolling up, so user is looking at older output;
+        # suppress autoscroll until they jump back to the bottom.
+        if delta < 0:
+            state.output_scroll_locked = True
+
+    @kb.add("pageup")
+    def _scroll_pageup(event):  # type: ignore[no-untyped-def]
+        w = state.output_window
+        _scroll(w, -max(1, _win_height(w) - 2))
+
+    @kb.add("pagedown")
+    def _scroll_pagedown(event):  # type: ignore[no-untyped-def]
+        w = state.output_window
+        _scroll(w, max(1, _win_height(w) - 2))
+
+    @kb.add("c-up")
+    def _scroll_line_up(event):  # type: ignore[no-untyped-def]
+        _scroll(state.output_window, -1)
+
+    @kb.add("c-down")
+    def _scroll_line_down(event):  # type: ignore[no-untyped-def]
+        _scroll(state.output_window, 1)
+
+    @kb.add("home")
+    def _scroll_home(event):  # type: ignore[no-untyped-def]
+        w = state.output_window
+        if w is not None:
+            w.vertical_scroll = 0
+            state.output_scroll_locked = True
+
+    @kb.add("end")
+    def _scroll_end(event):  # type: ignore[no-untyped-def]
+        # Jumping to the end re-enables autoscroll so new output tracks again.
+        w = state.output_window
+        if w is not None:
+            # A big number beyond the document; prompt_toolkit clamps to max.
+            w.vertical_scroll = 10_000_000
+            state.output_scroll_locked = False
 
     @kb.add("c-g")
     def _open_editor(event):  # type: ignore[no-untyped-def]
