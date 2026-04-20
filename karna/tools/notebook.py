@@ -112,10 +112,17 @@ def _run_subprocess_execution(
         stderr = stderr.strip()
         return stderr[-500:] if len(stderr) > 500 else stderr
 
+    # nbconvert's ``--output`` argument is a *basename*; the file lands
+    # next to the input unless ``--output-dir`` is given. Pass them
+    # separately so the output goes to the intended location on every
+    # nbconvert version (some recent builds fail or warn when
+    # ``--output`` contains a path separator).
+    out_dir = str(out_path.parent)
+    out_base = out_path.name
     for name, argv in (
         ("jupyter nbconvert", [
             "jupyter", "nbconvert", "--to", "notebook", "--execute",
-            "--output", str(out_path), str(in_path),
+            "--output", out_base, "--output-dir", out_dir, str(in_path),
         ]),
         ("papermill", ["papermill", str(in_path), str(out_path)]),
     ):
