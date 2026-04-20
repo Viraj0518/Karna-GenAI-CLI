@@ -26,7 +26,7 @@ tokens = ["tiktoken>=0.7"]
 web = ["trafilatura>=1.8"]
 vertex = ["google-auth>=2.0"]
 bedrock = ["boto3>=1.34"]
-cron = ["croniter>=2.0"]
+cron = ["croniter>=6.2.2"]
 all = ["karna[tokens,web,vertex,bedrock,cron]"]
 dev = [
     "pytest>=8.0",
