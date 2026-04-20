@@ -23,7 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tokens = ["tiktoken>=0.7"]
-web = ["trafilatura>=1.8"]
+web = ["trafilatura>=2.0.0"]
 vertex = ["google-auth>=2.0"]
 bedrock = ["boto3>=1.34"]
 cron = ["croniter>=2.0"]
