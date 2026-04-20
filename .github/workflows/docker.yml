@@ -67,12 +67,26 @@ jobs:
             org.opencontainers.image.licenses=Proprietary
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
+      # PR runs: native amd64 only — a correctness smoke test.
+      # Push to main / tag push: full amd64+arm64 multi-arch build via QEMU.
+      # arm64 via QEMU is ~10x slower than native; keeping it off the PR
+      # hot path drops docker CI from ~6min p50 (up to 4.6h in the tail)
+      # to ~2min on PRs. We still publish multi-arch on release.
+      - name: Compute platforms
+        id: platforms
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "list=linux/amd64" >> "$GITHUB_OUTPUT"
+          else
+            echo "list=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.platforms.outputs.list }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
