@@ -485,8 +485,9 @@ async def run_repl(
     _init_provider.model = _init_model
     repl_compactor = Compactor(_init_provider, threshold=0.80)
 
-    # Simple prompt — model name is shown in the banner, not repeated
-    prompt_str = "❯ "
+    # Simple prompt — model name is shown in the banner, not repeated.
+    # _format_prompt() already prepends the ❯ chevron, so just pass empty.
+    prompt_str = ""
 
     # Build the prompt_toolkit session for async prompting
     from prompt_toolkit.history import InMemoryHistory
