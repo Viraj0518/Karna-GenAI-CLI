@@ -1064,17 +1064,26 @@ async def run_repl(
             state.agent_running = False
             state.agent_task = None
             state.status_text = ""
+            # Clear any pending soft-interrupt so the next turn starts
+            # clean. Without this, an Esc→Ctrl-C sequence (which the
+            # TUI recommends) leaves interrupt_requested=True, and the
+            # next turn aborts on its first event.
+            state.interrupt_requested = False
         else:
             event.current_buffer.reset()
 
-    @kb.add("escape", eager=True)
+    # Plain Esc — soft interrupt. Note: no eager=True. prompt_toolkit
+    # needs a moment to see whether a follow-on key arrives, because
+    # the existing ``escape``+``enter`` binding (newline in the input
+    # buffer) starts with the same byte. Eager would dispatch this
+    # handler immediately on the Esc and swallow the longer sequence.
+    @kb.add("escape")
     def _soft_interrupt(event):  # type: ignore[no-untyped-def]
         """Esc alone asks the agent to stop at its next checkpoint.
 
         Distinct from Ctrl-C: this is a cooperative interrupt. The
         agent loop sees ``state.interrupt_requested`` between events
-        and winds down cleanly. Eager=True prevents prompt_toolkit
-        from waiting for a follow-on key before dispatching.
+        and winds down cleanly.
         """
         if state.agent_running:
             state.interrupt_requested = True

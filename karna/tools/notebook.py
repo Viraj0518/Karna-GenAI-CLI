@@ -339,10 +339,9 @@ class NotebookTool(BaseTool):
         if executed is None:
             return (
                 "[error] Could not execute notebook: neither `jupyter "
-                "nbconvert` nor `papermill` is available, or both failed. "
-                "Install an execution extra (e.g. `pip install "
-                "nellie[notebook]`) or run `jupyter nbconvert --execute` "
-                "from your own environment."
+                "nbconvert` nor `papermill` is available on PATH, or both "
+                "failed. Install one via `pip install jupyter nbconvert` "
+                "or `pip install papermill`, then retry."
             )
         _write_nb(path, executed)
         return self._read(path, None)
@@ -352,9 +351,9 @@ class NotebookTool(BaseTool):
 
         Refuses to fall back to in-process evaluation of cell source: a
         poisoned or hallucinated model output could otherwise run with the
-        user's full capability. Install an execution extra
-        (``pip install nellie[notebook]`` or a working ``jupyter nbconvert``
-        on PATH) to enable cell execution.
+        user's full capability. Install one of the supported backends
+        (``pip install jupyter nbconvert`` or ``pip install papermill``)
+        to enable cell execution.
         """
         nb = _read_nb(path)
         cells = nb.get("cells", [])
@@ -385,10 +384,10 @@ class NotebookTool(BaseTool):
         if executed is None:
             return (
                 "[error] Could not execute cell: neither `jupyter nbconvert` "
-                "nor `papermill` is available. Install an execution extra "
-                "(e.g. `pip install nellie[notebook]`) or run `jupyter "
-                "nbconvert --execute` from your own environment. In-process "
-                "cell execution has been disabled for safety."
+                "nor `papermill` is available on PATH. Install one via "
+                "`pip install jupyter nbconvert` or `pip install papermill`, "
+                "then retry. In-process cell execution has been disabled "
+                "for safety."
             )
 
         executed_cells = executed.get("cells", [])
