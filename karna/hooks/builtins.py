@@ -110,11 +110,13 @@ def _get_extractor() -> Any:
     """Lazy-init the MemoryExtractor singleton."""
     global _extractor_instance
     if _extractor_instance is None:
+        from karna.config import load_config
         from karna.memory import MemoryManager
         from karna.memory.extractor import MemoryExtractor
 
-        mm = MemoryManager()
-        _extractor_instance = MemoryExtractor(memory_manager=mm)
+        memory_config = load_config().memory
+        mm = MemoryManager(memory_config=memory_config)
+        _extractor_instance = MemoryExtractor(memory_manager=mm, memory_config=memory_config)
     return _extractor_instance
 
 
