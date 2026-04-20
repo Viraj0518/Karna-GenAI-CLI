@@ -104,14 +104,79 @@ _STYLE_META = _token("meta", "bright_black")
 _STYLE_BRAND_DIM = _token("accent_brand_dim", f"dim {BRAND_BLUE}")
 _STYLE_DIVIDER = _token("divider", "bright_black")
 
-# Semantic icon roles -- Nerd Font glyphs with Unicode fallbacks.
-_ICON_USER = _icon("user", "\uf061")       # nf-fa-arrow_right (❯)
-_ICON_ASSISTANT = _icon("assistant", "\uf005")  # nf-fa-star (◆)
-_ICON_THINKING = _icon("thinking", "\uf0eb")    # nf-fa-lightbulb_o
-_ICON_TOOL = _icon("tool", "\uf085")       # nf-fa-cogs
-_ICON_OK = _icon("success", "\uf00c")      # nf-fa-check
-_ICON_ERR = _icon("failure", "\uf00d")     # nf-fa-times
-_ICON_CURSOR = _icon("cursor", "\u258c")   # left half block
+# --------------------------------------------------------------------------- #
+#  Icon set detection: Nerd Font → Emoji → ASCII
+#
+#  Controlled by config.toml [theme] icon_set = "nerd" | "emoji" | "ascii"
+#  or auto-detected: if NELLIE_ICONS env var is set, use that; otherwise
+#  default to "nerd" (most dev terminals have Nerd Fonts).
+# --------------------------------------------------------------------------- #
+
+_ICON_SETS = {
+    "nerd": {
+        "user": "\uf061",       # nf-fa-arrow_right
+        "assistant": "\uf005",  # nf-fa-star
+        "thinking": "\uf0eb",   # nf-fa-lightbulb_o
+        "tool": "\uf085",       # nf-fa-cogs
+        "success": "\uf00c",    # nf-fa-check
+        "failure": "\uf00d",    # nf-fa-times
+        "cursor": "\u258c",     # left half block
+    },
+    "emoji": {
+        "user": ">",
+        "assistant": "◆",
+        "thinking": "✦",
+        "tool": "⚒",
+        "success": "✓",
+        "failure": "✗",
+        "cursor": "▌",
+    },
+    "ascii": {
+        "user": ">",
+        "assistant": "*",
+        "thinking": "*",
+        "tool": "#",
+        "success": "+",
+        "failure": "x",
+        "cursor": "|",
+    },
+}
+
+
+def _detect_icon_set() -> str:
+    """Detect which icon set to use."""
+    import os
+
+    # Explicit override via env var
+    env = os.environ.get("NELLIE_ICONS", "").lower()
+    if env in _ICON_SETS:
+        return env
+    # Try config
+    try:
+        from karna.config import load_config
+
+        cfg = load_config()
+        theme = getattr(cfg, "theme", None) or {}
+        if isinstance(theme, dict):
+            icon_set = theme.get("icon_set", "")
+            if icon_set in _ICON_SETS:
+                return icon_set
+    except Exception:  # noqa: BLE001
+        pass
+    # Default to nerd
+    return "nerd"
+
+
+_ACTIVE_ICON_SET = _detect_icon_set()
+_ICONS_MAP = _ICON_SETS[_ACTIVE_ICON_SET]
+
+_ICON_USER = _icon("user", _ICONS_MAP["user"])
+_ICON_ASSISTANT = _icon("assistant", _ICONS_MAP["assistant"])
+_ICON_THINKING = _icon("thinking", _ICONS_MAP["thinking"])
+_ICON_TOOL = _icon("tool", _ICONS_MAP["tool"])
+_ICON_OK = _icon("success", _ICONS_MAP["success"])
+_ICON_ERR = _icon("failure", _ICONS_MAP["failure"])
+_ICON_CURSOR = _icon("cursor", _ICONS_MAP["cursor"])
 
 
 # --------------------------------------------------------------------------- #
@@ -169,25 +234,39 @@ TOOL_VERBS = {
     "notebook": "notebook",
 }
 
-# Nerd Font glyphs (requires a Nerd Font installed — Fira Code Nerd, JetBrains Mono Nerd, etc.)
-# Private Use Area codepoints from nf-cod-* and nf-md-* sets.
-TOOL_EMOJI = {
-    "bash": "\uf120",       # nf-fa-terminal
-    "read": "\uf06e",       # nf-fa-eye
-    "write": "\uf044",      # nf-fa-pencil_square_o (edit/write)
-    "edit": "\uf440",       # nf-oct-diff
-    "grep": "\uf002",       # nf-fa-search
-    "glob": "\uf07b",       # nf-fa-folder
-    "git": "\ue725",        # nf-dev-git_branch
-    "web_search": "\uf0ac", # nf-fa-globe
-    "web_fetch": "\uf0ed",  # nf-fa-cloud_download
-    "monitor": "\uf0e7",    # nf-fa-bolt (pulse)
-    "task": "\uf0c1",       # nf-fa-link (subagent)
-    "mcp": "\uf0e7",        # nf-fa-bolt (lightning)
-    "image": "\uf03e",      # nf-fa-image
-    "clipboard": "\uf0ea",  # nf-fa-clipboard
-    "notebook": "\ue736",   # nf-dev-notebook (seti)
+_TOOL_EMOJI_SETS = {
+    "nerd": {
+        "bash": "\uf120",       # nf-fa-terminal
+        "read": "\uf06e",       # nf-fa-eye
+        "write": "\uf044",      # nf-fa-pencil_square_o
+        "edit": "\uf440",       # nf-oct-diff
+        "grep": "\uf002",       # nf-fa-search
+        "glob": "\uf07b",       # nf-fa-folder
+        "git": "\ue725",        # nf-dev-git_branch
+        "web_search": "\uf0ac", # nf-fa-globe
+        "web_fetch": "\uf0ed",  # nf-fa-cloud_download
+        "monitor": "\uf0e7",    # nf-fa-bolt
+        "task": "\uf0c1",       # nf-fa-link
+        "mcp": "\uf0e7",        # nf-fa-bolt
+        "image": "\uf03e",      # nf-fa-image
+        "clipboard": "\uf0ea",  # nf-fa-clipboard
+        "notebook": "\ue736",   # nf-dev-notebook
+    },
+    "emoji": {
+        "bash": "\U0001f4bb", "read": "\U0001f4d6", "write": "\u270d\ufe0f",
+        "edit": "\U0001f527", "grep": "\U0001f50e", "glob": "\U0001f4c1",
+        "git": "\U0001f500", "web_search": "\U0001f50d", "web_fetch": "\U0001f4c4",
+        "monitor": "\U0001f4e1", "task": "\U0001f500", "mcp": "\u26a1",
+        "image": "\U0001f5bc\ufe0f", "clipboard": "\U0001f4cb", "notebook": "\U0001f4d3",
+    },
+    "ascii": {
+        "bash": "$", "read": "R", "write": "W", "edit": "E", "grep": "?",
+        "glob": "F", "git": "G", "web_search": "S", "web_fetch": "D",
+        "monitor": "M", "task": "T", "mcp": "X", "image": "I",
+        "clipboard": "C", "notebook": "N",
+    },
 }
+TOOL_EMOJI = _TOOL_EMOJI_SETS.get(_ACTIVE_ICON_SET, _TOOL_EMOJI_SETS["nerd"])
 
 LONG_RUN_CHARMS = [
     "still cooking...",
