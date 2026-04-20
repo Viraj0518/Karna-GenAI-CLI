@@ -15,9 +15,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # We test against the min (3.10) and max (3.12) supported Python.
+      # Dropped 3.11 from the PR matrix: a 3.11-specific regression
+      # that doesn't reproduce on 3.10 or 3.12 is a near-zero slice of
+      # the world and doesn't justify a 3rd matrix job on every push.
+      # If we start caring about it we'll add a nightly full-matrix run.
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.12"]
         include:
           - os: windows-latest
             python-version: "3.12"

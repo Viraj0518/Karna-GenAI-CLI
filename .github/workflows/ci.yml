@@ -15,7 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # Min + max supported Python. 3.11 dropped to halve matrix time
+        # on PRs; mirror the same pruning in test.yml.
+        python-version: ["3.10", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
