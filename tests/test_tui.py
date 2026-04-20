@@ -212,5 +212,6 @@ def test_renderer_handles_tool_call() -> None:
     renderer.handle(StreamEvent(kind=EventKind.TOOL_RESULT, data={"content": "file.txt\n", "is_error": False}))
     renderer.finish()
     output = buf.getvalue()
-    assert "bash" in output
-    assert "file.txt" in output
+    # Hermes-style: tool verb "terminal" replaces raw name "bash"
+    assert "terminal" in output
+    assert "ls" in output

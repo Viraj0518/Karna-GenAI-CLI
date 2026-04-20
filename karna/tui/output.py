@@ -32,8 +32,10 @@ them from here.
 from __future__ import annotations
 
 import json as _json
+import random
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
 
@@ -110,6 +112,129 @@ _ICON_TOOL = _icon("tool", "⚒")
 _ICON_OK = _icon("success", "✓")
 _ICON_ERR = _icon("failure", "✗")
 _ICON_CURSOR = _icon("cursor", "▌")
+
+
+# --------------------------------------------------------------------------- #
+#  Hermes-style kawaii faces, thinking verbs, tool mappings, long-run charms
+# --------------------------------------------------------------------------- #
+
+BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+FACES = [
+    "(｡•́︿•̀｡)",
+    "(◔_◔)",
+    "(¬‿¬)",
+    "(⌐■_■)",
+    "(´･_･`)",
+    "◉_◉",
+    "(°ロ°)",
+    "( ˘⌣˘)♡",
+    "(⊙_⊙)",
+    "( ͡° ͜ʖ ͡°)",
+]
+
+VERBS = [
+    "pondering",
+    "contemplating",
+    "musing",
+    "cogitating",
+    "ruminating",
+    "deliberating",
+    "mulling",
+    "reflecting",
+    "processing",
+    "reasoning",
+    "analyzing",
+    "computing",
+    "synthesizing",
+    "formulating",
+    "brainstorming",
+]
+
+TOOL_VERBS = {
+    "bash": "terminal",
+    "read": "reading",
+    "write": "writing",
+    "edit": "patching",
+    "grep": "searching",
+    "glob": "listing",
+    "git": "git",
+    "web_search": "searching",
+    "web_fetch": "fetching",
+    "monitor": "monitoring",
+    "task": "delegating",
+    "mcp": "calling",
+    "image": "analyzing",
+    "clipboard": "clipboard",
+    "notebook": "notebook",
+}
+
+TOOL_EMOJI = {
+    "bash": "\U0001f4bb",
+    "read": "\U0001f4d6",
+    "write": "\u270d\ufe0f",
+    "edit": "\U0001f527",
+    "grep": "\U0001f50e",
+    "glob": "\U0001f4c1",
+    "git": "\U0001f500",
+    "web_search": "\U0001f50d",
+    "web_fetch": "\U0001f4c4",
+    "monitor": "\U0001f4e1",
+    "task": "\U0001f500",
+    "mcp": "\u26a1",
+    "image": "\U0001f5bc\ufe0f",
+    "clipboard": "\U0001f4cb",
+    "notebook": "\U0001f4d3",
+}
+
+LONG_RUN_CHARMS = [
+    "still cooking...",
+    "polishing edges...",
+    "asking the void nicely...",
+    "almost there...",
+    "worth the wait...",
+    "patience is a virtue...",
+]
+
+
+def _tool_base_name(name: str) -> str:
+    """Normalize tool name to a base key for verb/emoji lookup."""
+    # e.g. "Read" -> "read", "web_search" stays
+    return name.lower().split("_")[0] if "_" not in name.lower() else name.lower()
+
+
+def _get_tool_emoji(name: str) -> str:
+    base = _tool_base_name(name)
+    return TOOL_EMOJI.get(base, TOOL_EMOJI.get(name.lower(), "\u2692"))
+
+
+def _get_tool_verb(name: str) -> str:
+    base = _tool_base_name(name)
+    return TOOL_VERBS.get(base, TOOL_VERBS.get(name.lower(), name.lower()))
+
+
+def _extract_tool_context(name: str, args_buffer: str) -> str:
+    """Extract a short context string from tool arguments."""
+    try:
+        args = _json.loads(args_buffer) if args_buffer else {}
+    except Exception:  # noqa: BLE001
+        return ""
+    if not isinstance(args, dict):
+        return ""
+    # file path
+    fp = args.get("file_path", "") or args.get("path", "")
+    if fp:
+        return str(fp)
+    # command
+    cmd = args.get("command", "")
+    if cmd:
+        short = str(cmd).split("\n")[0]
+        return short[:60] + ("..." if len(short) > 60 else "")
+    # pattern
+    pat = args.get("pattern", "")
+    if pat:
+        return str(pat)
+    return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -205,28 +330,45 @@ class _ToolState:
     args_buffer: str = ""
     status: str = "pending"  # pending | running | ok | err
     status_text: str = "preparing..."
+    start_time: float = field(default_factory=time.time)
+    charm_shown: bool = False
 
     def header(self, spinner_frame: str | None = None) -> Text:
         """Render the single-line status header for this tool call."""
+        emoji = _get_tool_emoji(self.name)
+        verb = _get_tool_verb(self.name)
+        context = _extract_tool_context(self.name, self.args_buffer)
         line = Text()
-        line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
-        line.append(self.name, style="bold")
-        line.append("  ")
+        line.append("\u251c\u2500 ", style=_STYLE_META)
+        line.append(f"{emoji} ", style=_STYLE_META)
+        line.append(verb, style="bold")
+        if context:
+            line.append(f"  {context}", style=_STYLE_META)
         if self.status in ("pending", "running"):
-            # Spinner slot
             if spinner_frame:
-                line.append(spinner_frame, style=_STYLE_BRAND_DIM)
-            line.append("  ")
-            line.append(self.status_text, style=_STYLE_META)
+                line.append(f"  {spinner_frame}", style=_STYLE_BRAND_DIM)
         elif self.status == "ok":
-            line.append(_ICON_OK, style=_STYLE_SUCCESS)
-            line.append("  ")
-            line.append(self.status_text, style=_STYLE_SUCCESS)
+            elapsed = time.time() - self.start_time
+            line.append(f"  {_ICON_OK} {elapsed:.1f}s", style=_STYLE_SUCCESS)
         else:  # err
-            line.append(_ICON_ERR, style=_STYLE_DANGER)
-            line.append("  ")
-            line.append(self.status_text, style=_STYLE_DANGER)
+            elapsed = time.time() - self.start_time
+            line.append(f"  {_ICON_ERR} {elapsed:.1f}s", style=_STYLE_DANGER)
         return line
+
+
+# --------------------------------------------------------------------------- #
+#  Inline diff helper
+# --------------------------------------------------------------------------- #
+
+
+def _render_simple_diff(old_str: str, new_str: str) -> Text:
+    """Render old_string -> new_string as a compact colored diff."""
+    result = Text()
+    for line in old_str.splitlines():
+        result.append(f"    - {line}\n", style="red")
+    for line in new_str.splitlines():
+        result.append(f"    + {line}\n", style="green")
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -276,16 +418,19 @@ class OutputRenderer:
         """Display a waiting indicator until the first event.
 
         Instead of a Live spinner (which fights with prompt_toolkit),
-        we print a static indicator that will be visually superseded
-        by the first real output.
+        we print a static indicator with a random kawaii face + verb,
+        hermes-style. The animated version runs in the status bar.
         """
         if self._spinner_shown:
             return
         self._ensure_turn_break()
+        face = random.choice(FACES)  # noqa: S311
+        verb = random.choice(VERBS)  # noqa: S311
         indicator = Text()
-        indicator.append("  ", style=_STYLE_BRAND_DIM)
-        indicator.append("...", style=_STYLE_BRAND_DIM)
-        indicator.append(" thinking", style=_STYLE_BRAND_DIM)
+        indicator.append("\u251c\u2500 ", style=_STYLE_META)
+        indicator.append(BRAILLE_FRAMES[0], style=_STYLE_BRAND_DIM)
+        indicator.append(f" {face} ", style=_STYLE_BRAND_DIM)
+        indicator.append(f"{verb}...", style=_STYLE_BRAND_DIM)
         self.console.print(indicator)
         self._spinner_shown = True
 
@@ -479,10 +624,10 @@ class OutputRenderer:
             args_buffer=str(initial_args),
             status="running",
             status_text=f"calling {name}...",
+            start_time=time.time(),
         )
 
-        # Print a static "calling..." header (replaces the old Live spinner).
-        # The final tool result will be printed by _on_tool_call_end.
+        # Print hermes-style tree branch with emoji + verb + context
         self.console.print(self._tool.header())
 
     def _on_tool_call_args_delta(self, delta: str) -> None:
@@ -494,32 +639,8 @@ class OutputRenderer:
         if self._tool is None:
             return
 
-        tool = self._tool
-        # Render the committed header (no spinner) plus a syntax block for args.
-        header = Text()
-        header.append(f"{_ICON_TOOL} ", style=_STYLE_META)
-        header.append(tool.name, style="bold")
-        header.append("  ")
-        header.append("…", style=_STYLE_BRAND_DIM)
-        header.append("  ")
-        header.append(f"called {tool.name}", style=_STYLE_META)
-
-        parts: list[RenderableType] = [header]
-        pretty = _truncate_args_json(tool.args_buffer)
-        if pretty and pretty != "(no arguments)":
-            parts.append(
-                Syntax(
-                    pretty,
-                    "json",
-                    theme="ansi_dark",
-                    line_numbers=False,
-                    word_wrap=True,
-                    background_color="default",
-                )
-            )
-
-        self.console.print(Group(*parts))
-        # Keep _tool around — TOOL_RESULT will update its status.
+        # We no longer need an intermediate "called" header; the final
+        # status is rendered by _on_tool_result.  Just keep _tool around.
 
     def _on_tool_result(self, data: dict[str, Any] | None) -> None:
         # --- robust extraction: data may be str, dict, or None ---
@@ -543,49 +664,81 @@ class OutputRenderer:
         else:
             tool_name = "tool"
 
-        # For write/edit tools, don't dump the full file content — just show success
+        # Compute elapsed time
+        elapsed = time.time() - self._tool.start_time if self._tool else 0.0
+        elapsed_str = f"{elapsed:.1f}s"
+
+        # For write/edit tools, show inline diff if possible
         if tool_name in ("write", "edit") and not is_error:
-            # Extract file path from tool args if available
             file_hint = ""
+            old_str = ""
+            new_str = ""
             if self._tool and self._tool.args_buffer:
                 try:
                     args = _json.loads(self._tool.args_buffer)
-                    file_hint = f" {args.get('file_path', '')}"
+                    file_hint = args.get("file_path", "")
+                    old_str = args.get("old_string", "")
+                    new_str = args.get("new_string", "")
                 except Exception:  # noqa: BLE001
                     pass
+
+            # Hermes-style result line
+            emoji = _get_tool_emoji(tool_name)
+            verb = _get_tool_verb(tool_name)
             status_line = Text()
-            status_line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
-            status_line.append(tool_name, style="bold")
-            status_line.append("  ")
-            status_line.append(_ICON_OK, style=_STYLE_SUCCESS)
-            status_line.append(f"  {file_hint.strip()}", style=_STYLE_META)
+            status_line.append("\u251c\u2500 ", style=_STYLE_META)
+            status_line.append(f"{emoji} ", style=_STYLE_META)
+            status_line.append(verb, style="bold")
+            if file_hint:
+                status_line.append(f"  {file_hint}", style=_STYLE_META)
+            status_line.append(f"  {_ICON_OK} {elapsed_str}", style=_STYLE_SUCCESS)
             self.console.print(status_line)
+
+            # Show inline diff for edit tool
+            if old_str and new_str and tool_name == "edit":
+                diff_text = _render_simple_diff(old_str, new_str)
+                self.console.print(diff_text)
+
             self._tool = None
             return
 
-        # Update + render the terminal status line.
+        # Update tool status
+        if self._tool:
+            self._tool.status = "err" if is_error else "ok"
+
+        # Hermes-style result line with emoji + verb + elapsed
+        emoji = _get_tool_emoji(tool_name)
+        verb = _get_tool_verb(tool_name)
+        context = _extract_tool_context(tool_name, self._tool.args_buffer if self._tool else "")
+
         status_icon = _ICON_ERR if is_error else _ICON_OK
         status_style = _STYLE_DANGER if is_error else _STYLE_SUCCESS
 
-        # Short summary of result for the status line.
-        stripped = content.strip()
-        first_line = stripped.splitlines()[0] if stripped else ("error" if is_error else "done")
-        summary = first_line if len(first_line) <= 80 else first_line[:77] + "..."
-
         status_line = Text()
-        status_line.append(f"{_ICON_TOOL} ", style=_STYLE_META)
-        status_line.append(tool_name, style="bold")
-        status_line.append("  ")
-        status_line.append(status_icon, style=status_style)
-        status_line.append("  ")
-        status_line.append(summary, style=status_style if is_error else _STYLE_META)
+        status_line.append("\u251c\u2500 ", style=_STYLE_META)
+        status_line.append(f"{emoji} ", style=_STYLE_META)
+        status_line.append(verb, style="bold")
+        if context:
+            status_line.append(f"  {context}", style=_STYLE_META)
+        status_line.append(f"  {status_icon} {elapsed_str}", style=status_style)
         self.console.print(status_line)
 
+        # Short summary for errors
+        stripped = content.strip()
+        if is_error and stripped:
+            first_line = stripped.splitlines()[0]
+            summary = first_line if len(first_line) <= 80 else first_line[:77] + "..."
+            err_line = Text()
+            err_line.append("  ", style=_STYLE_META)
+            err_line.append(summary, style=_STYLE_DANGER)
+            self.console.print(err_line)
+
         # Long results get a full panel; short ones are already covered.
-        if stripped and len(stripped) > _RESULT_INLINE_LIMIT:
+        if stripped and len(stripped) > _RESULT_INLINE_LIMIT and not is_error:
             display = stripped
             if len(display) > _RESULT_PANEL_LIMIT:
-                display = display[:_RESULT_PANEL_LIMIT] + f"\n… ({len(stripped) - _RESULT_PANEL_LIMIT} chars truncated)"
+                extra = len(stripped) - _RESULT_PANEL_LIMIT
+                display = display[:_RESULT_PANEL_LIMIT] + f"\n\u2026 ({extra} chars truncated)"
 
             # Detect language for syntax highlighting
             lang = "text"
@@ -634,17 +787,13 @@ class OutputRenderer:
             else:
                 body = Text(display, style=TOOL_RESULT if not is_error else ERROR)
 
-            title = (
-                f"[{_STYLE_DANGER}]tool error · {tool_name}[/]"
-                if is_error
-                else f"[{_STYLE_META}]output · {tool_name}[/]"
-            )
+            title = f"[{_STYLE_META}]output \u00b7 {tool_name}[/]"
             self.console.print(
                 Panel(
                     body,
                     title=title,
                     title_align="left",
-                    border_style=_STYLE_DANGER if is_error else _STYLE_META,
+                    border_style=_STYLE_META,
                     padding=(0, 1),
                     expand=True,
                 )

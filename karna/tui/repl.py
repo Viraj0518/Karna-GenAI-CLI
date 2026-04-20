@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
+import time
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator
@@ -38,7 +40,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension as D
-from prompt_toolkit.layout.processors import BeforeInput
+from prompt_toolkit.layout.processors import BeforeInput, Processor, Transformation
 from prompt_toolkit.output import ColorDepth
 from rich.console import Console
 
@@ -53,7 +55,14 @@ from karna.sessions.cost import CostTracker
 from karna.sessions.db import SessionDB
 from karna.skills.loader import SkillManager
 from karna.tools import TOOLS, get_all_tools
-from karna.tui.output import EventKind, OutputRenderer, StreamEvent
+from karna.tui.output import (
+    FACES,
+    LONG_RUN_CHARMS,
+    VERBS,
+    EventKind,
+    OutputRenderer,
+    StreamEvent,
+)
 from karna.tui.slash import (
     SessionCost,
     _store_last_plan,  # type: ignore[attr-defined]
@@ -67,6 +76,43 @@ from karna.tui.themes import KARNA_THEME
 _LOOP_SENTINEL = "__LOOP__"
 _PLAN_SENTINEL = "__PLAN__"
 _DO_SENTINEL = "__DO__"
+
+
+# --------------------------------------------------------------------------- #
+#  Rotating placeholder tips (hermes-style)
+# --------------------------------------------------------------------------- #
+
+PLACEHOLDERS = [
+    "Ask anything...",
+    'Try "explain this codebase"',
+    'Try "write tests for..."',
+    'Try "fix the lint errors"',
+    'Try "/help" for commands',
+    'Try "refactor the auth module"',
+    'Try "how does the config work?"',
+]
+
+
+# --------------------------------------------------------------------------- #
+#  Context usage bar helpers
+# --------------------------------------------------------------------------- #
+
+
+def _ctx_bar(pct: float, width: int = 10) -> str:
+    """Render a block-character progress bar."""
+    filled = round(pct / 100 * width)
+    return "\u2588" * filled + "\u2591" * (width - filled)
+
+
+def _ctx_color(pct: float) -> str:
+    """ANSI color code for context usage percentage."""
+    if pct >= 95:
+        return "31"  # red
+    if pct > 80:
+        return "33"  # yellow
+    if pct >= 50:
+        return "36"  # cyan
+    return "32"  # green
 
 
 # --------------------------------------------------------------------------- #
@@ -201,6 +247,13 @@ class REPLState:
         self.agent_task: asyncio.Task | None = None
         self.status_text: str = ""
         self.session_cost: SessionCost = SessionCost()
+        self.session_start: float = time.time()
+        # Context usage tracking
+        self.context_tokens_used: int = 0
+        self.context_window: int = 128_000
+        # Long-run charm tracking
+        self.long_run_start: float = 0.0
+        self.long_run_charm_shown: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -408,10 +461,20 @@ async def _run_agent_turn(
                 state.status_text = "writing..."
             elif event.kind == EventKind.TOOL_CALL_START and isinstance(event.data, dict):
                 state.status_text = f"calling {event.data.get('name', 'tool')}..."
+                state.long_run_start = time.time()
+                state.long_run_charm_shown = False
             elif event.kind == EventKind.TOOL_RESULT:
                 state.status_text = "processing..."
+                state.long_run_start = 0.0
+                state.long_run_charm_shown = False
+            elif event.kind == EventKind.USAGE and isinstance(event.data, dict):
+                # Track context usage from usage events
+                prompt_tok = event.data.get("prompt_tokens", 0)
+                comp_tok = event.data.get("completion_tokens", 0)
+                state.context_tokens_used = prompt_tok + comp_tok
             elif event.kind == EventKind.DONE:
                 state.status_text = ""
+                state.long_run_start = 0.0
 
             # Check for queued steering messages (non-blocking)
             while not state.input_queue.empty():
@@ -559,7 +622,7 @@ def _build_application(
         wrap_lines=True,
     )
 
-    # Status bar -- 1-line, shows model + cost + agent status
+    # Status bar -- 1-line, shows model + animated face/verb + context bar + cost + timer
     def _status_bar_text():
         # Avoid doubled prefix like "openrouter/openrouter/auto"
         m = config.active_model or ""
@@ -567,16 +630,42 @@ def _build_application(
             model = m
         else:
             model = f"{config.active_provider}/{m}"
-        cost = f"${state.session_cost.total_usd:.4f}" if state.session_cost.total_usd > 0 else ""
-        status = state.status_text
 
+        now = time.time()
         parts = [f" {model}"]
-        if cost:
-            parts.append(cost)
-        if status:
-            parts.append(status)
-        elif state.agent_running:
-            parts.append("working...")
+
+        # Animated kawaii face + verb when agent is running
+        if state.agent_running:
+            face = FACES[int(now * 0.4) % len(FACES)]
+            verb = VERBS[int(now * 0.1) % len(VERBS)]
+            parts.append(f"{face} {verb}...")
+
+            # Long-run charm (>10s on a tool call)
+            if state.long_run_start > 0:
+                tool_elapsed = now - state.long_run_start
+                if tool_elapsed > 10 and not state.long_run_charm_shown:
+                    charm = random.choice(LONG_RUN_CHARMS)  # noqa: S311
+                    parts.append(charm)
+                    state.long_run_charm_shown = True
+        elif state.status_text:
+            parts.append(state.status_text)
+
+        # Context usage bar
+        if state.context_tokens_used > 0:
+            pct = min(100.0, state.context_tokens_used / state.context_window * 100)
+            bar = _ctx_bar(pct)
+            color = _ctx_color(pct)
+            parts.append(f"\x1b[{color}m{bar} {pct:.0f}%\x1b[38;5;245m")
+
+        # Session cost
+        if state.session_cost.total_usd > 0:
+            parts.append(f"${state.session_cost.total_usd:.4f}")
+
+        # Session duration timer
+        elapsed = now - state.session_start
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        parts.append(f"{mins}:{secs:02d}")
 
         return ANSI(f"\x1b[38;5;245m{'  |  '.join(parts)}\x1b[0m")
 
@@ -586,11 +675,28 @@ def _build_application(
         style=f"bg:{SEMANTIC.get('bg.subtle', '#0E0F12')}",
     )
 
+    # Rotating placeholder tip
+    placeholder_tip = random.choice(PLACEHOLDERS)  # noqa: S311
+
+    class _PlaceholderProcessor(Processor):
+        """Show a dim placeholder when the input buffer is empty."""
+
+        def apply_transformation(self, transformation_input):
+            doc = transformation_input.document
+            if not doc.text:
+                return Transformation(
+                    [("class:placeholder", f" {placeholder_tip}")],
+                )
+            return Transformation(transformation_input.fragments)
+
     # Input window -- always active, accepts user input
     input_window = Window(
         content=BufferControl(
             buffer=input_buffer,
-            input_processors=[BeforeInput(ANSI("\x1b[1;38;2;60;115;189m\u276f\x1b[0m "))],
+            input_processors=[
+                BeforeInput(ANSI("\x1b[1;38;2;60;115;189m\u276f\x1b[0m ")),
+                _PlaceholderProcessor(),
+            ],
         ),
         height=D(min=1, max=5),
         dont_extend_height=True,
@@ -857,6 +963,18 @@ async def run_repl(
 
     # Wire up invalidation so output changes trigger redraws
     writer.set_invalidate(app.invalidate)
+
+    # Periodic status bar refresh (face ticker, duration timer, context bar)
+    async def _refresh_status_bar() -> None:
+        while True:
+            await asyncio.sleep(0.5)
+            try:
+                if app.is_running:
+                    app.invalidate()
+            except Exception:  # noqa: BLE001
+                break
+
+    app.create_background_task(_refresh_status_bar())
 
     # Run the application
     try:
