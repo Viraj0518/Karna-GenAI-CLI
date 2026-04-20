@@ -101,7 +101,7 @@ nellie
 The `dev` branch adds four subsystems that land together in the next cut:
 
 - **RAG** (`karna/rag/`) — local-first retrieval over indexed project files. Uses `sentence-transformers` embeddings (downloaded once on first use) plus a small on-disk vector store. Enables context-aware recall without sending project content to any external service.
-- **Multi-agent comms** (`karna/comms/` + `comms` tool) — inter-agent inbox that lets two Nellie instances on the same machine (or a human + an agent) exchange messages by writing markdown files under `~/.karna-comms/`. Reads, sends, and replies are exposed as a tool so the agent can use it the way it uses any other tool.
+- **Multi-agent comms** (`karna/comms/` + `comms` tool) — inter-agent inbox that lets two Nellie instances on the same machine (or a human + an agent) exchange messages by writing markdown files under `~/.karna/comms/inbox/<agent>/`. Reads, sends, and replies are exposed as a tool so the agent can use it the way it uses any other tool.
 - **Cron scheduler** (`karna/cron/`) — background scheduler for time-triggered or interval-triggered tasks. Runs inside the agent process; survives session restarts via SQLite-backed state.
 - **Persona templates** (`templates/KARNA-*.md`) — five ready-to-copy `KARNA.md` files for different Karna divisions (BD, data-science, engineering, health-comms, research). Drop into a project directory to seed context for the agent; see the Templates section below.
 
