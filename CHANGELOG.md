@@ -26,7 +26,7 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ### Changed
 
-- README: tool count 15/17 → 20 everywhere, dropped the stale BSD-3-Clause and telemetry-zero badges (the latter contradicted the body note about the one-time `sentence-transformers` Hugging Face download). `GETTING_STARTED.md` tool table now matches.
+- README: tool count 15/17 → 19 (matches the runtime tool registry; `karna/tools/voice.py` exists on disk but is deliberately not wired in). Dropped the stale BSD-3-Clause and telemetry-zero badges (the latter contradicted the body note about the one-time `sentence-transformers` Hugging Face download). `GETTING_STARTED.md` tool table now matches.
 
 ### Fixed
 

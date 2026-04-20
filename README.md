@@ -5,13 +5,13 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"/></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-proprietary-red.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/tools-20-3C73BD.svg" alt="Tools: 20"/>
+  <img src="https://img.shields.io/badge/tools-19-3C73BD.svg" alt="Tools: 19"/>
   <img src="https://img.shields.io/badge/providers-5-5A8FCC.svg" alt="Providers: 5"/>
 </p>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License: Proprietary](https://img.shields.io/badge/license-proprietary-red.svg)](LICENSE.md)
-[![Tools: 20](https://img.shields.io/badge/tools-20-3C73BD.svg)](#tools)
+[![Tools: 19](https://img.shields.io/badge/tools-19-3C73BD.svg)](#tools)
 
 > **Internal Use Only -- Karna Engineering**
 
@@ -77,7 +77,7 @@ nellie
 | Capability | Details |
 |---|---|
 | **Any model** | OpenRouter (200+ models), Anthropic, OpenAI, Azure OpenAI, Google Vertex AI, AWS Bedrock, local/Ollama, multi-credential failover |
-| **20 tools** | bash, read, write, edit, grep, glob, git, web_search, web_fetch, clipboard, image, notebook, monitor, task, mcp, browser, db, comms, document, voice |
+| **19 tools** | bash, read, write, edit, grep, glob, git, web_search, web_fetch, clipboard, image, notebook, monitor, task, mcp, browser, db, comms, document |
 | **Parallel tool execution** | Independent reads/greps run concurrently; writes are serialized for safety |
 | **Skills system** | Extend with `.md` skill files -- custom workflows triggered by slash commands or keywords, enable/disable on the fly |
 | **Auto-memory** | Learns your preferences, project facts, and corrections automatically via pattern detection -- persists across sessions |
@@ -105,7 +105,7 @@ The `dev` branch adds four subsystems that land together in the next cut:
 - **Cron scheduler** (`karna/cron/`) — background scheduler for time-triggered or interval-triggered tasks. Runs inside the agent process; survives session restarts via SQLite-backed state.
 - **Persona templates** (`templates/KARNA-*.md`) — five ready-to-copy `KARNA.md` files for different Karna divisions (BD, data-science, engineering, health-comms, research). Drop into a project directory to seed context for the agent; see the Templates section below.
 
-New tools on `dev`: `browser` (Playwright-driven), `db` (SQLite/Postgres/MySQL with read-only default + parameterised bind), `comms` (see above), `document` (PDF/Office/CSV extraction), plus a `voice` experiment.
+New tools on `dev`: `browser` (Playwright-driven), `db` (SQLite/Postgres/MySQL with read-only default + parameterised bind), `comms` (see above), `document` (PDF/Office/CSV extraction). A fifth file, `voice.py`, exists in `karna/tools/` but is deliberately **not** wired into the tool registry yet — its docstring carries a "register me later" handoff marker.
 
 ## Templates
 
@@ -385,10 +385,12 @@ karna/                            ~22K lines, 105 .py files
 │   ├── openai.py                 -- OpenAI / Azure
 │   ├── local.py                  -- Local endpoints (Ollama, vLLM, etc.)
 │   └── caching.py                -- Prompt cache helper
-├── tools/                        -- 20 tools (bash, read, write, edit, grep, glob,
-│                                    git, web_search, web_fetch, clipboard, image,
-│                                    notebook, monitor, task, mcp, browser, db,
-│                                    comms, document, voice)
+├── tools/                        -- 19 registered tools (bash, read, write,
+│                                    edit, grep, glob, git, web_search,
+│                                    web_fetch, clipboard, image, notebook,
+│                                    monitor, task, mcp, browser, db, comms,
+│                                    document). voice.py exists but is not
+│                                    yet wired into the registry.
 ├── auth/                         -- Credential store + multi-key pool rotation
 ├── context/
 │   ├── manager.py                -- Central context manager, token-budget truncation
