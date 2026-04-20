@@ -254,6 +254,8 @@ class OutputRenderer:
         self._thinking_buffer: list[str] = []
         # Code-fence tracking: True while inside a fenced code block
         self._in_code_fence: bool = False
+        # Print "◆ nellie" label only once per turn
+        self._text_label_printed: bool = False
         # Live state
         self._live: Live | None = None
         self._live_kind: str | None = None  # "spinner" | "stream" | "tool"
@@ -303,6 +305,7 @@ class OutputRenderer:
         self._flush_text()
         self._tool = None
         self._in_code_fence = False
+        self._text_label_printed = False
 
     # ── live display management ────────────────────────────────────────
 
@@ -357,7 +360,10 @@ class OutputRenderer:
                 # Only treat as a flush point when closing a fence
                 fence_closed = was_in_fence and not self._in_code_fence
 
-        if "\n\n" in joined[-3:] or fence_closed or _SENTENCE_RE.search(joined[-3:]):
+        # Only flush on sentence boundary if we have enough buffered text
+        # to avoid splitting tiny fragments like "I" from "'ve created..."
+        has_enough = len(joined) >= 40
+        if "\n\n" in joined[-3:] or fence_closed or (has_enough and _SENTENCE_RE.search(joined[-3:])):
             self._flush_text()
 
     def _flush_text(self) -> None:
@@ -369,11 +375,13 @@ class OutputRenderer:
             return
         self._stop_live()
 
-        # Label line + content. Markdown renders code blocks / lists / etc.
-        label = Text()
-        label.append(f"{_ICON_ASSISTANT} ", style=_STYLE_ASSISTANT_LABEL)
-        label.append("nellie", style=_STYLE_ASSISTANT_LABEL)
-        self.console.print(label)
+        # Print the assistant label ONCE per turn, not per flush
+        if not self._text_label_printed:
+            self._text_label_printed = True
+            label = Text()
+            label.append(f"{_ICON_ASSISTANT} ", style=_STYLE_ASSISTANT_LABEL)
+            label.append("nellie", style=_STYLE_ASSISTANT_LABEL)
+            self.console.print(label)
         self.console.print(Markdown(full), style=ASSISTANT_TEXT)
 
     # ── thinking / reasoning ───────────────────────────────────────────
