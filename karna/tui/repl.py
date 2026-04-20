@@ -485,11 +485,8 @@ async def run_repl(
     _init_provider.model = _init_model
     repl_compactor = Compactor(_init_provider, threshold=0.80)
 
-    # Build the display prompt from the model name
-    model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
-    if len(model_short) > 24:
-        model_short = model_short[:21] + "..."
-    prompt_str = f"{model_short}> "
+    # Simple prompt — model name is shown in the banner, not repeated
+    prompt_str = "❯ "
 
     # Build the prompt_toolkit session for async prompting
     from prompt_toolkit.history import InMemoryHistory
@@ -537,6 +534,10 @@ async def run_repl(
             text = text.strip()
             if not text:
                 continue
+
+            # ── Bare exit/quit detection (without slash) ─────────────
+            if text.strip().lower() in ("exit", "quit", "q"):
+                text = "/exit"
 
             # ── If agent is running, queue as steering message ─────────
             if state.agent_running:
@@ -586,11 +587,7 @@ async def run_repl(
                     cost_tracker,
                     skill_manager,
                 )
-                # Refresh prompt in case the model was switched
-                model_short = config.active_model.split("/")[-1] if "/" in config.active_model else config.active_model
-                if len(model_short) > 24:
-                    model_short = model_short[:21] + "..."
-                prompt_str = f"{model_short}> "
+                # Prompt stays simple — model shown in banner only
 
                 if injected is not None:
                     # /do or /paste returned text — treat as user input
@@ -610,6 +607,14 @@ async def run_repl(
                     user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
 
             # ── Start new agent turn ───────────────────────────────────
+            # Echo user message in contrasting warm white (vs Nellie's cyan)
+            from rich.text import Text as RichText
+
+            user_echo = RichText()
+            user_echo.append("> ", style="bold #E8C26B")
+            user_echo.append(user_input, style="bold #E6E8EC")
+            console.print(user_echo)
+
             user_msg = Message(role="user", content=user_input)
             conversation.messages.append(user_msg)
             session_db.add_message(session_id, user_msg)
