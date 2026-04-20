@@ -513,12 +513,16 @@ async def _run_agent_turn(
             # Cooperative interrupt — Esc sets this flag; we stop
             # consuming events and surface a soft interruption.
             if state.interrupt_requested:
-                renderer.handle(
-                    StreamEvent(
-                        kind=EventKind.ERROR,
-                        data="[interrupted by user]",
-                    )
+                interrupt_event = StreamEvent(
+                    kind=EventKind.ERROR,
+                    data="[interrupted by user]",
                 )
+                renderer.handle(interrupt_event)
+                # Append to events so downstream checks (saw_error,
+                # empty-reply warning) see the interruption — otherwise
+                # the empty-reply branch fires even though we emitted
+                # an error the user saw.
+                events.append(interrupt_event)
                 state.interrupt_requested = False
                 break
             renderer.handle(event)
