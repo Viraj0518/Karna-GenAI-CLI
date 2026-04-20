@@ -134,6 +134,20 @@ _MAX_MEMORY_FILES = 200
 _TOKEN_CHARS = 4  # rough chars-per-token estimate
 
 
+def _validate_index_file(index_file: str) -> None:
+    """Ensure *index_file* is a simple filename with no path traversal.
+
+    Raises ``ValueError`` for absolute paths, directory separators,
+    or dot-prefix patterns (``..``, ``.hidden``).
+    """
+    if os.sep in index_file or (os.altsep and os.altsep in index_file):
+        raise ValueError(f"index_file must be a simple filename, got: {index_file}")
+    if index_file.startswith("."):
+        raise ValueError(f"index_file must be a simple filename, got: {index_file}")
+    if os.path.isabs(index_file):
+        raise ValueError(f"index_file must be a simple filename, got: {index_file}")
+
+
 class MemoryManager:
     """Persistent, file-based memory system.
 
@@ -158,7 +172,9 @@ class MemoryManager:
     ) -> None:
         if memory_config is not None:
             self.memory_dir = Path(memory_config.directory).expanduser()
-            self._index_name = memory_config.index_file
+            index_file = memory_config.index_file
+            _validate_index_file(index_file)
+            self._index_name = index_file
             self._allowed_types = list(memory_config.types)
         else:
             self.memory_dir = memory_dir or Path.home() / ".karna" / "memory"
@@ -227,7 +243,7 @@ class MemoryManager:
             try:
                 text = fp.read_text(encoding="utf-8")
                 fm, body = _parse_frontmatter(text)
-                mem_type = parse_memory_type(fm.get("type"))
+                mem_type = parse_memory_type(fm.get("type"), allowed_types=self._allowed_types)
                 if mem_type is None:
                     mem_type = "reference"  # graceful fallback
 

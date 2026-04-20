@@ -697,10 +697,11 @@ def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-
         /memory show <n>   — display full content of a memory by name
         /memory forget <n> — delete a memory by name
     """
+    from karna.config import load_config
     from karna.memory import MemoryManager
     from karna.memory.manager import _memory_age_text
 
-    mm = MemoryManager()
+    mm = MemoryManager(memory_config=load_config().memory)
     cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
     border = SEMANTIC.get("border.accent", "#3C73BD")
 

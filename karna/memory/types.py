@@ -21,16 +21,30 @@ MEMORY_TYPES = ["user", "feedback", "project", "reference"]
 MemoryType = Literal["user", "feedback", "project", "reference"]
 
 
-def parse_memory_type(raw: str | None) -> MemoryType | None:
-    """Parse a raw frontmatter value into a MemoryType.
+def parse_memory_type(
+    raw: str | None,
+    allowed_types: list[str] | None = None,
+) -> str | None:
+    """Parse a raw frontmatter value into a validated memory type.
+
+    Parameters
+    ----------
+    raw : str or None
+        The raw ``type`` value from YAML frontmatter.
+    allowed_types : list[str], optional
+        Custom list of valid types (e.g. from ``MemoryConfig.types``).
+        When ``None``, falls back to the built-in ``MEMORY_TYPES``.
 
     Invalid or missing values return None -- legacy files without a
     ``type:`` field keep working, files with unknown types degrade
     gracefully.
     """
-    if raw is None or raw not in MEMORY_TYPES:
+    if raw is None:
         return None
-    return raw  # type: ignore[return-value]
+    valid = allowed_types if allowed_types is not None else MEMORY_TYPES
+    if raw not in valid:
+        return None
+    return raw
 
 
 class MemoryEntry(BaseModel):
@@ -38,7 +52,7 @@ class MemoryEntry(BaseModel):
 
     name: str
     description: str  # one-line, used for relevance matching
-    type: MemoryType
+    type: str  # built-in MemoryType or custom type from config
     content: str
     created_at: datetime
     updated_at: datetime
