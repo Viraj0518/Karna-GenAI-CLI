@@ -852,6 +852,38 @@ def cron_tick() -> None:
         rprint(f"[green]fired[/green] {job.id} ({job.name}) -> {snippet}")
 
 
+@cron_app.command("run")
+def cron_run(job_id: str = typer.Argument(..., help="Cron job id (or prefix) to run immediately")) -> None:
+    """Run a single cron job immediately, regardless of schedule."""
+    from karna.cron.runner import run_job
+    from karna.cron.store import CronStore
+
+    store = CronStore()
+    job = store.get_job(job_id)
+    if job is None:
+        rprint(f"[red]No cron job matches {job_id}[/red]")
+        raise typer.Exit(code=1)
+
+    rprint(f"[bright_black]Running cron job {job.id} ({job.name})...[/bright_black]")
+    text = asyncio.run(run_job(job, store=store))
+    snippet = (text or "")[:500].replace("\n", " ")
+    rprint(f"[green]done[/green] {job.id} ({job.name}) -> {snippet}")
+
+
+@cron_app.command("daemon")
+def cron_daemon(
+    poll: int = typer.Option(60, "--poll", "-p", help="Polling interval in seconds"),
+) -> None:
+    """Start a long-running daemon that checks for due jobs periodically."""
+    from karna.cron.daemon import run_daemon
+
+    rprint(f"[bright_black]Starting cron daemon (poll={poll}s). Press Ctrl+C to stop.[/bright_black]")
+    try:
+        asyncio.run(run_daemon(poll_seconds=poll))
+    except KeyboardInterrupt:
+        rprint("\n[bright_black]Cron daemon stopped.[/bright_black]")
+
+
 @cron_app.command("show")
 def cron_show(job_id: str = typer.Argument(..., help="Cron job id (or prefix)")) -> None:
     """Show full details for one cron job."""

@@ -189,6 +189,20 @@ def _build_commands() -> dict[str, SlashCommand]:
             category="advanced",
             icon=ic_running,
         ),
+        SlashCommand(
+            "cron",
+            "/cron [add|remove|enable|disable|run] [args]",
+            "Manage scheduled cron jobs",
+            category="advanced",
+            icon=ic_running,
+        ),
+        SlashCommand(
+            "comms",
+            "/comms [check|read|send|reply]",
+            "Inter-agent messaging inbox",
+            category="advanced",
+            icon=ic_running,
+        ),
         # ── Context (continued) ────────────────────────────────────────
         SlashCommand(
             "memory",
@@ -743,6 +757,123 @@ async def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
     return None
 
 
+def _cmd_cron(console: Console, args: str, **_kw) -> str | None:  # type: ignore[no-untyped-def]
+    """List, add, remove, enable, disable, or run cron jobs from the REPL."""
+    import shlex
+
+    from karna.cron.expression import CronParseError, parse_expression
+    from karna.cron.runner import summarize_job
+    from karna.cron.store import CronStore
+
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+    store = CronStore()
+
+    parts = args.strip().split(None, 1) if args.strip() else []
+    subcmd = parts[0].lower() if parts else ""
+    subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "add":
+        if not subargs:
+            console.print('[red]Usage: /cron add "<schedule>" "<prompt>"[/red]')
+            return None
+        try:
+            tokens = shlex.split(subargs)
+        except ValueError as exc:
+            console.print(f"[red]Parse error: {exc}[/red]")
+            return None
+        if len(tokens) < 2:
+            console.print('[red]Usage: /cron add "<schedule>" "<prompt>"[/red]')
+            return None
+        schedule = tokens[0]
+        prompt = tokens[1]
+        name = "-".join(prompt.split()[:3]).lower()[:30]
+        for i, t in enumerate(tokens):
+            if t == "--name" and i + 1 < len(tokens):
+                name = tokens[i + 1]
+                break
+        try:
+            parse_expression(schedule)
+        except CronParseError as exc:
+            console.print(f"[red]Invalid schedule: {exc}[/red]")
+            return None
+        job = store.add_job(name=name, schedule=schedule, prompt=prompt)
+        console.print(f"[green]Added cron job [bold]{job.id}[/bold] ({job.name}) -- {job.schedule}[/green]")
+        return None
+
+    if subcmd == "remove":
+        if not subargs:
+            console.print("[red]Usage: /cron remove <id>[/red]")
+            return None
+        if store.remove_job(subargs):
+            console.print(f"[green]Removed cron job {subargs}[/green]")
+        else:
+            console.print(f"[red]No cron job matches {subargs}[/red]")
+        return None
+
+    if subcmd == "enable":
+        if not subargs:
+            console.print("[red]Usage: /cron enable <id>[/red]")
+            return None
+        if store.set_enabled(subargs, True):
+            console.print(f"[green]Enabled {subargs}[/green]")
+        else:
+            console.print(f"[red]No cron job matches {subargs}[/red]")
+        return None
+
+    if subcmd == "disable":
+        if not subargs:
+            console.print("[red]Usage: /cron disable <id>[/red]")
+            return None
+        if store.set_enabled(subargs, False):
+            console.print(f"[green]Disabled {subargs}[/green]")
+        else:
+            console.print(f"[red]No cron job matches {subargs}[/red]")
+        return None
+
+    if subcmd == "run":
+        if not subargs:
+            console.print("[red]Usage: /cron run <id>[/red]")
+            return None
+        job = store.get_job(subargs)
+        if job is None:
+            console.print(f"[red]No cron job matches {subargs}[/red]")
+            return None
+        console.print(f"[bright_black]Running cron job {job.id} ({job.name})...[/bright_black]")
+        return f"__CRON_RUN__{job.prompt}"
+
+    jobs = store.list_jobs()
+    if not jobs:
+        console.print("[bright_black]No cron jobs configured. Use /cron add to create one.[/bright_black]")
+        return None
+
+    table = Table(
+        show_header=True,
+        header_style=f"bold {cyan}",
+        border_style=border,
+        expand=False,
+        title="Cron Jobs",
+    )
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Schedule", style="green")
+    table.add_column("Enabled", style="yellow")
+    table.add_column("Last Run", style="bright_black")
+    table.add_column("Next Fire", style="bright_black")
+    for job in jobs:
+        info = summarize_job(job)
+        table.add_row(
+            job.id,
+            job.name,
+            job.schedule,
+            "yes" if job.enabled else "no",
+            (info.get("last_run_at") or "")[:19].replace("T", " "),
+            (info.get("next_fire_at") or "")[:19].replace("T", " "),
+        )
+    console.print(table)
+    return None
+
+
 def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-untyped-def]
     """``/memory`` — list, search, show, or forget memories.
 
@@ -924,6 +1055,105 @@ def _fuzzy_match(partial: str) -> str | None:
 #  Dispatcher
 # --------------------------------------------------------------------------- #
 
+
+def _cmd_comms(console: Console, config: KarnaConfig, args: str, **_kw) -> None:
+    """``/comms`` -- check, read, send, or reply to inter-agent messages."""
+    from karna.comms.inbox import AgentInbox
+
+    agent_name = config.agent.name
+    inbox = AgentInbox(agent_name)
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+
+    parts = args.strip().split(None, 1) if args.strip() else []
+    subcmd = parts[0].lower() if parts else ""
+    subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "send":
+        send_parts = subargs.split(None, 1) if subargs else []
+        if len(send_parts) < 2:
+            console.print("[red]Usage: /comms send <agent> <subject>: <body>[/red]")
+            return
+        to_agent = send_parts[0]
+        rest = send_parts[1]
+        if ":" in rest:
+            subject, _, body = rest.partition(":")
+            subject = subject.strip()
+            body = body.strip()
+        else:
+            subject = rest
+            body = ""
+        if not body:
+            console.print("[red]Usage: /comms send <agent> <subject>: <body>[/red]")
+            return
+        msg = inbox.send(to_agent, subject, body)
+        console.print(f"[green]Sent message {msg.id} to {to_agent}: {subject}[/green]")
+        return
+
+    if subcmd == "read":
+        if not subargs:
+            console.print("[red]Usage: /comms read <message-id>[/red]")
+            return
+        msg = inbox.read_message(subargs)
+        if msg is None:
+            console.print(f"[red]Message not found: {subargs}[/red]")
+            return
+        nl = chr(10)
+        _reply = msg.in_reply_to or "-"
+        detail = (
+            f"[bright_black]From:[/] {msg.from_agent}{nl}"
+            f"[bright_black]To:[/] {msg.to_agent}{nl}"
+            f"[bright_black]Subject:[/] {msg.subject}{nl}"
+            f"[bright_black]Time:[/] {msg.timestamp.isoformat()}{nl}"
+            f"[bright_black]Reply to:[/] {_reply}{nl}{nl}"
+            f"{msg.body}"
+        )
+        console.print(
+            Panel(
+                detail,
+                title=f"[bold {cyan}]Message {msg.id}[/]",
+                border_style=border,
+                expand=False,
+            )
+        )
+        return
+
+    if subcmd == "reply":
+        reply_parts = subargs.split(None, 1) if subargs else []
+        if len(reply_parts) < 2:
+            console.print("[red]Usage: /comms reply <message-id> <body>[/red]")
+            return
+        msg_id = reply_parts[0]
+        body = reply_parts[1]
+        original = inbox.read_message(msg_id)
+        if original is None:
+            console.print(f"[red]Message not found: {msg_id}[/red]")
+            return
+        reply_msg = inbox.reply(original, body)
+        console.print(f"[green]Reply {reply_msg.id} sent to {reply_msg.to_agent}[/green]")
+        return
+
+    # Default: check inbox (list unread)
+    messages = inbox.check()
+    if not messages:
+        console.print(f"[bright_black]No unread messages for {agent_name}.[/bright_black]")
+        return
+    table = Table(
+        show_header=True,
+        header_style=f"bold {cyan}",
+        border_style=border,
+        expand=False,
+        title=f"Inbox ({agent_name})",
+    )
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("From", style="white")
+    table.add_column("Subject", style="white", max_width=40)
+    table.add_column("Time", style="bright_black")
+    for msg in messages:
+        table.add_row(msg.id, msg.from_agent, msg.subject, msg.timestamp.strftime("%Y-%m-%d %H:%M"))
+    console.print(table)
+
+
 _HANDLERS: dict[str, Callable[..., None]] = {
     "help": _cmd_help,
     "model": _cmd_model,
@@ -945,6 +1175,8 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "plan": _cmd_plan,
     "do": _cmd_do,
     "tasks": _cmd_tasks,
+    "cron": _cmd_cron,
+    "comms": _cmd_comms,
 }
 
 

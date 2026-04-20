@@ -14,11 +14,15 @@ Public API::
 from __future__ import annotations
 
 from karna.cron.expression import next_fire_time, parse_expression
+from karna.cron.jobs import YAMLJobStore
+from karna.cron.scheduler import CronScheduler
 from karna.cron.store import CronJob, CronStore
 
 __all__ = [
     "CronJob",
+    "CronScheduler",
     "CronStore",
+    "YAMLJobStore",
     "next_fire_time",
     "parse_expression",
 ]
