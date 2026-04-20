@@ -19,6 +19,7 @@ import base64
 import logging
 from typing import Any
 
+from karna.security import is_safe_url
 from karna.tools.base import BaseTool
 
 log = logging.getLogger(__name__)
@@ -158,6 +159,11 @@ class BrowserTool(BaseTool):
         url: str | None = kwargs.get("url")
         if not url or not url.strip():
             return "[error] action=navigate requires a url parameter."
+        if not is_safe_url(url):
+            return (
+                "[error] Blocked: URL targets a private/internal network address. "
+                "localhost, RFC-1918, link-local, and cloud metadata endpoints are not allowed."
+            )
         await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         title = await self._page.title()
         return f"Navigated to {url}\nTitle: {title}"

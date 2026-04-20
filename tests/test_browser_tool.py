@@ -100,6 +100,26 @@ class TestNavigate:
         result = await tool.execute(action="navigate", url="   ")
         assert "[error]" in result
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://localhost:8080/admin",
+            "http://127.0.0.1/secret",
+            "http://10.0.0.1/internal",
+            "http://192.168.1.1/router",
+            "http://169.254.169.254/latest/meta-data/",
+            "ftp://example.com/file",
+        ],
+    )
+    async def test_navigate_ssrf_blocked(self, tool: BrowserTool, url: str):
+        """Private/internal URLs and non-HTTP schemes must be rejected."""
+        page = await _inject_mocks(tool)
+        result = await tool.execute(action="navigate", url=url)
+        assert "[error]" in result
+        assert "blocked" in result.lower()
+        page.goto.assert_not_awaited()
+
 
 # ======================================================================= #
 #  Click
