@@ -84,15 +84,16 @@ _ALL_PROVIDERS = [
 
 
 def _all_model_strings() -> list[str]:
-    """Return all known provider:model strings."""
+    """Return all known provider:model strings.
+
+    Always produces ``provider:model`` format. Model names that contain
+    ``/`` (e.g. ``openai/gpt-4o`` under the ``openrouter`` provider)
+    are kept as-is after the colon: ``openrouter:openai/gpt-4o``.
+    """
     results: list[str] = []
     for provider, models in _KNOWN_MODELS.items():
         for m in models:
-            if ":" not in m and "/" not in m:
-                results.append(f"{provider}:{m}")
-            else:
-                # Already qualified (e.g. "openrouter/auto") -- convert / to :
-                results.append(m.replace("/", ":", 1) if "/" in m else m)
+            results.append(f"{provider}:{m}")
     return results
 
 
