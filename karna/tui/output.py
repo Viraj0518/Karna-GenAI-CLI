@@ -6,13 +6,14 @@ rhythm inspired by Claude Code Ink, Warp, and bubbletea.
 
 Key design moves:
 
-* **Live windows are scoped.** Only the currently-active block (spinner,
-  streaming text, pending tool status) lives inside a ``rich.live.Live``.
-  Completed content flushes to scrollback so it never flickers.
-* **Tool calls are stateful widgets.** Pending → running → ok/err, with a
+* **No Rich Live.** All output goes through ``console.print()`` which
+  routes through the ``TUIOutputWriter`` into prompt_toolkit's output
+  pane.  No ``Live`` or ``patch_stdout`` --- the Application owns the
+  terminal so there is zero cursor fighting.
+* **Tool calls are stateful widgets.** Pending -> running -> ok/err, with a
   single-line status, collapsible JSON args, and a success/failure glyph.
 * **Thinking is separated.** Italic + purple + collapsed to one line by
-  default — stops it blurring into normal assistant prose.
+  default --- stops it blurring into normal assistant prose.
 * **Errors gain context.** Title, primary message, secondary tool/provider
   line, and a pattern-matched recovery hint where we can.
 * **Turn rhythm.** A dimmed divider and blank line between turns.
@@ -24,7 +25,7 @@ Public API (preserved):
 * ``handle(event: StreamEvent)``
 * ``finish()``
 
-``StreamEvent`` / ``EventKind`` are also exported — other modules import
+``StreamEvent`` / ``EventKind`` are also exported --- other modules import
 them from here.
 """
 
@@ -37,11 +38,9 @@ from enum import Enum, auto
 from typing import Any
 
 from rich.console import Console, Group, RenderableType
-from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
-from rich.spinner import Spinner
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -238,6 +237,11 @@ class _ToolState:
 class OutputRenderer:
     """Stateful renderer that processes ``StreamEvent`` objects.
 
+    All output goes through ``console.print()`` --- no ``rich.live.Live``
+    is used.  When the console is a ``RedirectedConsole`` (split-pane
+    TUI), prints route into the output pane.  When it is a normal
+    ``Console`` (e.g. in tests), prints go to the console's file.
+
     Usage::
 
         renderer = OutputRenderer(console)
@@ -254,35 +258,36 @@ class OutputRenderer:
         self._thinking_buffer: list[str] = []
         # Code-fence tracking: True while inside a fenced code block
         self._in_code_fence: bool = False
-        # Print "◆ nellie" label only once per turn
+        # Print "* nellie" label only once per turn
         self._text_label_printed: bool = False
-        # Live state
-        self._live: Live | None = None
-        self._live_kind: str | None = None  # "spinner" | "stream" | "tool"
+        # Spinner state (replaces Live)
+        self._spinner_shown: bool = False
         # Tool state
         self._tool: _ToolState | None = None
         # Turn rhythm
         self._turn_started: bool = False
-        # Thinking stream state — tracks whether the thinking header has been
+        # Thinking stream state --- tracks whether the thinking header has been
         # printed so subsequent deltas are streamed inline.
         self._thinking_started: bool = False
 
     # ── public API ─────────────────────────────────────────────────────
 
     def show_spinner(self) -> None:
-        """Display a transient waiting spinner until the first event."""
-        if self._live is not None:
+        """Display a waiting indicator until the first event.
+
+        Instead of a Live spinner (which fights with prompt_toolkit),
+        we print a static indicator that will be visually superseded
+        by the first real output.
+        """
+        if self._spinner_shown:
             return
         self._ensure_turn_break()
-        spinner = Spinner("dots", text=Text("thinking...", style=_STYLE_BRAND_DIM))
-        self._live = Live(
-            spinner,
-            console=self.console,
-            transient=True,
-            refresh_per_second=12,
-        )
-        self._live.start()
-        self._live_kind = "spinner"
+        indicator = Text()
+        indicator.append("  ", style=_STYLE_BRAND_DIM)
+        indicator.append("...", style=_STYLE_BRAND_DIM)
+        indicator.append(" thinking", style=_STYLE_BRAND_DIM)
+        self.console.print(indicator)
+        self._spinner_shown = True
 
     def handle(self, event: StreamEvent) -> None:
         """Dispatch a single stream event to the appropriate renderer."""
@@ -302,25 +307,20 @@ class OutputRenderer:
             handler(event.data)
 
     def finish(self) -> None:
-        """Flush any remaining buffered content and stop the live display."""
-        self._stop_live()
+        """Flush any remaining buffered content."""
         self._flush_thinking()
         self._flush_text()
         self._tool = None
         self._in_code_fence = False
         self._text_label_printed = False
         self._thinking_started = False
+        self._spinner_shown = False
 
-    # ── live display management ────────────────────────────────────────
+    # ── display management ─────────────────────────────────────────────
 
-    def _stop_live(self) -> None:
-        if self._live is not None:
-            try:
-                self._live.stop()
-            except Exception:  # noqa: BLE001
-                pass
-            self._live = None
-            self._live_kind = None
+    def _dismiss_spinner(self) -> None:
+        """Mark the spinner as dismissed (real content is now showing)."""
+        self._spinner_shown = False
 
     def _ensure_turn_break(self) -> None:
         """Emit a dimmed divider + blank line before the first block of a turn."""
@@ -328,7 +328,7 @@ class OutputRenderer:
             return
         self._turn_started = True
         self.console.print()
-        self.console.print(Rule(style=_STYLE_DIVIDER, characters="─"))
+        self.console.print(Rule(style=_STYLE_DIVIDER, characters="\u2500"))
         self.console.print()
 
     # ── streaming text ─────────────────────────────────────────────────
@@ -336,9 +336,9 @@ class OutputRenderer:
     def _on_text_delta(self, delta: str) -> None:
         if not delta:
             return
-        # Kill the transient spinner on first content
-        if self._live_kind == "spinner":
-            self._stop_live()
+        # Dismiss the static spinner indicator on first content
+        if self._spinner_shown:
+            self._dismiss_spinner()
         # End thinking block when assistant text starts arriving
         if self._thinking_started:
             self._end_thinking_block()
@@ -380,7 +380,6 @@ class OutputRenderer:
         self._text_buffer.clear()
         if not full:
             return
-        self._stop_live()
 
         # Print the assistant label ONCE per turn, not per flush
         if not self._text_label_printed:
@@ -403,8 +402,8 @@ class OutputRenderer:
         """
         if not delta:
             return
-        if self._live_kind == "spinner":
-            self._stop_live()
+        if self._spinner_shown:
+            self._dismiss_spinner()
 
         # Print the thinking header on first delta
         if not self._thinking_started:
@@ -458,7 +457,8 @@ class OutputRenderer:
 
     def _on_tool_call_start(self, data: dict[str, Any] | None) -> None:
         # Close out any in-flight assistant text / thinking first.
-        self._stop_live()
+        if self._spinner_shown:
+            self._dismiss_spinner()
         if self._thinking_started:
             self._end_thinking_block()
         self._flush_text()
@@ -481,20 +481,9 @@ class OutputRenderer:
             status_text=f"calling {name}...",
         )
 
-        # Live-update the tool header with a spinner until TOOL_CALL_END.
-        spinner = Spinner(
-            "dots",
-            text=self._tool.header(),
-            style=_STYLE_BRAND_DIM,
-        )
-        self._live = Live(
-            spinner,
-            console=self.console,
-            transient=True,
-            refresh_per_second=12,
-        )
-        self._live.start()
-        self._live_kind = "tool"
+        # Print a static "calling..." header (replaces the old Live spinner).
+        # The final tool result will be printed by _on_tool_call_end.
+        self.console.print(self._tool.header())
 
     def _on_tool_call_args_delta(self, delta: str) -> None:
         if self._tool is None or not delta:
@@ -504,9 +493,6 @@ class OutputRenderer:
     def _on_tool_call_end(self, _data: Any = None) -> None:
         if self._tool is None:
             return
-
-        # Stop the live spinner — we're about to commit to scrollback.
-        self._stop_live()
 
         tool = self._tool
         # Render the committed header (no spinner) plus a syntax block for args.
@@ -605,12 +591,25 @@ class OutputRenderer:
                     fp = args.get("file_path", "") or args.get("path", "")
                     ext = fp.rsplit(".", 1)[-1].lower() if "." in fp else ""
                     lang_map = {
-                        "py": "python", "js": "javascript", "ts": "typescript",
-                        "rs": "rust", "go": "go", "java": "java", "rb": "ruby",
-                        "sh": "bash", "bash": "bash", "zsh": "bash",
-                        "yaml": "yaml", "yml": "yaml", "toml": "toml",
-                        "json": "json", "md": "markdown", "sql": "sql",
-                        "html": "html", "css": "css", "xml": "xml",
+                        "py": "python",
+                        "js": "javascript",
+                        "ts": "typescript",
+                        "rs": "rust",
+                        "go": "go",
+                        "java": "java",
+                        "rb": "ruby",
+                        "sh": "bash",
+                        "bash": "bash",
+                        "zsh": "bash",
+                        "yaml": "yaml",
+                        "yml": "yaml",
+                        "toml": "toml",
+                        "json": "json",
+                        "md": "markdown",
+                        "sql": "sql",
+                        "html": "html",
+                        "css": "css",
+                        "xml": "xml",
                     }
                     lang = lang_map.get(ext, "text")
                 except Exception:  # noqa: BLE001
@@ -650,7 +649,6 @@ class OutputRenderer:
     # ── errors ─────────────────────────────────────────────────────────
 
     def _on_error(self, data: Any = None) -> None:
-        self._stop_live()
         self._flush_thinking()
         self._flush_text()
 
@@ -701,7 +699,6 @@ class OutputRenderer:
             self.console.print(Text("  " + " · ".join(parts), style=COST_INFO))
 
     def _on_done(self, _data: Any = None) -> None:
-        self._stop_live()
         self._flush_thinking()
         self._flush_text()
         # Reset turn rhythm for the next invocation.

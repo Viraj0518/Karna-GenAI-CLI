@@ -1,27 +1,45 @@
 """Main REPL loop for the Karna TUI.
 
-Launched by ``nellie`` (no args) — provides streaming conversation with
+Launched by ``nellie`` (no args) --- provides streaming conversation with
 tool use, slash commands, multiline input, and Rich-rendered output.
 
-Supports always-active input: the user can type at any time, even while
-the agent is streaming.  If the agent is idle, Enter starts a new turn.
-If the agent is working, the message is queued and injected mid-stream
-as a steering message — Claude Code-style UX.
+Uses a ``prompt_toolkit.Application`` with a split-pane layout so that
+the output area and input area never fight for cursor position:
+
+    +------------------------------------------+
+    |  Output Window (scrollable)               |  <- ANSI formatted text
+    |  - Banner, thinking, tool calls, text     |     auto-scrolls to bottom
+    |------------------------------------------|
+    |  Status bar (1 line)                      |  <- model, cost, status
+    |------------------------------------------|
+    |  > user input here                        |  <- BufferControl + Buffer
+    |                                           |     always active
+    +------------------------------------------+
+
+This eliminates the spinner/prompt cursor fight that occurred with the
+previous ``patch_stdout`` + ``PromptSession.prompt_async`` approach.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 if TYPE_CHECKING:
     from karna.compaction.compactor import Compactor
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import HTML
-from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.application import Application
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import HSplit, Layout, Window
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout.dimension import Dimension as D
+from prompt_toolkit.layout.processors import BeforeInput
+from prompt_toolkit.output import ColorDepth
 from rich.console import Console
 
 from karna.agents.autonomous import run_autonomous_loop
@@ -35,8 +53,6 @@ from karna.sessions.cost import CostTracker
 from karna.sessions.db import SessionDB
 from karna.skills.loader import SkillManager
 from karna.tools import TOOLS, get_all_tools
-from karna.tui.banner import print_banner
-from karna.tui.input import _bottom_toolbar_factory, _format_prompt, _pt_style
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
 from karna.tui.slash import (
     SessionCost,
@@ -54,6 +70,124 @@ _DO_SENTINEL = "__DO__"
 
 
 # --------------------------------------------------------------------------- #
+#  TUI Output Writer -- captures Rich output for the split-pane layout
+# --------------------------------------------------------------------------- #
+
+
+class TUIOutputWriter:
+    """Captures Rich console output as ANSI strings for prompt_toolkit.
+
+    Instead of Rich printing directly to stdout (which fights with
+    prompt_toolkit), this writer accumulates rendered ANSI text in a
+    buffer.  The prompt_toolkit ``Application`` reads from this buffer
+    via an ``OutputControl`` and redraws only when invalidated.
+    """
+
+    def __init__(self, width: int = 120) -> None:
+        self._lines: list[str] = []
+        self._width = width
+        self._invalidate_cb: Any = None
+
+    def set_invalidate(self, cb: Any) -> None:
+        """Register the Application.invalidate callback."""
+        self._invalidate_cb = cb
+
+    @property
+    def console(self) -> Console:
+        """Return a Rich Console that writes to this writer's buffer.
+
+        Each call returns a fresh Console so callers can use it without
+        worrying about interleaved output from concurrent tasks.
+        """
+        buf = StringIO()
+        return Console(
+            file=buf,
+            force_terminal=True,
+            width=self._width,
+            theme=KARNA_THEME,
+            color_system="truecolor",
+        )
+
+    def write_rich(self, renderable: Any) -> None:
+        """Render a Rich object and append to output buffer."""
+        buf = StringIO()
+        console = Console(
+            file=buf,
+            force_terminal=True,
+            width=self._width,
+            theme=KARNA_THEME,
+            color_system="truecolor",
+        )
+        console.print(renderable)
+        text = buf.getvalue()
+        if text:
+            self._lines.append(text.rstrip("\n"))
+            self._invalidate()
+
+    def write_ansi(self, text: str) -> None:
+        """Append raw ANSI text to output buffer."""
+        if text:
+            self._lines.append(text.rstrip("\n"))
+            self._invalidate()
+
+    def write_console_output(self, console_buf: StringIO) -> None:
+        """Flush a StringIO that a Rich Console wrote to."""
+        text = console_buf.getvalue()
+        if text:
+            self._lines.append(text.rstrip("\n"))
+            self._invalidate()
+
+    def get_text(self) -> str:
+        """Return all accumulated output as a single ANSI string."""
+        return "\n".join(self._lines)
+
+    def _invalidate(self) -> None:
+        """Trigger a prompt_toolkit redraw."""
+        if self._invalidate_cb is not None:
+            try:
+                self._invalidate_cb()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+# --------------------------------------------------------------------------- #
+#  Redirected Console -- a Rich Console that writes through TUIOutputWriter
+# --------------------------------------------------------------------------- #
+
+
+class RedirectedConsole(Console):
+    """A Rich Console whose output is captured by a TUIOutputWriter.
+
+    This is the main Console instance used throughout the REPL.  All
+    ``print()`` calls go through the writer so they appear in the
+    output pane rather than fighting with prompt_toolkit.
+    """
+
+    def __init__(self, writer: TUIOutputWriter, **kwargs: Any) -> None:
+        self._writer = writer
+        self._capture_buf = StringIO()
+        super().__init__(
+            file=self._capture_buf,
+            force_terminal=True,
+            width=writer._width,
+            theme=KARNA_THEME,
+            color_system="truecolor",
+            **kwargs,
+        )
+
+    def print(self, *args: Any, **kwargs: Any) -> None:
+        """Override to capture output and route to the writer."""
+        # Reset the capture buffer, render, then flush to writer
+        self._capture_buf.seek(0)
+        self._capture_buf.truncate(0)
+        super().print(*args, **kwargs)
+        text = self._capture_buf.getvalue()
+        if text:
+            self._writer._lines.append(text.rstrip("\n"))
+            self._writer._invalidate()
+
+
+# --------------------------------------------------------------------------- #
 #  Always-active input state
 # --------------------------------------------------------------------------- #
 
@@ -65,6 +199,8 @@ class REPLState:
         self.input_queue: asyncio.Queue[str] = asyncio.Queue()
         self.agent_running: bool = False
         self.agent_task: asyncio.Task | None = None
+        self.status_text: str = ""
+        self.session_cost: SessionCost = SessionCost()
 
 
 # --------------------------------------------------------------------------- #
@@ -77,11 +213,7 @@ async def _run_loop_mode(
     config: KarnaConfig,
     goal: str,
 ) -> str:
-    """Dispatch ``/loop`` — run the autonomous repeat-until-done agent.
-
-    Uses a fresh provider+tools bundle so the outer cycles don't share
-    cumulative usage state with the main REPL provider instance.
-    """
+    """Dispatch ``/loop`` --- run the autonomous repeat-until-done agent."""
     provider_name, model_name = resolve_model(
         f"{config.active_provider}:{config.active_model}"
         if ":" not in (config.active_model or "")
@@ -113,7 +245,7 @@ async def _run_plan_mode(
     config: KarnaConfig,
     goal: str,
 ) -> str:
-    """Dispatch ``/plan`` — run plan mode and return the plan text."""
+    """Dispatch ``/plan`` --- run plan mode and return the plan text."""
     provider_name, model_name = resolve_model(
         f"{config.active_provider}:{config.active_model}"
         if ":" not in (config.active_model or "")
@@ -149,12 +281,7 @@ async def _agent_loop(
     skill_manager: SkillManager | None = None,
     compactor: "Compactor | None" = None,
 ) -> AsyncIterator[StreamEvent]:
-    """Yield TUI StreamEvents live from the agent loop.
-
-    This is an async generator -- each event is yielded immediately as
-    the underlying provider produces it, enabling true real-time
-    streaming of thinking and text deltas to the renderer.
-    """
+    """Yield TUI StreamEvents live from the agent loop."""
     from karna.compaction.compactor import Compactor
 
     try:
@@ -174,8 +301,7 @@ async def _agent_loop(
         system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager)
 
         # Re-use the caller-supplied compactor so the circuit breaker
-        # persists across REPL turns.  Fall back to creating one if
-        # the caller didn't supply it (e.g. non-REPL callers).
+        # persists across REPL turns.
         turn_compactor = compactor or Compactor(provider, threshold=0.80)
 
         # Default context window (128k tokens)
@@ -191,7 +317,7 @@ async def _agent_loop(
             context_window=context_window,
             compactor=turn_compactor,
         ):
-            # Map agent StreamEvent → TUI StreamEvent and yield immediately
+            # Map agent StreamEvent -> TUI StreamEvent and yield immediately
             if event.type == "thinking":
                 yield StreamEvent(kind=EventKind.THINKING_DELTA, data=event.text or "")
             elif event.type == "text":
@@ -233,7 +359,7 @@ async def _agent_loop(
 
 
 # --------------------------------------------------------------------------- #
-#  Agent turn — runs as a concurrent task
+#  Agent turn --- runs as a concurrent task
 # --------------------------------------------------------------------------- #
 
 
@@ -244,7 +370,6 @@ async def _run_agent_turn(
     console: Console,
     session_db: SessionDB,
     session_id: str,
-    session_cost: SessionCost,
     skill_manager: SkillManager | None,
     repl_compactor: "Compactor",
     tool_names: list[str],
@@ -270,11 +395,23 @@ async def _run_agent_turn(
 
             # Accumulate session cost
             if event.kind == EventKind.USAGE and isinstance(event.data, dict):
-                session_cost.add(
+                state.session_cost.add(
                     prompt=event.data.get("prompt_tokens", 0),
                     completion=event.data.get("completion_tokens", 0),
                     usd=event.data.get("total_usd", 0.0),
                 )
+
+            # Update status bar
+            if event.kind == EventKind.THINKING_DELTA:
+                state.status_text = "reasoning..."
+            elif event.kind == EventKind.TEXT_DELTA:
+                state.status_text = "writing..."
+            elif event.kind == EventKind.TOOL_CALL_START and isinstance(event.data, dict):
+                state.status_text = f"calling {event.data.get('name', 'tool')}..."
+            elif event.kind == EventKind.TOOL_RESULT:
+                state.status_text = "processing..."
+            elif event.kind == EventKind.DONE:
+                state.status_text = ""
 
             # Check for queued steering messages (non-blocking)
             while not state.input_queue.empty():
@@ -295,6 +432,7 @@ async def _run_agent_turn(
         renderer.finish()
         state.agent_running = False
         state.agent_task = None
+        state.status_text = ""
 
     # Persist assistant reply to conversation and session DB
     full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
@@ -339,12 +477,7 @@ async def _process_slash_command(
     cost_tracker: CostTracker,
     skill_manager: SkillManager,
 ) -> str | None:
-    """Handle a slash command and return user_input to send (or None to skip).
-
-    Returns:
-        - A string to treat as user input (e.g. /do injects the plan)
-        - None if the command was fully handled (no message to send)
-    """
+    """Handle a slash command and return user_input to send (or None to skip)."""
     result = await handle_slash_command(
         user_input,
         console,
@@ -389,7 +522,7 @@ async def _process_slash_command(
         clear_last_plan(conversation)
         return plan_text
 
-    # /paste returns raw text — treat as user input
+    # /paste returns raw text --- treat as user input
     if isinstance(result, str) and result:
         return result
 
@@ -397,7 +530,89 @@ async def _process_slash_command(
 
 
 # --------------------------------------------------------------------------- #
-#  Main REPL — always-active input with concurrent agent execution
+#  Build the prompt_toolkit Application with split-pane layout
+# --------------------------------------------------------------------------- #
+
+
+def _build_application(
+    writer: TUIOutputWriter,
+    input_buffer: Buffer,
+    kb: KeyBindings,
+    state: REPLState,
+    config: KarnaConfig,
+) -> Application:
+    """Construct the full-screen split-pane Application.
+
+    Layout:
+        - Top: scrollable output window (all agent output)
+        - Middle: 1-line status bar (model, cost, agent status)
+        - Bottom: fixed input area (always accepts input)
+    """
+    from karna.tui.design_tokens import SEMANTIC
+
+    # Output window -- scrollable, shows all agent output
+    output_window = Window(
+        content=FormattedTextControl(
+            lambda: ANSI(writer.get_text()),
+            focusable=False,
+        ),
+        wrap_lines=True,
+    )
+
+    # Status bar -- 1-line, shows model + cost + agent status
+    def _status_bar_text():
+        model = f"{config.active_provider}/{config.active_model}"
+        cost = f"${state.session_cost.total_usd:.4f}" if state.session_cost.total_usd > 0 else ""
+        status = state.status_text
+
+        parts = [f" {model}"]
+        if cost:
+            parts.append(cost)
+        if status:
+            parts.append(status)
+        elif state.agent_running:
+            parts.append("working...")
+
+        return ANSI(f"\x1b[38;5;245m{'  |  '.join(parts)}\x1b[0m")
+
+    status_bar = Window(
+        content=FormattedTextControl(_status_bar_text, focusable=False),
+        height=1,
+        style=f"bg:{SEMANTIC.get('bg.subtle', '#0E0F12')}",
+    )
+
+    # Input window -- always active, accepts user input
+    input_window = Window(
+        content=BufferControl(
+            buffer=input_buffer,
+            input_processors=[BeforeInput(ANSI("\x1b[1;38;2;60;115;189m\u276f\x1b[0m "))],
+        ),
+        height=D(min=1, max=5),
+        dont_extend_height=True,
+    )
+
+    layout = Layout(
+        HSplit(
+            [
+                output_window,  # scrollable output
+                status_bar,  # model + cost + status
+                input_window,  # always-active input
+            ]
+        ),
+        focused_element=input_window,
+    )
+
+    return Application(
+        layout=layout,
+        key_bindings=kb,
+        full_screen=True,
+        color_depth=ColorDepth.TRUE_COLOR,
+        mouse_support=True,
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Main REPL -- split-pane TUI with prompt_toolkit Application
 # --------------------------------------------------------------------------- #
 
 
@@ -406,18 +621,24 @@ async def run_repl(
     resume_conversation: Conversation | None = None,
     resume_session_id: str | None = None,
 ) -> None:
-    """Main REPL — streaming conversation with always-active input.
+    """Main REPL -- streaming conversation with split-pane TUI.
 
-    The user can always type, even while the agent is working:
-    - If the agent is idle, Enter starts a new turn.
-    - If the agent is working, the message is queued and injected
-      mid-stream as a steering message.
+    Uses a ``prompt_toolkit.Application`` with a full-screen layout:
+    - Scrolling output area (top) -- all agent output renders here
+    - Fixed status bar (middle) -- model, cost, agent status
+    - Fixed input area (bottom) -- always visible, always accepts input
 
-    Uses ``prompt_toolkit``'s ``prompt_async`` with ``patch_stdout``
-    so the input prompt stays at the bottom while agent output scrolls
-    above it.
+    The Application owns the terminal, so there is no fighting between
+    Rich spinners and prompt_toolkit's prompt redraw.
     """
-    console = Console(theme=KARNA_THEME)
+    # Determine terminal width for Rich rendering
+    try:
+        term_width = os.get_terminal_size().columns
+    except OSError:
+        term_width = 120
+
+    writer = TUIOutputWriter(width=term_width)
+    console = RedirectedConsole(writer)
     tool_names = _load_tool_names()
     state = REPLState()
 
@@ -456,12 +677,10 @@ async def run_repl(
         model=config.active_model,
         provider=config.active_provider,
     )
-    session_cost = SessionCost()
 
     # Load skills from ~/.karna/skills/ and .karna/skills/
     skill_manager = SkillManager()
     skill_manager.load_all()
-    # Also load project-local skills if present
     local_skills_dir = Path.cwd() / ".karna" / "skills"
     if local_skills_dir.is_dir():
         local_mgr = SkillManager(skills_dir=local_skills_dir)
@@ -470,10 +689,12 @@ async def run_repl(
             if not skill_manager.get_skill_by_name(skill.name):
                 skill_manager.skills.append(skill)
 
+    # Render banner into the output buffer
+    from karna.tui.banner import print_banner
+
     print_banner(console, config, tool_names)
 
-    # Create a single Compactor that persists across REPL turns so the
-    # circuit breaker's consecutive_failures counter is not reset each turn.
+    # Create a single Compactor that persists across REPL turns
     from karna.compaction.compactor import Compactor
 
     _init_prov_name, _init_model = resolve_model(
@@ -485,153 +706,163 @@ async def run_repl(
     _init_provider.model = _init_model
     repl_compactor = Compactor(_init_provider, threshold=0.80)
 
-    # Simple prompt — model name is shown in the banner, not repeated.
-    # _format_prompt() already prepends the ❯ chevron, so just pass empty.
-    prompt_str = ""
+    # ── Build the prompt_toolkit Application ──────────────────────────
 
-    # Build the prompt_toolkit session for async prompting
-    from prompt_toolkit.history import InMemoryHistory
-    from prompt_toolkit.key_binding import KeyBindings
+    # Shared reference so the submit handler can access REPL state
+    app_ref: list[Application | None] = [None]
 
-    bindings = KeyBindings()
+    async def _on_submit(buf: Buffer) -> None:
+        """Called when Enter is pressed in the input buffer."""
+        text = buf.text.strip()
+        buf.reset()
+        if not text:
+            return
 
-    @bindings.add("escape", "enter")
+        # ── Bare exit/quit detection ─────────────────────────────
+        if text.strip().lower() in ("exit", "quit", "q"):
+            text = "/exit"
+
+        # ── If agent is running, queue as steering message ────────
+        if state.agent_running:
+            if text.startswith("/"):
+                if text.strip() in ("/exit", "/quit"):
+                    if state.agent_task is not None and not state.agent_task.done():
+                        state.agent_task.cancel()
+                        try:
+                            await state.agent_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
+                    if app_ref[0] is not None:
+                        app_ref[0].exit()
+                    return
+                console.print("[yellow]Agent is working. Slash commands are available when idle.[/yellow]")
+                return
+
+            state.input_queue.put_nowait(text)
+            console.print("[bright_black]  -> message queued (will be injected mid-stream)[/bright_black]")
+            return
+
+        # ── Skill trigger matching (checked BEFORE slash commands) ─
+        user_input = text
+        matched_skills = skill_manager.match_trigger(user_input)
+        if matched_skills:
+            skill_preamble_parts: list[str] = []
+            for skill in matched_skills:
+                if skill.instructions:
+                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+            if skill_preamble_parts:
+                skill_preamble = "\n\n".join(skill_preamble_parts)
+                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+            # Skills matched --- skip slash command handling, fall through
+
+        # ── Slash commands ──────────────────────────────────────────
+        elif user_input.startswith("/"):
+            injected = await _process_slash_command(
+                user_input,
+                console,
+                config,
+                conversation,
+                state.session_cost,
+                tool_names,
+                session_db,
+                cost_tracker,
+                skill_manager,
+            )
+
+            if injected is not None:
+                user_input = injected
+            else:
+                return
+
+        # ── Skill trigger matching for non-slash ────────────────────
+        matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
+        if matched_skills:
+            skill_preamble_parts = []
+            for skill in matched_skills:
+                if skill.instructions:
+                    skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
+            if skill_preamble_parts:
+                skill_preamble = "\n\n".join(skill_preamble_parts)
+                user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
+
+        # ── Start new agent turn ────────────────────────────────────
+        from rich.text import Text as RichText
+
+        user_echo = RichText()
+        user_echo.append("> ", style="bold #E8C26B")
+        user_echo.append(user_input, style="bold #E6E8EC")
+        console.print(user_echo)
+
+        user_msg = Message(role="user", content=user_input)
+        conversation.messages.append(user_msg)
+        session_db.add_message(session_id, user_msg)
+
+        state.agent_running = True
+        state.status_text = "thinking..."
+
+        state.agent_task = asyncio.create_task(
+            _run_agent_turn(
+                state,
+                config,
+                conversation,
+                console,
+                session_db,
+                session_id,
+                skill_manager,
+                repl_compactor,
+                tool_names,
+            )
+        )
+
+    # Input buffer with accept handler
+    input_buffer = Buffer(
+        name="input",
+        multiline=False,
+        accept_handler=lambda buf: asyncio.ensure_future(_on_submit(buf)),
+    )
+
+    # Key bindings
+    kb = KeyBindings()
+
+    @kb.add("escape", "enter")
     def _insert_newline(event):  # type: ignore[no-untyped-def]
         event.current_buffer.insert_text("\n")
 
-    pt_session: PromptSession[str] = PromptSession(
-        message=_format_prompt(prompt_str),
-        history=InMemoryHistory(),
-        key_bindings=bindings,
-        multiline=False,
-        enable_history_search=True,
-        style=_pt_style(),
-        placeholder=HTML("<placeholder>Ask anything...</placeholder>"),
-        bottom_toolbar=_bottom_toolbar_factory(),
-        include_default_pygments_style=False,
-    )
+    @kb.add("c-c")
+    def _interrupt(event):  # type: ignore[no-untyped-def]
+        if state.agent_running and state.agent_task is not None:
+            state.agent_task.cancel()
+            console.print("\n[yellow]Interrupted.[/yellow]")
+            state.agent_running = False
+            state.agent_task = None
+            state.status_text = ""
+        else:
+            event.current_buffer.reset()
 
-    # ── Main input loop — always active ───────────────────────────────
-    with patch_stdout():
-        while True:
+    @kb.add("c-d")
+    def _exit(event):  # type: ignore[no-untyped-def]
+        if state.agent_task is not None and not state.agent_task.done():
+            state.agent_task.cancel()
+        console.print("\n[bright_black]Goodbye.[/bright_black]")
+        event.app.exit()
+
+    # Build the application
+    app = _build_application(writer, input_buffer, kb, state, config)
+    app_ref[0] = app
+
+    # Wire up invalidation so output changes trigger redraws
+    writer.set_invalidate(app.invalidate)
+
+    # Run the application
+    try:
+        await app.run_async()
+    except (EOFError, KeyboardInterrupt):
+        pass
+    finally:
+        # Cancel any running agent task on exit
+        if state.agent_task is not None and not state.agent_task.done():
+            state.agent_task.cancel()
             try:
-                text = await pt_session.prompt_async(
-                    _format_prompt(prompt_str),
-                )
-            except EOFError:
-                console.print("\n[bright_black]Goodbye.[/bright_black]")
-                # Cancel any running agent task
-                if state.agent_task is not None and not state.agent_task.done():
-                    state.agent_task.cancel()
-                    try:
-                        await state.agent_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
-                break
-            except KeyboardInterrupt:
-                console.print()
-                continue
-
-            text = text.strip()
-            if not text:
-                continue
-
-            # ── Bare exit/quit detection (without slash) ─────────────
-            if text.strip().lower() in ("exit", "quit", "q"):
-                text = "/exit"
-
-            # ── If agent is running, queue as steering message ─────────
-            if state.agent_running:
-                # Slash commands still work immediately even during agent execution
-                if text.startswith("/"):
-                    if text.strip() in ("/exit", "/quit"):
-                        if state.agent_task is not None and not state.agent_task.done():
-                            state.agent_task.cancel()
-                            try:
-                                await state.agent_task
-                            except (asyncio.CancelledError, Exception):
-                                pass
-                        console.print("\n[bright_black]Goodbye.[/bright_black]")
-                        return
-                    # Other slash commands during agent run — warn
-                    console.print("[yellow]Agent is working. Slash commands are available when idle.[/yellow]")
-                    continue
-
-                state.input_queue.put_nowait(text)
-                console.print("[bright_black]  -> message queued (will be injected mid-stream)[/bright_black]")
-                continue
-
-            # ── Skill trigger matching (checked BEFORE slash commands) ─
-            user_input = text
-            matched_skills = skill_manager.match_trigger(user_input)
-            if matched_skills:
-                skill_preamble_parts: list[str] = []
-                for skill in matched_skills:
-                    if skill.instructions:
-                        skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
-                if skill_preamble_parts:
-                    skill_preamble = "\n\n".join(skill_preamble_parts)
-                    user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
-                # Skills matched — skip slash command handling, fall through
-                # to the regular message path below.
-
-            # ── Slash commands ─────────────────────────────────────────
-            elif user_input.startswith("/"):
-                injected = await _process_slash_command(
-                    user_input,
-                    console,
-                    config,
-                    conversation,
-                    session_cost,
-                    tool_names,
-                    session_db,
-                    cost_tracker,
-                    skill_manager,
-                )
-                # Prompt stays simple — model shown in banner only
-
-                if injected is not None:
-                    # /do or /paste returned text — treat as user input
-                    user_input = injected
-                else:
-                    continue
-
-            # ── Skill trigger matching for non-slash ───────────────────
-            matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
-            if matched_skills:
-                skill_preamble_parts = []
-                for skill in matched_skills:
-                    if skill.instructions:
-                        skill_preamble_parts.append(f"[Skill: {skill.name}]\n{skill.instructions}")
-                if skill_preamble_parts:
-                    skill_preamble = "\n\n".join(skill_preamble_parts)
-                    user_input = f"{skill_preamble}\n\n---\n\n{user_input}"
-
-            # ── Start new agent turn ───────────────────────────────────
-            # Echo user message in contrasting warm white (vs Nellie's cyan)
-            from rich.text import Text as RichText
-
-            user_echo = RichText()
-            user_echo.append("> ", style="bold #E8C26B")
-            user_echo.append(user_input, style="bold #E6E8EC")
-            console.print(user_echo)
-
-            user_msg = Message(role="user", content=user_input)
-            conversation.messages.append(user_msg)
-            session_db.add_message(session_id, user_msg)
-
-            state.agent_running = True
-            state.agent_task = asyncio.create_task(
-                _run_agent_turn(
-                    state,
-                    config,
-                    conversation,
-                    console,
-                    session_db,
-                    session_id,
-                    session_cost,
-                    skill_manager,
-                    repl_compactor,
-                    tool_names,
-                )
-            )
+                await state.agent_task
+            except (asyncio.CancelledError, Exception):
+                pass
