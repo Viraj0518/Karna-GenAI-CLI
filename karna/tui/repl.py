@@ -44,7 +44,7 @@ from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension as D
 from prompt_toolkit.layout.margins import ScrollbarMargin
-from prompt_toolkit.layout.processors import BeforeInput, Processor, Transformation
+from prompt_toolkit.layout.processors import BeforeInput
 from prompt_toolkit.output import ColorDepth
 from rich.console import Console
 
@@ -82,21 +82,6 @@ _LOOP_SENTINEL = "__LOOP__"
 _PLAN_SENTINEL = "__PLAN__"
 _DO_SENTINEL = "__DO__"
 _CRON_RUN_SENTINEL = "__CRON_RUN__"
-
-
-# --------------------------------------------------------------------------- #
-#  Rotating placeholder tips (hermes-style)
-# --------------------------------------------------------------------------- #
-
-PLACEHOLDERS = [
-    "Ask anything...",
-    'Try "explain this codebase"',
-    'Try "write tests for..."',
-    'Try "fix the lint errors"',
-    'Try "/help" for commands',
-    'Try "refactor the auth module"',
-    'Try "how does the config work?"',
-]
 
 
 # --------------------------------------------------------------------------- #
@@ -161,6 +146,9 @@ def _ctx_color(pct: float) -> str:
 # --------------------------------------------------------------------------- #
 
 
+_MAX_OUTPUT_LINES = 5000
+
+
 class TUIOutputWriter:
     """Captures Rich console output as ANSI strings for prompt_toolkit.
 
@@ -168,12 +156,27 @@ class TUIOutputWriter:
     prompt_toolkit), this writer accumulates rendered ANSI text in a
     buffer.  The prompt_toolkit ``Application`` reads from this buffer
     via an ``OutputControl`` and redraws only when invalidated.
+
+    The buffer is capped at ``_MAX_OUTPUT_LINES`` rendered chunks —
+    pathological cases (a tool dumping a 100 MB CSV) evict oldest
+    output rather than growing unbounded and eventually starving the
+    render loop.
     """
 
     def __init__(self, width: int = 120) -> None:
         self._lines: list[str] = []
         self._width = width
         self._invalidate_cb: Any = None
+
+    def _append(self, text: str) -> None:
+        """Append one rendered chunk and enforce the ring-buffer cap."""
+        self._lines.append(text)
+        overflow = len(self._lines) - _MAX_OUTPUT_LINES
+        if overflow > 0:
+            # Trim exactly the overflow — Python's ``del lst[:n]`` is O(n)
+            # regardless of chunk size, so there's no point dropping more
+            # than we have to and losing scrollback we could have kept.
+            del self._lines[:overflow]
 
     def set_invalidate(self, cb: Any) -> None:
         """Register the Application.invalidate callback."""
@@ -208,20 +211,20 @@ class TUIOutputWriter:
         console.print(renderable)
         text = buf.getvalue()
         if text:
-            self._lines.append(text.rstrip("\n"))
+            self._append(text.rstrip("\n"))
             self._invalidate()
 
     def write_ansi(self, text: str) -> None:
         """Append raw ANSI text to output buffer."""
         if text:
-            self._lines.append(text.rstrip("\n"))
+            self._append(text.rstrip("\n"))
             self._invalidate()
 
     def write_console_output(self, console_buf: StringIO) -> None:
         """Flush a StringIO that a Rich Console wrote to."""
         text = console_buf.getvalue()
         if text:
-            self._lines.append(text.rstrip("\n"))
+            self._append(text.rstrip("\n"))
             self._invalidate()
 
     def get_text(self) -> str:
@@ -270,7 +273,7 @@ class RedirectedConsole(Console):
         super().print(*args, **kwargs)
         text = self._capture_buf.getvalue()
         if text:
-            self._writer._lines.append(text.rstrip("\n"))
+            self._writer._append(text.rstrip("\n"))
             self._writer._invalidate()
 
 
@@ -295,6 +298,17 @@ class REPLState:
         # Long-run charm tracking
         self.long_run_start: float = 0.0
         self.long_run_charm_shown: bool = False
+        # Output scroll control — populated by _build_application so key handlers
+        # (PgUp/PgDn/Home/End/Ctrl-Up/Ctrl-Down/mouse-wheel) can move the view.
+        # Keep typed as Any to avoid a prompt_toolkit import cycle in the header.
+        self.output_window: Any = None
+        # True when the user has manually scrolled back — suppresses autoscroll
+        # until they return to the bottom (Home-to-bottom or End).
+        self.output_scroll_locked: bool = False
+        # Interrupt flag — set by Esc handler, polled by the agent loop so a
+        # long thinking/tool-use cycle can be cancelled without Ctrl-C which
+        # also kills the input buffer.
+        self.interrupt_requested: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -496,6 +510,21 @@ async def _run_agent_turn(
             skill_manager=skill_manager,
             compactor=repl_compactor,
         ):
+            # Cooperative interrupt — Esc sets this flag; we stop
+            # consuming events and surface a soft interruption.
+            if state.interrupt_requested:
+                interrupt_event = StreamEvent(
+                    kind=EventKind.ERROR,
+                    data="[interrupted by user]",
+                )
+                renderer.handle(interrupt_event)
+                # Append to events so downstream checks (saw_error,
+                # empty-reply warning) see the interruption — otherwise
+                # the empty-reply branch fires even though we emitted
+                # an error the user saw.
+                events.append(interrupt_event)
+                state.interrupt_requested = False
+                break
             renderer.handle(event)
             events.append(event)
 
@@ -552,6 +581,21 @@ async def _run_agent_turn(
 
     # Persist assistant reply to conversation and session DB
     full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
+
+    # Surface empty-reply + tool-halt conditions so the user isn't left
+    # looking at silence. If the agent did tool calls but produced no
+    # text, or hit max_iterations without a DONE text, say so.
+    saw_error = any(e.kind == EventKind.ERROR for e in events)
+    saw_tool = any(e.kind == EventKind.TOOL_CALL_START for e in events)
+    if not full_reply and not saw_error:
+        reason = (
+            "Agent completed without producing any text reply"
+            + (" (only tool calls ran)." if saw_tool else ".")
+            + " Try rephrasing the request, or check /history for the"
+            " tool results."
+        )
+        console.print(f"[yellow]{reason}[/yellow]")
+
     if full_reply:
         assistant_msg = Message(role="assistant", content=full_reply)
         conversation.messages.append(assistant_msg)
@@ -670,15 +714,28 @@ def _build_application(
     """
     from karna.tui.design_tokens import SEMANTIC
 
-    # Output window -- scrollable, shows all agent output, with scrollbar
+    # Output window -- scrollable, shows all agent output, with scrollbar.
+    #
+    # focusable=True is REQUIRED even though the input stays focused by default
+    # (see `focused_element=input_window` below). Without it, prompt_toolkit
+    # never tracks `vertical_scroll` on this window, which makes both the
+    # ScrollbarMargin and the mouse-wheel/PgUp/PgDn handlers no-ops. Regression
+    # fixed: commit ccb866a added the scrollbar without this flag; the arrows
+    # rendered but nothing scrolled. See TUI_AUDIT_20260420.md §A.
+    #
+    # display_arrows=False keeps the scrollbar as a clean thumb only.
     output_window = Window(
         content=FormattedTextControl(
             lambda: ANSI(writer.get_text()),
-            focusable=False,
+            focusable=True,
         ),
         wrap_lines=True,
-        right_margins=[ScrollbarMargin(display_arrows=True)],
+        right_margins=[ScrollbarMargin(display_arrows=False)],
+        allow_scroll_beyond_bottom=False,
     )
+    # Publish the reference so key handlers + the agent loop (autoscroll) can
+    # read/write its scroll state. Typed as Any on state to avoid header churn.
+    state.output_window = output_window
 
     # Status bar -- 1-line, shows model + animated face/verb + context bar + cost + timer
     def _status_bar_text():
@@ -715,6 +772,13 @@ def _build_application(
             color = _ctx_color(pct)
             parts.append(f"\x1b[{color}m{bar} {pct:.0f}%\x1b[38;5;245m")
 
+        # Queued mid-stream messages — persistent indicator so the user
+        # knows the agent hasn't forgotten a steering message between
+        # event boundaries.
+        queued = state.input_queue.qsize()
+        if queued > 0:
+            parts.append(f"\x1b[38;5;214m✉ {queued} queued\x1b[38;5;245m")
+
         # Session cost
         if state.session_cost.total_usd > 0:
             parts.append(f"${state.session_cost.total_usd:.4f}")
@@ -733,27 +797,17 @@ def _build_application(
         style=f"bg:{SEMANTIC.get('bg.subtle', '#0E0F12')}",
     )
 
-    # Rotating placeholder tip
-    placeholder_tip = random.choice(PLACEHOLDERS)  # noqa: S311
+    # Empty input line renders with just the prompt glyph + cursor.
+    # (Earlier iterations rotated a "Try \"refactor the auth module\"" placeholder;
+    #  removed per direction — no background text, just the line.)
 
-    class _PlaceholderProcessor(Processor):
-        """Show a dim placeholder when the input buffer is empty."""
-
-        def apply_transformation(self, transformation_input):
-            doc = transformation_input.document
-            if not doc.text:
-                return Transformation(
-                    [("class:placeholder", f" {placeholder_tip}")],
-                )
-            return Transformation(transformation_input.fragments)
-
-    # Input window -- always active, accepts user input
+    # Input window -- always active, accepts user input.
+    # Only processor: the prompt glyph ❯ before the cursor. No placeholder text.
     input_window = Window(
         content=BufferControl(
             buffer=input_buffer,
             input_processors=[
                 BeforeInput(ANSI("\x1b[1;38;2;60;115;189m\u276f\x1b[0m ")),
-                _PlaceholderProcessor(),
             ],
         ),
         height=D(min=1, max=5),
@@ -1014,8 +1068,34 @@ async def run_repl(
             state.agent_running = False
             state.agent_task = None
             state.status_text = ""
+            # Clear any pending soft-interrupt so the next turn starts
+            # clean. Without this, an Esc→Ctrl-C sequence (which the
+            # TUI recommends) leaves interrupt_requested=True, and the
+            # next turn aborts on its first event.
+            state.interrupt_requested = False
         else:
             event.current_buffer.reset()
+
+    # Plain Esc — soft interrupt. Note: no eager=True. prompt_toolkit
+    # needs a moment to see whether a follow-on key arrives, because
+    # the existing ``escape``+``enter`` binding (newline in the input
+    # buffer) starts with the same byte. Eager would dispatch this
+    # handler immediately on the Esc and swallow the longer sequence.
+    @kb.add("escape")
+    def _soft_interrupt(event):  # type: ignore[no-untyped-def]
+        """Esc alone asks the agent to stop at its next checkpoint.
+
+        Distinct from Ctrl-C: this is a cooperative interrupt. The
+        agent loop sees ``state.interrupt_requested`` between events
+        and winds down cleanly.
+        """
+        if state.agent_running:
+            state.interrupt_requested = True
+            state.status_text = "interrupting..."
+            console.print(
+                "\n[bright_black]Esc — stopping at next checkpoint. "
+                "Ctrl-C to force-cancel.[/bright_black]"
+            )
 
     @kb.add("c-d")
     def _exit(event):  # type: ignore[no-untyped-def]
@@ -1023,6 +1103,68 @@ async def run_repl(
             state.agent_task.cancel()
         console.print("\n[bright_black]Goodbye.[/bright_black]")
         event.app.exit()
+
+    # ---- Scroll the output window without moving keyboard focus off input ----
+    #
+    # PgUp/PgDn  — page scroll (uses the visible window height)
+    # Home/End   — jump to top / bottom (End also re-enables autoscroll)
+    # c-up/c-down — single-line scroll (Ctrl-Up / Ctrl-Down)
+    # Mouse wheel is handled by prompt_toolkit automatically because the
+    # output window is now focusable, but we also honor scroll events via
+    # the Window's built-in wheel handler when mouse_support=True.
+    def _win_height(w) -> int:
+        """Best-effort current render height; fall back to a sane default."""
+        try:
+            info = w.render_info
+            if info is not None:
+                return max(1, info.window_height)
+        except Exception:
+            pass
+        return 20
+
+    def _scroll(win, delta: int) -> None:
+        if win is None:
+            return
+        cur = getattr(win, "vertical_scroll", 0) or 0
+        win.vertical_scroll = max(0, cur + delta)
+        # A negative delta = scrolling up, so user is looking at older output;
+        # suppress autoscroll until they jump back to the bottom.
+        if delta < 0:
+            state.output_scroll_locked = True
+
+    @kb.add("pageup")
+    def _scroll_pageup(event):  # type: ignore[no-untyped-def]
+        w = state.output_window
+        _scroll(w, -max(1, _win_height(w) - 2))
+
+    @kb.add("pagedown")
+    def _scroll_pagedown(event):  # type: ignore[no-untyped-def]
+        w = state.output_window
+        _scroll(w, max(1, _win_height(w) - 2))
+
+    @kb.add("c-up")
+    def _scroll_line_up(event):  # type: ignore[no-untyped-def]
+        _scroll(state.output_window, -1)
+
+    @kb.add("c-down")
+    def _scroll_line_down(event):  # type: ignore[no-untyped-def]
+        _scroll(state.output_window, 1)
+
+    @kb.add("home")
+    def _scroll_home(event):  # type: ignore[no-untyped-def]
+        w = state.output_window
+        if w is not None:
+            w.vertical_scroll = 0
+            state.output_scroll_locked = True
+
+    @kb.add("end")
+    def _scroll_end(event):  # type: ignore[no-untyped-def]
+        # Jumping to the end re-enables autoscroll so new output tracks again.
+        w = state.output_window
+        if w is not None:
+            # A big number beyond the document; prompt_toolkit clamps to max.
+            w.vertical_scroll = 10_000_000
+            state.output_scroll_locked = False
 
     @kb.add("c-g")
     def _open_editor(event):  # type: ignore[no-untyped-def]
@@ -1042,8 +1184,20 @@ async def run_repl(
     app = _build_application(writer, input_buffer, kb, state, config)
     app_ref[0] = app
 
-    # Wire up invalidation so output changes trigger redraws
-    writer.set_invalidate(app.invalidate)
+    # Wire up invalidation so output changes trigger redraws. Also
+    # autoscroll the output window to the bottom on every new chunk
+    # unless the user has explicitly scrolled up (output_scroll_locked
+    # flips true on any PgUp/Ctrl-Up/Home). The lock is only cleared by
+    # pressing End — we don't detect "scrolled back to the bottom by
+    # hand" today, so scroll-wheeling down to the tail keeps the lock
+    # on and you'll need End (or a fresh turn) to re-engage autoscroll.
+    def _invalidate_and_autoscroll() -> None:
+        if not state.output_scroll_locked and state.output_window is not None:
+            # Large sentinel; prompt_toolkit clamps to the document end.
+            state.output_window.vertical_scroll = 10_000_000
+        app.invalidate()
+
+    writer.set_invalidate(_invalidate_and_autoscroll)
 
     # Periodic status bar refresh (face ticker, duration timer, context bar)
     async def _refresh_status_bar() -> None:

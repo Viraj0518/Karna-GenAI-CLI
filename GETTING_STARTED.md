@@ -202,7 +202,7 @@ Every conversation is saved with full-text search.
 
 ## Available Tools
 
-Nellie has 15 built-in tools it uses automatically:
+Nellie has 20 built-in tools it uses automatically:
 
 | Tool | What it does |
 |---|---|
@@ -215,12 +215,17 @@ Nellie has 15 built-in tools it uses automatically:
 | `git` | Git operations (status, diff, commit, branch) |
 | `web_search` | Search the web for docs/solutions |
 | `web_fetch` | Fetch and extract web page content |
-| `notebook` | Read and edit Jupyter notebooks |
+| `notebook` | Read and edit Jupyter notebooks (execution requires `jupyter nbconvert` or `papermill` on PATH) |
 | `monitor` | Watch background processes (long-running scripts) |
 | `task` | Track tasks within a session |
 | `clipboard` | Read/write system clipboard |
 | `image` | View images (with multimodal models) |
 | `mcp` | Connect to MCP servers for extended capabilities |
+| `browser` | Headless Chromium via Playwright (navigate, click, fill, screenshot) — optional `[browser]` extra |
+| `db` | Query SQLite / PostgreSQL / MySQL with read-only default + parameter binding |
+| `comms` | Inter-agent messaging via the file-based inbox (`send` / `check` / `read` / `reply`) |
+| `document` | Extract text and tables from PDF, Office, CSV, and HTML files |
+| `voice` | Voice input/output (experimental) |
 
 When Nellie needs multiple reads/greps at once, they run in parallel — fast.
 

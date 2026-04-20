@@ -1,6 +1,39 @@
 # Diff Audit: Nellie vs Claude Code vs OpenClaw vs Hermes Agent
 
 > Generated 2026-04-17 by gamma from source-level reading of all four codebases.
+>
+> **Status — 2026-04-20 [alpha]:** portions of this audit are now stale. Several
+> items marked P0 / P1 gaps against Nellie have since landed on `dev`. The
+> comparison against Claude Code / OpenClaw / Hermes was valid at time of
+> writing; the "Karna/Nellie" column is the part that has drifted.
+>
+> **What has landed since this audit** (do not trust the matching rows below):
+> - Subagent spawn + isolation → [karna/agents/subagent.py](../karna/agents/subagent.py), [karna/tools/task.py](../karna/tools/task.py)
+> - Permission system (ALLOW/ASK/DENY + profiles) → [karna/permissions/manager.py](../karna/permissions/manager.py)
+> - Memory system (MEMORY.md + typed memories + auto-extraction) → [karna/memory/](../karna/memory/)
+> - Parallel tool execution → [karna/agents/parallel.py](../karna/agents/parallel.py)
+> - Hooks system → [karna/hooks/](../karna/hooks/)
+> - Skill loader (.md) → [karna/skills/loader.py](../karna/skills/loader.py)
+> - Prompt caching (Anthropic) → [karna/providers/caching.py](../karna/providers/caching.py)
+> - Background task monitoring → [karna/tools/monitor.py](../karna/tools/monitor.py), [karna/tools/task_registry.py](../karna/tools/task_registry.py)
+> - LLM auto-compaction → [karna/compaction/compactor.py](../karna/compaction/compactor.py)
+> - Autonomous `/loop` → [karna/agents/autonomous.py](../karna/agents/autonomous.py)
+> - Plan mode (`/plan`) → [karna/agents/plan.py](../karna/agents/plan.py)
+> - Cron / scheduled tasks → [karna/cron/](../karna/cron/)
+> - Notebook (Jupyter) editing → [karna/tools/notebook.py](../karna/tools/notebook.py)
+> - Multi-credential pool / failover → [karna/auth/pool.py](../karna/auth/pool.py)
+> - Browser (headless Chromium) → [karna/tools/browser.py](../karna/tools/browser.py)
+> - Database (SQLite/Postgres/MySQL) → [karna/tools/database.py](../karna/tools/database.py)
+> - Document reader (docx/xlsx/pdf/pptx) → [karna/tools/document.py](../karna/tools/document.py)
+> - Multi-agent comms → [karna/comms/](../karna/comms/) + [karna/tools/comms.py](../karna/tools/comms.py)
+> - RAG knowledge base → [karna/rag/](../karna/rag/)
+> - Mixture-of-agents / multi-model verification → see `tests/test_moa.py`
+> - Session fork/replay → see `tests/test_fork_session.py`
+>
+> The single-page inventory in [docs/CODEBASE_MAP.md](CODEBASE_MAP.md) is the
+> source of truth for what exists today. A refreshed competitive matrix will
+> be produced when the team is ready to pitch externally; the tables below
+> remain useful as a historical record of where Nellie stood mid-April 2026.
 
 ---
 
