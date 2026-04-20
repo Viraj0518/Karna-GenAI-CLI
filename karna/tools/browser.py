@@ -90,6 +90,21 @@ class BrowserTool(BaseTool):
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=True)
         self._page = await self._browser.new_page()
+
+        # Per-request SSRF guard. Runs for every network request the page
+        # makes, including redirect targets and subresources, so a safe
+        # initial URL that 302s to 169.254.169.254 or a host that flips
+        # DNS between the initial validation and the actual connection
+        # will be aborted at the browser-network boundary.
+        async def _ssrf_route(route: Any) -> None:  # pragma: no cover - thin
+            req_url = route.request.url
+            if not is_safe_url(req_url):
+                log.warning("Blocked in-browser request to unsafe URL: %s", req_url)
+                await route.abort("accessdenied")
+                return
+            await route.continue_()
+
+        await self._page.route("**/*", _ssrf_route)
         log.debug("Headless Chromium launched")
 
     async def _close(self) -> str:
