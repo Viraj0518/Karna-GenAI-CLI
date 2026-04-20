@@ -44,7 +44,7 @@ from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension as D
 from prompt_toolkit.layout.margins import ScrollbarMargin
-from prompt_toolkit.layout.processors import BeforeInput, Processor, Transformation
+from prompt_toolkit.layout.processors import BeforeInput
 from prompt_toolkit.output import ColorDepth
 from rich.console import Console
 
@@ -82,21 +82,6 @@ _LOOP_SENTINEL = "__LOOP__"
 _PLAN_SENTINEL = "__PLAN__"
 _DO_SENTINEL = "__DO__"
 _CRON_RUN_SENTINEL = "__CRON_RUN__"
-
-
-# --------------------------------------------------------------------------- #
-#  Rotating placeholder tips (hermes-style)
-# --------------------------------------------------------------------------- #
-
-PLACEHOLDERS = [
-    "Ask anything...",
-    'Try "explain this codebase"',
-    'Try "write tests for..."',
-    'Try "fix the lint errors"',
-    'Try "/help" for commands',
-    'Try "refactor the auth module"',
-    'Try "how does the config work?"',
-]
 
 
 # --------------------------------------------------------------------------- #
@@ -670,14 +655,15 @@ def _build_application(
     """
     from karna.tui.design_tokens import SEMANTIC
 
-    # Output window -- scrollable, shows all agent output, with scrollbar
+    # Output window -- scrollable, shows all agent output, with scrollbar.
+    # display_arrows=False for a cleaner thumb-only scrollbar (no ASCII ^/v arrows).
     output_window = Window(
         content=FormattedTextControl(
             lambda: ANSI(writer.get_text()),
             focusable=False,
         ),
         wrap_lines=True,
-        right_margins=[ScrollbarMargin(display_arrows=True)],
+        right_margins=[ScrollbarMargin(display_arrows=False)],
     )
 
     # Status bar -- 1-line, shows model + animated face/verb + context bar + cost + timer
@@ -733,27 +719,17 @@ def _build_application(
         style=f"bg:{SEMANTIC.get('bg.subtle', '#0E0F12')}",
     )
 
-    # Rotating placeholder tip
-    placeholder_tip = random.choice(PLACEHOLDERS)  # noqa: S311
+    # Empty input line renders with just the prompt glyph + cursor.
+    # (Earlier iterations rotated a "Try \"refactor the auth module\"" placeholder;
+    #  removed per direction — no background text, just the line.)
 
-    class _PlaceholderProcessor(Processor):
-        """Show a dim placeholder when the input buffer is empty."""
-
-        def apply_transformation(self, transformation_input):
-            doc = transformation_input.document
-            if not doc.text:
-                return Transformation(
-                    [("class:placeholder", f" {placeholder_tip}")],
-                )
-            return Transformation(transformation_input.fragments)
-
-    # Input window -- always active, accepts user input
+    # Input window -- always active, accepts user input.
+    # Only processor: the prompt glyph ❯ before the cursor. No placeholder text.
     input_window = Window(
         content=BufferControl(
             buffer=input_buffer,
             input_processors=[
                 BeforeInput(ANSI("\x1b[1;38;2;60;115;189m\u276f\x1b[0m ")),
-                _PlaceholderProcessor(),
             ],
         ),
         height=D(min=1, max=5),
