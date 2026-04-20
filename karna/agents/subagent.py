@@ -146,6 +146,29 @@ def _has_worktree_changes(worktree_path: Path) -> bool:
         return False
 
 
+def _save_tools_cwd(tools: list[BaseTool]) -> dict[int, str]:
+    """Snapshot the current ``_cwd`` of every tool that tracks one.
+
+    Returns a mapping from ``id(tool)`` to its saved cwd.  Used to
+    restore per-tool state after a subagent finishes — some tools
+    (e.g. BashTool after ``cd /some/path``) carry a custom cwd that
+    must not be clobbered.
+    """
+    saved: dict[int, str] = {}
+    for tool in tools:
+        if hasattr(tool, "_cwd"):
+            saved[id(tool)] = tool._cwd
+    return saved
+
+
+def _restore_tools_cwd(tools: list[BaseTool], saved: dict[int, str]) -> None:
+    """Restore each tool's ``_cwd`` from a snapshot produced by :func:`_save_tools_cwd`."""
+    for tool in tools:
+        tid = id(tool)
+        if tid in saved:
+            tool._cwd = saved[tid]
+
+
 def _set_tools_cwd(tools: list[BaseTool], cwd: str) -> None:
     """Set the working directory on all tools that track one.
 
@@ -210,15 +233,19 @@ async def _isolation_context(
         yield original_cwd
         return
 
+    # Save each tool's original _cwd so we can restore it exactly,
+    # rather than blindly resetting to os.getcwd().
+    saved_cwds: dict[int, str] = {}
     try:
         # Point tools at the worktree instead of mutating process-global cwd.
         if tools:
+            saved_cwds = _save_tools_cwd(tools)
             _set_tools_cwd(tools, str(worktree_path))
         yield worktree_path
     finally:
-        # Restore tool cwds before cleanup.
+        # Restore each tool to its original per-tool cwd.
         if tools:
-            _set_tools_cwd(tools, str(original_cwd))
+            _restore_tools_cwd(tools, saved_cwds)
         _git_worktree_remove(original_cwd, worktree_path)
 
 
@@ -549,6 +576,10 @@ class SubAgent:
                 self._fire_callbacks()
                 return f"[error] {exc}"
 
+        # Save each tool's original per-tool cwd before overwriting,
+        # so we restore it correctly (not to a generic os.getcwd()).
+        saved_cwds: dict[int, str] = _save_tools_cwd(self.tools)
+
         # Point tools at the worktree instead of mutating global cwd
         if self.worktree_path:
             _set_tools_cwd(self.tools, self.worktree_path)
@@ -588,9 +619,8 @@ class SubAgent:
             logger.exception("Subagent %s failed: %s", self.name, exc)
             return_value = f"[error] Subagent {self.name} failed: {exc}"
         finally:
-            # Restore tool cwds before cleanup
-            if self.worktree_path and self._parent_cwd:
-                _set_tools_cwd(self.tools, self._parent_cwd)
+            # Restore each tool to its original per-tool cwd
+            _restore_tools_cwd(self.tools, saved_cwds)
             if self.isolation == "worktree":
                 # E5: force cleanup on failure, conditional on success
                 self._cleanup_worktree(force=(self.status == "failed"))
@@ -625,6 +655,9 @@ class SubAgent:
         self.status = "running"
         self.error = ""
 
+        # Save per-tool cwds before overwriting
+        saved_cwds = _save_tools_cwd(self.tools)
+
         # Re-enter worktree if one exists (e.g. preserved with changes)
         if self.worktree_path and Path(self.worktree_path).is_dir():
             _set_tools_cwd(self.tools, self.worktree_path)
@@ -650,9 +683,8 @@ class SubAgent:
             self._fire_callbacks()
             return f"[error] Subagent {self.name} failed: {exc}"
         finally:
-            # Restore tool cwds after follow-up
-            if self.worktree_path and self._parent_cwd:
-                _set_tools_cwd(self.tools, self._parent_cwd)
+            # Restore each tool to its original per-tool cwd
+            _restore_tools_cwd(self.tools, saved_cwds)
 
     async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""

@@ -129,11 +129,15 @@ async def auto_compact(
     summary_budget: int = 800,
     head_turns_to_keep: int = 2,
     tail_turns_to_keep: int = 8,
+    force: bool = False,
 ) -> Conversation:
     """Compact ``conversation`` when it exceeds ``budget_tokens``.
 
     See module docstring for the algorithm. Returns the (possibly
     unchanged) conversation.
+
+    When *force* is True the trigger-threshold check is skipped so
+    compaction always runs regardless of current token usage.
 
     Raises ``CompactionError`` if three consecutive summariser calls
     fail — callers should surface this to the user rather than retry.
@@ -143,7 +147,7 @@ async def auto_compact(
 
     used = _conv_tokens(conversation.messages, model)
     threshold = int(budget_tokens * _COMPACT_TRIGGER_FRACTION)
-    if used <= threshold:
+    if not force and used <= threshold:
         return conversation
 
     messages = conversation.messages
@@ -254,16 +258,13 @@ class Compactor:
         where the user explicitly requests compaction.
         """
         budget = int(context_window * self.threshold)
-        # When forcing, use the full context window as the budget so
-        # that ``auto_compact``'s internal trigger check always passes.
-        if force:
-            budget = context_window
         try:
             result = await auto_compact(
                 conversation,
                 self.provider,
                 model="",
                 budget_tokens=budget,
+                force=force,
             )
             self.consecutive_failures = 0
             return result
