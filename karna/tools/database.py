@@ -15,6 +15,7 @@ import sqlite3
 from typing import Any
 from urllib.parse import urlparse
 
+from karna.security import is_safe_url, scrub_secrets
 from karna.tools.base import BaseTool
 
 _MAX_ROWS = 100
@@ -344,6 +345,33 @@ def _parse_connection_string(conn_str: str) -> _SQLiteConn | _PostgreSQLConn | _
     return _SQLiteConn(stripped)
 
 
+def _ssrf_reject_private_host(conn_str: str) -> str | None:
+    """If the connection string points at a private/metadata host, return an
+    error string; otherwise return None. Prevents a model-supplied DSN like
+    ``postgresql://169.254.169.254:5432/...`` from reaching cloud metadata or
+    loopback PostgreSQL/MySQL instances the user never meant to expose.
+    """
+    stripped = conn_str.strip()
+    if stripped.startswith(("postgresql://", "postgres://", "mysql://")):
+        # Map postgres:// to postgresql:// so urlparse extracts hostname.
+        normalised = stripped.replace("postgres://", "postgresql://", 1)
+        # is_safe_url only whitelists http/https; we want its host-reachability
+        # logic without its scheme whitelist, so swap the scheme for checking.
+        for db_scheme in ("postgresql://", "mysql://"):
+            if normalised.startswith(db_scheme):
+                probe = "http://" + normalised[len(db_scheme):]
+                break
+        else:
+            return None
+        if not is_safe_url(probe):
+            return (
+                "[error] Blocked: connection_string targets a "
+                "private/internal host (localhost, RFC-1918, link-local, "
+                "or cloud-metadata address)."
+            )
+    return None
+
+
 # ======================================================================= #
 #  DatabaseTool
 # ======================================================================= #
@@ -370,7 +398,21 @@ class DatabaseTool(BaseTool):
             },
             "sql": {
                 "type": "string",
-                "description": "SQL query to execute (for action=query)",
+                "description": (
+                    "SQL query to execute (for action=query). Use "
+                    "placeholders (? for SQLite, %s for Postgres/MySQL) "
+                    "together with the `params` list — do NOT interpolate "
+                    "values from user input into the SQL string."
+                ),
+            },
+            "params": {
+                "type": "array",
+                "description": (
+                    "Bind parameters for the SQL placeholders. Supplying "
+                    "untrusted values here is safe; interpolating them "
+                    "into the `sql` string is not."
+                ),
+                "items": {},
             },
             "connection_string": {
                 "type": "string",
@@ -421,6 +463,10 @@ class DatabaseTool(BaseTool):
         if not conn_str:
             return "[error] action=connect requires a connection_string parameter."
 
+        ssrf_err = _ssrf_reject_private_host(conn_str)
+        if ssrf_err:
+            return ssrf_err
+
         # Store read_only preference
         self._read_only = kwargs.get("read_only", True)
 
@@ -435,9 +481,9 @@ class DatabaseTool(BaseTool):
         try:
             wrapper.connect()
         except ImportError as exc:
-            return f"[error] {exc}"
+            return f"[error] {scrub_secrets(str(exc))}"
         except Exception as exc:
-            return f"[error] Failed to connect: {exc}"
+            return f"[error] Failed to connect: {scrub_secrets(str(exc))}"
 
         self._connection = wrapper
         mode = "read-only" if self._read_only else "read-write"
@@ -473,6 +519,11 @@ class DatabaseTool(BaseTool):
         if not sql or not sql.strip():
             return "[error] action=query requires a sql parameter."
 
+        params_raw = kwargs.get("params") or ()
+        if not isinstance(params_raw, (list, tuple)):
+            return "[error] `params` must be an array of bind values."
+        params: tuple[Any, ...] = tuple(params_raw)
+
         # Read-only enforcement
         read_only = kwargs.get("read_only", self._read_only)
         if read_only and not _is_read_only_sql(sql):
@@ -482,7 +533,7 @@ class DatabaseTool(BaseTool):
                 "Set read_only=false in the connect action to allow mutations."
             )
 
-        columns, rows = self._connection.execute(sql)
+        columns, rows = self._connection.execute(sql, params)
         if not columns:
             return "(query executed, no results returned)"
 
