@@ -14,12 +14,46 @@ best available backend.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
+import os
 import re
+import sys
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _silence_hf_output():
+    """Silence HuggingFace's stdout/stderr during model loads.
+
+    sentence-transformers + transformers emit a "LOAD REPORT" table
+    plus UNEXPECTED-keys warnings on first use of MiniLM. Those writes
+    hit stderr directly (bypassing Python logging) and corrupt the
+    prompt_toolkit TUI output pane when they fire mid-session. This
+    context redirects both streams to /dev/null for the duration of
+    the load and also nudges the relevant loggers down to ERROR.
+    """
+    saved_levels = {}
+    for name in ("transformers", "sentence_transformers", "tokenizers", "huggingface_hub"):
+        lg = logging.getLogger(name)
+        saved_levels[name] = lg.level
+        lg.setLevel(logging.ERROR)
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    devnull = open(os.devnull, "w")
+    real_stdout, real_stderr = sys.stdout, sys.stderr
+    try:
+        sys.stdout = devnull
+        sys.stderr = devnull
+        yield
+    finally:
+        sys.stdout = real_stdout
+        sys.stderr = real_stderr
+        devnull.close()
+        for name, level in saved_levels.items():
+            logging.getLogger(name).setLevel(level)
 
 
 class BaseEmbedder(ABC):
@@ -141,21 +175,24 @@ class SentenceTransformerEmbedder(BaseEmbedder):
     """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
-        from sentence_transformers import SentenceTransformer  # type: ignore[import-untyped]
+        with _silence_hf_output():
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-untyped]
 
-        self._model = SentenceTransformer(model_name)
-        self._dim = self._model.get_sentence_embedding_dimension()  # type: ignore[assignment]
+            self._model = SentenceTransformer(model_name)
+            self._dim = self._model.get_sentence_embedding_dimension()  # type: ignore[assignment]
 
     @property
     def dimension(self) -> int:
         return self._dim  # type: ignore[return-value]
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        embeddings = self._model.encode(texts, show_progress_bar=False)
+        with _silence_hf_output():
+            embeddings = self._model.encode(texts, show_progress_bar=False)
         return [e.tolist() for e in embeddings]
 
     def embed_query(self, text: str) -> list[float]:
-        return self._model.encode(text, show_progress_bar=False).tolist()
+        with _silence_hf_output():
+            return self._model.encode(text, show_progress_bar=False).tolist()
 
 
 # ------------------------------------------------------------------ #
