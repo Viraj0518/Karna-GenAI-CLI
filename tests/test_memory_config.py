@@ -368,7 +368,8 @@ class TestSerialization:
 class TestSlashMemoryTypes:
     """/memory types should list configured memory types."""
 
-    def test_memory_types_output(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.asyncio
+    async def test_memory_types_output(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         fake_karna = tmp_path / ".karna"
         monkeypatch.setattr("karna.config.KARNA_DIR", fake_karna)
         monkeypatch.setattr("karna.config.CONFIG_PATH", fake_karna / "config.toml")
@@ -391,7 +392,7 @@ class TestSlashMemoryTypes:
 
         from karna.tui.slash import handle_slash_command
 
-        handle_slash_command(
+        await handle_slash_command(
             "/memory types",
             console=console,
             config=cfg,
@@ -405,7 +406,8 @@ class TestSlashMemoryTypes:
         assert "built-in" in rendered
         assert "custom" in rendered
 
-    def test_memory_types_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.asyncio
+    async def test_memory_types_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         fake_karna = tmp_path / ".karna"
         monkeypatch.setattr("karna.config.KARNA_DIR", fake_karna)
         monkeypatch.setattr("karna.config.CONFIG_PATH", fake_karna / "config.toml")
@@ -423,7 +425,7 @@ class TestSlashMemoryTypes:
 
         from karna.tui.slash import handle_slash_command
 
-        handle_slash_command(
+        await handle_slash_command(
             "/memory types",
             console=console,
             config=cfg,
