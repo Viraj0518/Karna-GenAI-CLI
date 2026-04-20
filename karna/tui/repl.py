@@ -561,7 +561,12 @@ def _build_application(
 
     # Status bar -- 1-line, shows model + cost + agent status
     def _status_bar_text():
-        model = f"{config.active_provider}/{config.active_model}"
+        # Avoid doubled prefix like "openrouter/openrouter/auto"
+        m = config.active_model or ""
+        if m.startswith(f"{config.active_provider}/"):
+            model = m
+        else:
+            model = f"{config.active_provider}/{m}"
         cost = f"${state.session_cost.total_usd:.4f}" if state.session_cost.total_usd > 0 else ""
         status = state.status_text
 
