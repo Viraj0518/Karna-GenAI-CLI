@@ -76,6 +76,7 @@ from karna.tui.themes import KARNA_THEME
 _LOOP_SENTINEL = "__LOOP__"
 _PLAN_SENTINEL = "__PLAN__"
 _DO_SENTINEL = "__DO__"
+_CRON_RUN_SENTINEL = "__CRON_RUN__"
 
 
 # --------------------------------------------------------------------------- #
@@ -584,6 +585,10 @@ async def _process_slash_command(
         plan_text = result[len(_DO_SENTINEL) :]
         clear_last_plan(conversation)
         return plan_text
+
+    if isinstance(result, str) and result.startswith(_CRON_RUN_SENTINEL):
+        prompt = result[len(_CRON_RUN_SENTINEL) :]
+        return prompt
 
     # /paste returns raw text --- treat as user input
     if isinstance(result, str) and result:
