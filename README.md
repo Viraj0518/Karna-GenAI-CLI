@@ -1,4 +1,14 @@
-# Nellie
+<p align="center">
+  <img src="assets/banner.svg" alt="Nellie — Karna's AI Coding Agent" width="100%"/>
+</p>
+
+<p align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"/></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue.svg" alt="License"/></a>
+  <img src="https://img.shields.io/badge/telemetry-zero-brightgreen.svg" alt="Zero Telemetry"/>
+  <img src="https://img.shields.io/badge/tools-17-3C73BD.svg" alt="Tools: 17"/>
+  <img src="https://img.shields.io/badge/providers-5-5A8FCC.svg" alt="Providers: 5"/>
+</p>
 
 > **Internal Use Only — Karna Engineering**
 
