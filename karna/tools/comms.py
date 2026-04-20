@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from karna.comms.inbox import AgentInbox
+from karna.config import load_config
 from karna.tools.base import BaseTool
 
 
@@ -57,8 +58,10 @@ class CommsTool(BaseTool):
         "required": ["action"],
     }
 
-    def __init__(self, *, agent_name: str = "default") -> None:
+    def __init__(self, *, agent_name: str | None = None) -> None:
         super().__init__()
+        if agent_name is None:
+            agent_name = load_config().agent.name
         self._agent_name = agent_name
         self._inbox = AgentInbox(agent_name)
 
@@ -86,7 +89,10 @@ class CommsTool(BaseTool):
             return "[error] 'subject' is required for send action."
         if not body:
             return "[error] 'body' is required for send action."
-        msg = self._inbox.send(to, subject, body)
+        try:
+            msg = self._inbox.send(to, subject, body)
+        except ValueError as exc:
+            return f"[error] {exc}"
         return json.dumps(
             {
                 "status": "sent",
