@@ -35,6 +35,7 @@ auth_app = typer.Typer(help="Authentication commands.")
 model_app = typer.Typer(help="Model selection commands.", invoke_without_command=True)
 config_app = typer.Typer(help="Configuration commands.")
 mcp_app = typer.Typer(help="MCP server management commands.")
+acp_app = typer.Typer(help="Agent Client Protocol (ACP) server commands.")
 
 history_app = typer.Typer(help="Session history commands.", invoke_without_command=True)
 cost_app = typer.Typer(help="Cost tracking commands.")
@@ -45,6 +46,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(model_app, name="model")
 app.add_typer(config_app, name="config")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(acp_app, name="acp")
 app.add_typer(history_app, name="history")
 app.add_typer(cost_app, name="cost")
 app.add_typer(cron_app, name="cron")
@@ -684,6 +686,21 @@ def mcp_serve() -> None:
         {"command": "nellie", "args": ["mcp", "serve"]}
     """
     from karna.mcp_server import serve
+
+    serve()
+
+
+@acp_app.command("serve")
+def acp_serve() -> None:
+    """Run Nellie as an ACP (Agent Client Protocol) server over stdio.
+
+    ACP is JSON-RPC 2.0 over stdio for agent↔agent communication — a peer
+    agent opens a session, streams user prompts, and receives ``session/update``
+    notifications from us. Connect with a client config like::
+
+        {"command": "nellie", "args": ["acp", "serve"]}
+    """
+    from karna.acp_server import serve
 
     serve()
 
