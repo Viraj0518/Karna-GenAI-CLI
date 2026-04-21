@@ -268,7 +268,10 @@ def test_send_message_hits_backend_and_updates_dom(live_server, page):
     page.route(f"**{send_url_fragment}", _intercept_send)
 
     page.goto(f"{live_server}/sessions/{sid}", wait_until="domcontentloaded")
-    page.wait_for_load_state("networkidle", timeout=10000)
+    # Don't wait for networkidle: session page has a persistent
+    # EventSource on /stream, so the network is never idle. Wait for the
+    # concrete element we need instead.
+    page.wait_for_selector("#message-input", timeout=10000)
 
     # Type the message, then click Send (don't rely on Enter — Shift+Enter
     # behaviour could vary).
