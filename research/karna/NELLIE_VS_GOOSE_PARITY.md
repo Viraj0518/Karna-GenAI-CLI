@@ -1,0 +1,65 @@
+# Nellie-vs-Goose parity plan — full scope
+
+Goal: **every subsystem Goose has, in Python, shipped on dev before
+next production window.** Written after the Instagram-reel detour +
+Viraj's "full scope buddy" call.
+
+## Full parity matrix (each row = a Goose subsystem)
+
+| # | Subsystem | Goose form | Nellie today | Owner | Status |
+|---|---|---|---|---|---|
+| 1 | Agent core | `Agent::reply()` in Rust | `karna/agents/loop.py` | alpha | ✅ shipped |
+| 2 | Provider trait | abstract trait + 1700-model registry | `karna/providers/` (7 providers, string model ids, no capability registry) | beta | 🟡 in flight (B1 — registry) |
+| 3 | ExtensionManager + MCP client | crate-level | `karna/tools/mcp.py` | — | ✅ shipped |
+| 4 | Built-in MCP servers — developer | file I/O, shell, edit | already 19 tools | — | ✅ shipped (via nellie's own tools) |
+| 5 | Built-in MCP servers — computer_controller | xcap screen capture + input automation | ❌ nothing | alpha | 🔴 todo |
+| 6 | Built-in MCP servers — memory | persistent KV | ❌ nellie has memory surface, not MCP-exposed | gamma | 🟡 in flight (G2) |
+| 7 | SessionManager + SQLite | `sessions.db`, durable | `karna/sessions/` (SQLite + FTS5, multi-session CLI) | — | ✅ shipped |
+| 8 | In-process session manager (for REST) | concurrent sessions in `goosed` | `karna/rest_server/session_manager.py` | alpha | ✅ shipped (PR #48) |
+| 9 | Recipe Engine | YAML + MiniJinja | ❌ Skills are triggers, not workflows | alpha | 🔴 todo (next) |
+| 10 | Sub-recipes | recipes invoking recipes | ❌ | gamma | 🟡 in flight (G1 — blocked on #9) |
+| 11 | Scheduler | tokio-cron | `karna/cron/` | — | ✅ shipped |
+| 12 | Configuration + keyring | OS keyring | 🟡 JSON files with 0600 | beta | 🟡 in flight (B3) |
+| 13 | Canonical model registry | 1700 LLMs × capabilities | ❌ | beta | 🟡 in flight (B1, scoped 200 → now 1000+) |
+| 14 | CLI | `goose session`/`run`/`configure`/`mcp` | `nellie` + 12 subcommands | — | ✅ shipped (+`serve` in PR #48) |
+| 15 | HTTP server (goosed) | REST + SSE, 103 endpoints, OpenAPI | `karna/rest_server/` (10 endpoints, SSE, OpenAPI) | alpha | ✅ shipped (PR #48) |
+| 16 | WebSockets | real-time updates | 🟡 SSE only today | alpha | 🔴 todo (add WS when REST lands) |
+| 17 | ACP server (Agent Client Protocol) | JSON-RPC stdio | ❌ MCP server only | alpha | 🔴 todo |
+| 18 | MCP server wrapping Nellie | — | `karna/mcp_server/` | — | ✅ shipped (unique to Nellie) |
+| 19 | Desktop app | Electron + React | ❌ | gamma | 🔴 todo (was "web UI MVP" — scope now includes Electron) |
+| 20 | Web UI | served by goosed | ❌ | gamma | 🟡 in flight (G3) |
+| 21 | Permission modes | ask / deny / approve | 3-tier ALLOW/ASK/DENY per tool | — | ✅ shipped |
+| 22 | Prompt injection detection | built-in | ❌ (path/SSRF/secret guards only) | beta | 🟡 in flight (B2) |
+| 23 | Context auto-compaction | at 80% | `karna/compaction/` | — | ✅ shipped |
+| 24 | OpenAPI spec generation | for client codegen | auto via FastAPI | alpha | ✅ shipped (PR #48) |
+| 25 | Installers | signed pkg / MSI / deb | `install.sh` + `install.ps1` | gamma | 🟡 in flight (G4) |
+| 26 | Telemetry | opt-in usage metrics | ❌ | — | 🔴 todo (explicit opt-in; "zero-telemetry" by default stays) |
+
+## Unique-to-Nellie (keep)
+
+27. **Domain opinionation** — KARNA-*.md templates, Karna.md
+    hierarchy, 30-persona library
+28. **Multi-agent file-based comms** — `karna/comms/`
+29. **Auto-memory extraction** — pattern-detection via regex, typed
+30. **Skills system** — markdown-based triggers
+
+## What's actually left (by subsystem)
+
+- alpha: #5 computer_controller MCP, #9 recipes, #16 WebSockets, #17 ACP server, #26 telemetry
+- beta: #2+#13 canonical registry (expand scope to 1000+ models), #22 prompt-injection, #12 keyring, CI/test harden
+- gamma: #6 memory MCP, #10 sub-recipes, #19 Electron desktop, #20 web UI, #25 installer polish
+
+## Exit criteria — "Nellie > Goose"
+
+Every row above is ✅, and Nellie retains all unique-to-Nellie items.
+At that point: same feature surface, better domain fit, lower
+adoption friction for Karna.
+
+## Cadence
+
+- Alpha pushes feature PRs on `claude/alpha-nellie-*-20260420*`
+  branches, ~1 per subsystem
+- Beta + gamma push on their own branches, PR against dev
+- All reviews via dev; main only moves on release cut
+- Comms protocol is the military-style affirm/complete discipline
+  established 2026-04-20T23:30Z
