@@ -13,7 +13,7 @@ Viraj's "full scope buddy" call.
 | 3 | ExtensionManager + MCP client | crate-level | `karna/tools/mcp.py` | — | ✅ shipped |
 | 4 | Built-in MCP servers — developer | file I/O, shell, edit | already 19 tools | — | ✅ shipped (via nellie's own tools) |
 | 5 | Built-in MCP servers — computer_controller | xcap screen capture + input automation | ❌ nothing | alpha | 🔴 todo |
-| 6 | Built-in MCP servers — memory | persistent KV | ❌ nellie has memory surface, not MCP-exposed | gamma | 🟡 in flight (G2) |
+| 6 | Built-in MCP servers — memory | persistent KV | `karna/mcp_server/memory_server.py` (list/get/save/delete, 19 tests) + `nellie mcp serve-memory` | gamma | ✅ shipped (commit 6533f80) |
 | 7 | SessionManager + SQLite | `sessions.db`, durable | `karna/sessions/` (SQLite + FTS5, multi-session CLI) | — | ✅ shipped |
 | 8 | In-process session manager (for REST) | concurrent sessions in `goosed` | `karna/rest_server/session_manager.py` | alpha | ✅ shipped (PR #48) |
 | 9 | Recipe Engine | YAML + MiniJinja | ❌ Skills are triggers, not workflows | alpha | 🔴 todo (next) |
@@ -24,7 +24,7 @@ Viraj's "full scope buddy" call.
 | 14 | CLI | `goose session`/`run`/`configure`/`mcp` | `nellie` + 12 subcommands | — | ✅ shipped (+`serve` in PR #48) |
 | 15 | HTTP server (goosed) | REST + SSE, 103 endpoints, OpenAPI | `karna/rest_server/` (10 endpoints, SSE, OpenAPI) | alpha | ✅ shipped (PR #48) |
 | 16 | WebSockets | real-time updates | 🟡 SSE only today | alpha | 🔴 todo (add WS when REST lands) |
-| 17 | ACP server (Agent Client Protocol) | JSON-RPC stdio | ❌ MCP server only | alpha | 🔴 todo |
+| 17 | ACP server (Agent Client Protocol) | JSON-RPC stdio | `karna/acp_server/` (session/new/list/prompt/cancel/close + session/update stream) | alpha | ✅ shipped (PR #48) |
 | 18 | MCP server wrapping Nellie | — | `karna/mcp_server/` | — | ✅ shipped (unique to Nellie) |
 | 19 | Desktop app | Electron + React | ❌ | gamma | 🔴 todo (was "web UI MVP" — scope now includes Electron) |
 | 20 | Web UI | served by goosed | ❌ | gamma | 🟡 in flight (G3) |
@@ -32,7 +32,7 @@ Viraj's "full scope buddy" call.
 | 22 | Prompt injection detection | built-in | ❌ (path/SSRF/secret guards only) | beta | 🟡 in flight (B2) |
 | 23 | Context auto-compaction | at 80% | `karna/compaction/` | — | ✅ shipped |
 | 24 | OpenAPI spec generation | for client codegen | auto via FastAPI | alpha | ✅ shipped (PR #48) |
-| 25 | Installers | signed pkg / MSI / deb | `install.sh` + `install.ps1` | gamma | 🟡 in flight (G4) |
+| 25 | Installers | signed pkg / MSI / deb | `install.sh` + `install.ps1` + `install.py` (stdlib cross-platform) + Homebrew formula + twine-verified release.yml | gamma | ✅ shipped |
 | 26 | Telemetry | opt-in usage metrics | ❌ | — | 🔴 todo (explicit opt-in; "zero-telemetry" by default stays) |
 
 ## Unique-to-Nellie (keep)
@@ -45,9 +45,9 @@ Viraj's "full scope buddy" call.
 
 ## What's actually left (by subsystem)
 
-- alpha: #5 computer_controller MCP, #9 recipes, #16 WebSockets, #17 ACP server, #26 telemetry
+- alpha: #5 computer_controller MCP, #16 WebSockets, #26 telemetry
 - beta: #2+#13 canonical registry (expand scope to 1000+ models), #22 prompt-injection, #12 keyring, CI/test harden
-- gamma: #6 memory MCP, #10 sub-recipes, #19 Electron desktop, #20 web UI, #25 installer polish
+- gamma: #10 sub-recipes, #19 Electron desktop, #20 web UI
 
 ## Exit criteria — "Nellie > Goose"
 
