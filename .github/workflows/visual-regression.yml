@@ -1,0 +1,62 @@
+name: visual-regression
+
+# Frame-diff visual regression for karna's TUI renderer.
+#
+# Drives tools/tui_screenshot.py for all 5 scenarios, renders the ANSI
+# to PNG, and diffs against the committed baselines in
+# tests/visual_baselines/. Failures upload the full _visual_diff/
+# directory (baseline + current + diff images + REPORT.md) as an
+# artifact so reviewers can eyeball the regression without rerunning
+# the pipeline locally.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+concurrency:
+  group: visual-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-regression:
+    name: pixel-diff TUI baselines
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: System libs for cairosvg
+        # cairocffi dlopen()s libcairo2 at import time. ubuntu-latest
+        # ships with it, but be explicit so rebase-to-minimal-runner
+        # doesn't silently fall back to the ansi-text backend.
+        run: sudo apt-get update && sudo apt-get install -y libcairo2
+
+      - name: Install python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install cairosvg pillow
+
+      - name: Run visual regression (check mode)
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python tools/visual_regression.py --mode=check --threshold=0.02
+
+      - name: Run pytest wrapper
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m pytest tests/test_visual_regression.py -v
+
+      - name: Upload diff artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff-${{ github.sha }}
+          path: _visual_diff/
+          retention-days: 14

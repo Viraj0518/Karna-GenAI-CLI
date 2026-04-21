@@ -58,3 +58,4 @@ _demo_nellie_driver.py
 # Runtime artifacts from web UI visual audit
 _web_screenshots/
 _frames/
+_visual_diff/

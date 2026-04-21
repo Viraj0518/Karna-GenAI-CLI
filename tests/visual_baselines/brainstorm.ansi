@@ -1,0 +1,20 @@
+
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[2;38;2;60;115;189m✦ [0m[2;38;2;60;115;189mThinking…[0m[2m  (esc to interrupt)[0m
+[2;36m◆ [0m[2;36mnellie[0m
+Brainstorm for reducing first-paint latency on the dashboard — ranked by impact vs. effort:         
+
+[1m • [0m[1mServer-side render the first fold[0m (high impact, 2-day effort). The 300ms client-side hydration is
+[1m   [0mkilling us on mobile.                                                                            
+[1m • [0m[1mShip a smaller JS bundle for the shell[0m — we're pulling in the entire chart library even on the   
+[1m   [0mlogin page. Code-split it.                                                                       
+[1m • [0m[1mReplace webfonts with [0m[1;36;40mfont-display: swap[0m so text isn't blocked on the 200KB Inter download.      
+[1m • [0m[1mMove the API calls for critical data to streaming SSR[0m rather than the current fetch-in-useEffect 
+[1m   [0mpattern.                                                                                         
+[1m • [0mCache the shell HTML at the edge (Cloudflare KV) — sub-50ms TTFB for cold users.                 
+[1m • [0mDebounced prefetching of the routes the user is most likely to hit next (e.g. [1;36;40m/dashboard[0m from [1;36;40m/[0m).
+
+None of these are exclusive. If I had to pick two for this sprint: [1mSSR the first fold[0m and [1mcode-split[0m
+[1mthe shell[0m. They attack the p50 and p95 from different directions.                                   
+[38;2;95;100;114m  1,820 in / 198 out · $0.0110[0m

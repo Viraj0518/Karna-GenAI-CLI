@@ -1,0 +1,28 @@
+
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[2;38;2;60;115;189m✦ [0m[2;38;2;60;115;189mThinking…[0m[2m  (esc to interrupt)[0m
+[2;36m◆ [0m[2;36mnellie[0m
+I dug through the codebase and the Python 3.12 release notes. Three findings matter for this        
+migration:                                                                                          
+
+First, [1;36;40mtyping.TypedDict[0m gained [1;36;40mRequired[0m/[1;36;40mNotRequired[0m in 3.11, which means we can drop the            
+[1;36;40mtyping_extensions[0m shim in [1;36;40mkarna/models.py[0m. That removes one install-time dependency across all three
+VMs.                                                                                                
+
+Second, [1;36;40masyncio.TaskGroup[0m is the new recommended way to structure concurrent work — it's strictly   
+better than [1;36;40masyncio.gather()[0m for our use case because it cancels siblings on first failure. Sample: 
+
+                                                                                                    
+ [94masync[0m [94mwith[0m asyncio.TaskGroup() [94mas[0m tg:                                                              
+     tg.create_task(fetch_provider_a())                                                             
+     tg.create_task(fetch_provider_b())                                                             
+     tg.create_task(fetch_provider_c())                                                             
+                                                                                                    
+
+Third — and this is the one I'm least sure about — the new [1;36;40mPEP 695[0m generic syntax ([1;36;40mclass Foo[T]:[0m)   
+would simplify our provider abstractions but breaks IDE support in about 30% of installs. Worth     
+deferring until 3.13 lands in LTS distros.                                                          
+
+Source: [4;34mPython 3.12 What's New[0m                                                                      
+[38;2;95;100;114m  3,890 in / 312 out · $0.0190[0m
