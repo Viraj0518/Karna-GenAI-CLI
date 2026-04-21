@@ -4,9 +4,11 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-04-21
+## [0.1.3] - 2026-04-21
 
-First post-0.1.0 release. Three themes drove the cycle:
+Post-0.1.2 release (2026-04-18 cadence: 0.1.0 → 0.1.1 → 0.1.2 shipped UX polish and advanced features; 0.1.3 is the first release to bump the source-string `__version__` in sync with the git tag, closing the drift where earlier tags pointed at commits whose `pyproject.toml` still said `0.1.0`).
+
+Three themes drove this cycle:
 
 1. **TUI rewrite** — legacy custom-scroll REPL replaced by a `patch_stdout`-wrapped `Application(full_screen=False)` ported from Hermes (MIT). Native terminal scrollback / scrollbar / copy-paste now work. Paired with a verbatim port of Claude Code's TUI chrome (`karna.tui.cc_components`, 11 modules, 132 tests) as a library the REPL can progressively adopt.
 2. **Prompt-layer faithfulness** — tool prompts now match Claude Code verbatim (`karna/prompts/cc_tool_prompts.py`). Fixes the "Nellie refuses web scraping" class of behaviour bug — the full upstream prompts flow through OpenAI + Anthropic tool schemas and the system-prompt tool-docs section.
