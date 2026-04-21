@@ -65,8 +65,30 @@ from karna.providers._retry import (
 from karna.providers._retry import (
     jittered_backoff as _shared_jittered_backoff,
 )
+from karna.security.guards import scrub_secrets
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_error_text(exc: BaseException) -> str:
+    """Return an exception's textual form with secrets scrubbed.
+
+    Provider errors (HTTPStatusError, RequestError, etc.) can carry
+    response bodies that echo back ``Authorization: Bearer sk-…`` or
+    other credential material when the remote API returns a 4xx/5xx
+    with a descriptive error payload. Any provider code that logs
+    exceptions or re-raises with a message MUST route through this
+    helper rather than stringify the exception directly.
+    """
+    try:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            body = exc.response.text or ""
+            status = exc.response.status_code
+            return scrub_secrets(f"HTTP {status}: {body[:2000]}")
+    except Exception:  # noqa: BLE001 — best-effort scrub must never propagate
+        pass
+    return scrub_secrets(str(exc))
+
 
 CREDENTIALS_DIR = Path.home() / ".karna" / "credentials"
 
