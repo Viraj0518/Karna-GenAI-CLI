@@ -443,6 +443,57 @@ def history_delete(
 
 
 # --------------------------------------------------------------------------- #
+#  Recipe runner
+# --------------------------------------------------------------------------- #
+
+
+@app.command("run")
+def run_recipe_cli(
+    recipe: str = typer.Option(..., "--recipe", "-r", help="Path to a recipe YAML file"),
+    param: list[str] = typer.Option(
+        [], "--param", "-p",
+        help="key=value recipe parameter (repeatable)",
+    ),
+    workspace: str = typer.Option(
+        "", "--workspace", "-w",
+        help="Directory the recipe's tools should scope to (bash cwd + write/edit allowed_roots)",
+    ),
+) -> None:
+    """Execute a recipe YAML end-to-end.
+
+    A recipe bundles instructions + parameters + tool allowlist + model
+    pin into one reusable spec. Goose-parity surface.
+    """
+    from karna.recipes import load_recipe, run_recipe
+
+    params: dict[str, str] = {}
+    for kv in param:
+        if "=" not in kv:
+            rprint(f"[red]--param must be key=value (got: {kv!r})[/red]")
+            raise typer.Exit(code=1)
+        k, v = kv.split("=", 1)
+        params[k.strip()] = v
+
+    try:
+        rec = load_recipe(recipe)
+    except Exception as exc:
+        rprint(f"[red]Failed to load recipe: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    result = asyncio.run(run_recipe(rec, params, workspace=workspace or None))
+    halt = result["halt"]
+    rprint(f"[bright_black]halt: {halt}[/bright_black]")
+    if halt == "done":
+        rprint(result["text"])
+    else:
+        if result.get("text"):
+            rprint(result["text"])
+        if result["errors"]:
+            rprint(f"[red]errors: {'; '.join(result['errors'][-3:])}[/red]")
+        raise typer.Exit(code=1)
+
+
+# --------------------------------------------------------------------------- #
 #  REST server command
 # --------------------------------------------------------------------------- #
 
