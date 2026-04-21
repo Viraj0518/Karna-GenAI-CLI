@@ -1,1 +1,0 @@
-[['requests', 'beautifulsoup4', 'schedule', 'pandas', 'sqlite3', 'fastapi', 'uvicorn', 'pydantic']]
