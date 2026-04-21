@@ -52,6 +52,34 @@ from rich.console import Console
 from karna.agents.autonomous import run_autonomous_loop
 from karna.agents.loop import agent_loop
 from karna.agents.plan import run_plan_mode
+
+# --------------------------------------------------------------------------- #
+#  TUI debug trace — enable with KARNA_DEBUG_TUI=1
+# --------------------------------------------------------------------------- #
+
+_TUI_DEBUG = os.environ.get("KARNA_DEBUG_TUI", "").lower() in ("1", "true", "yes", "on")
+_TUI_LOG_PATH = Path.home() / ".karna" / "logs" / "tui.log"
+
+
+def _tui_log(event: str, **fields: Any) -> None:
+    """Append a timestamped line to ``~/.karna/logs/tui.log`` when debug is on.
+
+    Never raises. Use to capture agent-turn milestones so we can tell whether
+    a blank pane means the pipeline is silent, the render is missing, or the
+    task died before any event. Tail with::
+
+        tail -f ~/.karna/logs/tui.log
+    """
+    if not _TUI_DEBUG:
+        return
+    try:
+        _TUI_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        bits = [f"{time.time():.3f}", event]
+        bits.extend(f"{k}={v!r}" for k, v in fields.items())
+        with _TUI_LOG_PATH.open("a", encoding="utf-8") as fh:
+            fh.write("  ".join(bits) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
 from karna.config import KarnaConfig
 from karna.models import Conversation, Message
 from karna.prompts import build_system_prompt
@@ -177,6 +205,7 @@ class TUIOutputWriter:
     def _append(self, text: str) -> None:
         """Append one rendered chunk; the deque evicts oldest on overflow."""
         self._lines.append(text)
+        _tui_log("writer.append", chars=len(text), preview=text[:40])
 
     def set_invalidate(self, cb: Any) -> None:
         """Register the Application.invalidate callback."""
@@ -519,6 +548,7 @@ async def _run_agent_turn(
 
     Runs as an ``asyncio.Task`` so the input loop stays responsive.
     """
+    _tui_log("agent_turn.enter")
     renderer = OutputRenderer(console)
     # The REPL accept-handler has already printed the turn-break divider
     # and the ``✦ Thinking…`` indicator synchronously (see below in
@@ -551,6 +581,7 @@ async def _run_agent_turn(
                 events.append(interrupt_event)
                 state.interrupt_requested = False
                 break
+            _tui_log("event", kind=str(event.kind), has_data=event.data is not None)
             renderer.handle(event)
             events.append(event)
 
@@ -598,8 +629,14 @@ async def _run_agent_turn(
                     break
 
     except Exception as exc:
+        _tui_log("agent_turn.exception", type=type(exc).__name__, msg=str(exc)[:200])
         renderer.handle(StreamEvent(kind=EventKind.ERROR, data=str(exc)))
     finally:
+        _tui_log(
+            "agent_turn.finish",
+            event_count=len(events),
+            event_kinds=[str(e.kind) for e in events[:10]],
+        )
         renderer.finish()
         state.agent_running = False
         state.agent_task = None
@@ -1081,6 +1118,7 @@ async def run_repl(
         state.agent_running = True
         state.turn_start = time.time()
         state.status_text = "thinking..."
+        _tui_log("accept_handler.turn_start", prompt=user_input[:60], turn_start=state.turn_start)
 
         # Synchronous feedback BEFORE yielding to the event loop.
         # Without this, the user stares at a blank pane for however long
@@ -1117,6 +1155,7 @@ async def run_repl(
         # ( ⠙ Thinking · 0s · ↑ tok · esc) shows up right away instead of
         # waiting for the 500ms refresh tick.
         app.invalidate()
+        _tui_log("accept_handler.task_created", running=state.agent_running)
 
     # Tab-completion for slash commands, file paths, and model names
     completer = NellieCompleter()
