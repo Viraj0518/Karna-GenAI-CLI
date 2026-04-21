@@ -13,7 +13,7 @@ Viraj's "full scope buddy" call.
 | 3 | ExtensionManager + MCP client | crate-level | `karna/tools/mcp.py` | — | ✅ shipped |
 | 4 | Built-in MCP servers — developer | file I/O, shell, edit | already 19 tools | — | ✅ shipped (via nellie's own tools) |
 | 5 | Built-in MCP servers — computer_controller | xcap screen capture + input automation | ❌ nothing | alpha | 🔴 todo |
-| 6 | Built-in MCP servers — memory | persistent KV | `karna/mcp_server/memory_server.py` (list/get/save/delete, 19 tests) + `nellie mcp serve-memory` | gamma | ✅ shipped (commit 6533f80) |
+| 6 | Built-in MCP servers — memory | persistent KV | shipped in 6533f80 but **reverted by G4 commit 1e2f353** — awaiting gamma branch fix before re-crediting | gamma | 🟡 regression (shipped, then wiped; PR #50 on hold) |
 | 7 | SessionManager + SQLite | `sessions.db`, durable | `karna/sessions/` (SQLite + FTS5, multi-session CLI) | — | ✅ shipped |
 | 8 | In-process session manager (for REST) | concurrent sessions in `goosed` | `karna/rest_server/session_manager.py` | alpha | ✅ shipped (PR #48) |
 | 9 | Recipe Engine | YAML + MiniJinja | ❌ Skills are triggers, not workflows | alpha | 🔴 todo (next) |
