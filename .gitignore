@@ -54,3 +54,7 @@ yarn-error.log*
 .pnpm-debug.log*
 .claude/worktrees/
 _demo_nellie_driver.py
+
+# Runtime artifacts from web UI visual audit
+_web_screenshots/
+_frames/

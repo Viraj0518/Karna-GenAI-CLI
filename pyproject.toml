@@ -34,6 +34,7 @@ rag = ["chromadb>=0.4"]
 rest = ["fastapi>=0.110", "uvicorn[standard]>=0.30"]
 recipes = ["pyyaml>=6.0", "jinja2>=3.1"]
 webui = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.6"]
+web-test = ["playwright>=1.40"]
 all = ["karna[tokens,web,vertex,bedrock,cron,db,docs,browser,rag,rest,recipes,webui]"]
 dev = [
     "pytest>=9.0.3",
