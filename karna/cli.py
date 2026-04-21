@@ -616,6 +616,23 @@ def mcp_serve() -> None:
     serve()
 
 
+@mcp_app.command("serve-memory")
+def mcp_serve_memory() -> None:
+    """Start the Memory MCP server (JSON-RPC over stdio).
+
+    Exposes four tools -- ``memory_list``, ``memory_get``,
+    ``memory_save``, and ``memory_delete`` -- so external MCP clients
+    can read and write Nellie's persistent memory.
+
+    Config example::
+
+        {"command": "nellie", "args": ["mcp", "serve-memory"]}
+    """
+    from karna.mcp_server.memory_server import run_memory_server
+
+    run_memory_server()
+
+
 @mcp_app.command("test")
 def mcp_test(
     name: str = typer.Argument(..., help="Server name to test"),
