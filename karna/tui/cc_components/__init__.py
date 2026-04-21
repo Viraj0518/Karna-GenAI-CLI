@@ -7,6 +7,24 @@ and memory-usage indicator. Source files live under
 runtime wiring.
 """
 
+from karna.tui.cc_components.chat import (
+    ChatMessage,
+    MessageAction,
+    format_timestamp,
+    render_actions_menu,
+    render_assistant_message,
+    render_interrupted_by_user,
+    render_message,
+    render_message_row,
+    render_message_selector,
+    render_messages,
+    render_model_label,
+    render_system_message,
+    render_timestamp,
+    render_tool_message,
+    render_user_message,
+    wrap_response,
+)
 from karna.tui.cc_components.dialogs import (
     IdleReturnAction,
     confirm,
@@ -25,6 +43,20 @@ from karna.tui.cc_components.input import (
     VimTextInput,
     attach_configurable_shortcut_hint,
     render_clickable_image_ref,
+)
+from karna.tui.cc_components.diffs import (
+    render_file_edit_accepted,
+    render_file_edit_rejected,
+    render_file_path_link,
+    render_structured_diff,
+    render_tool_error,
+    render_tool_rejected,
+)
+from karna.tui.cc_components.markdown import (
+    detect_language_from_path,
+    highlight_code,
+    render_markdown,
+    render_table,
 )
 from karna.tui.cc_components.permissions import (
     ToolPermissionChoice,
@@ -80,6 +112,36 @@ from karna.tui.cc_components.tasks import (
 )
 
 __all__ = [
+    # Chat rendering
+    "ChatMessage",
+    "MessageAction",
+    "format_timestamp",
+    "render_actions_menu",
+    "render_assistant_message",
+    "render_interrupted_by_user",
+    "render_message",
+    "render_message_row",
+    "render_message_selector",
+    "render_messages",
+    "render_model_label",
+    "render_system_message",
+    "render_timestamp",
+    "render_tool_message",
+    "render_user_message",
+    "wrap_response",
+    # Diff / file-edit visuals
+    "render_file_edit_accepted",
+    "render_file_edit_rejected",
+    "render_file_path_link",
+    "render_structured_diff",
+    "render_tool_error",
+    "render_tool_rejected",
+    # Markdown + code highlighting
+    "detect_language_from_path",
+    "highlight_code",
+    "render_markdown",
+    "render_table",
+    # Status / context chrome
     "render_status_line",
     "render_context_bar",
     "render_token_warning",
