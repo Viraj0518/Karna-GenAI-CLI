@@ -970,6 +970,25 @@ async def run_repl(
         if not text:
             return
 
+        # ── Prompt-injection sniff (non-blocking) ──────────────────
+        # We warn but don't refuse at the TUI layer — the user is in
+        # an interactive session, the typical source of a hit here is
+        # a paste of untrusted content (e.g. a GitHub issue body). The
+        # MCP server layer refuses; interactive CLI warns + continues.
+        if not text.startswith("/"):
+            try:
+                from karna.security.prompt_injection import detect_prompt_injection
+                _pi_hits = detect_prompt_injection(text)
+                if _pi_hits:
+                    console.print(
+                        "[yellow]⚠ prompt-injection patterns detected: "
+                        f"{', '.join(_pi_hits)}. "
+                        "Proceeding anyway — if this was pasted content, "
+                        "vet the source.[/yellow]"
+                    )
+            except Exception:
+                pass  # security scan must never break the user flow
+
         # ── Bare exit/quit detection ─────────────────────────────
         if text.strip().lower() in ("exit", "quit", "q"):
             text = "/exit"
