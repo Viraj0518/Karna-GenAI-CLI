@@ -4,6 +4,14 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-21
+
+First post-0.1.0 release. Three themes drove the cycle:
+
+1. **TUI rewrite** — legacy custom-scroll REPL replaced by a `patch_stdout`-wrapped `Application(full_screen=False)` ported from Hermes (MIT). Native terminal scrollback / scrollbar / copy-paste now work. Paired with a verbatim port of Claude Code's TUI chrome (`karna.tui.cc_components`, 11 modules, 132 tests) as a library the REPL can progressively adopt.
+2. **Prompt-layer faithfulness** — tool prompts now match Claude Code verbatim (`karna/prompts/cc_tool_prompts.py`). Fixes the "Nellie refuses web scraping" class of behaviour bug — the full upstream prompts flow through OpenAI + Anthropic tool schemas and the system-prompt tool-docs section.
+3. **Security + infra hardening** — notebook/database/browser/comms tool audits, PTY Linux fix, pytest hang root-caused + fixed, SSE web transcript, Playwright + visual-regression + CLI-surface + PTY test layers.
+
 ### Security
 
 - **Notebook tool:** removed the unsandboxed in-process fallback. When neither `jupyter nbconvert` nor `papermill` is available on PATH, the tool refuses with a clear diagnostic instead of evaluating model-generated cell source in the host interpreter. Per-invocation nonce on temp filenames prevents concurrent-execution collisions. (`karna/tools/notebook.py`)
@@ -14,6 +22,7 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ### Added
 
+- **Prompts: verbatim Claude Code tool prompts** — `karna/prompts/cc_tool_prompts.py` ports the full upstream CC prompts (bash, read, write, edit, grep, glob, web_fetch, web_search, notebook, task) from `/c/cc-src/src/tools/<Tool>/prompt.ts`. `BaseTool` gains a `cc_prompt` class attribute + `model_facing_description` property; API schemas (OpenAI + Anthropic) and the system-prompt tool-docs section now ship the rich CC text to the model. Fixes a behaviour bug where Nellie would refuse scraping tasks because `web_fetch`/`web_search` descriptions were thin one-liners. Templates also gained an explicit "you CAN browse the web in real time" paragraph. 8 regression assertions in `tests/test_cc_tool_prompts.py`.
 - **TUI: `karna.tui.hermes_repl`** — patch_stdout-wrapped `Application(full_screen=False)` REPL port from Hermes. Native terminal scrollback, scrollbar, and copy/paste now Just Work; no more custom scroll buffer. Gated on `_USE_HERMES_REPL=True` in `karna/tui/__init__.py` for one-line rollback. Paired with `karna.tui.hermes_display` (spinner, tool preview, diff primitives).
 - **TUI: `karna.tui.cc_components`** — 11-module faithful port of Claude Code's TUI chrome (`/c/cc-src/src/components/*`) to Rich renderables. 81 exported symbols, 132 tests green. Clusters: `chat`, `markdown`, `diffs`, `status`, `spinners`, `permissions`, `pickers`, `search`, `tasks`, `input`, `dialogs`. Library-only — REPL integration is a separate pass documented in `docs/CC_COMPONENT_LIBRARY.md`. Nellie brand skin applied (`#3C73BD`, `◆ nellie` assistant label, `✦/●/⎿` glyph vocabulary).
 - `docs/CC_COMPONENT_LIBRARY.md` — upstream mapping, public surface, integration gaps, and CC→Rich semantic compromises for the component library.
@@ -33,6 +42,7 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ### Fixed
 
+- **Tests: full pytest run no longer hangs.** `tests/test_background_bash.py` spawned real bash subprocesses via `run_in_background=True` but its autouse fixture only replaced the task-registry singleton — it never cancelled the in-flight `asyncio.Task` wrapping the subprocess. On the Windows Proactor loop the orphan held the subprocess transport open, deadlocking the next test that spawned anything. Fix: `TaskRegistry.shutdown()` cancels every RUNNING task's asyncio.Task and awaits its teardown; fixture upgraded to async and calls `shutdown()` before the sync reset. Whole file drops from a 300+s hang to ~10s. (`karna/tools/task_registry.py`, `tests/test_background_bash.py`)
 - **PTY driver**: `_write` referenced `self._backend` which was never assigned on the instance — the ptyprocess branch never fired. Swap to module-level `_BACKEND` set by `_detect_backend()`. (`tools/tui_pty_driver.py`)
 - Rotating placeholder text inside the REPL input buffer (removed per user direction — input line is now a bare chevron + cursor). (`karna/tui/repl.py`)
 - Scrollbar arrows hidden; scrollbar itself is now interactive because the output window is focusable.
