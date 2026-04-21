@@ -22,7 +22,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, resolve_max_tokens
 
 
 class OpenAIProvider(BaseProvider):
@@ -30,6 +30,17 @@ class OpenAIProvider(BaseProvider):
 
     name = "openai"
     base_url = "https://api.openai.com/v1"
+
+    # Per-family max output caps. Longest-prefix match; unknown → None
+    # (resolver falls back to the conservative default).
+    _OUTPUT_LIMITS: dict[str, int] = {
+        "o1": 100_000,
+        "o3": 100_000,
+        "gpt-4o": 16_384,
+        "gpt-4-turbo": 4_096,
+        "gpt-4": 8_192,
+        "gpt-3.5": 4_096,
+    }
 
     def __init__(
         self,
@@ -42,6 +53,17 @@ class OpenAIProvider(BaseProvider):
         self.model = model
         cred = self._load_credential()
         self._api_key = cred.get("api_key") or os.environ.get("OPENAI_API_KEY")
+
+    def _max_output(self) -> int | None:
+        """Resolve the current model's max output cap via longest-prefix match."""
+        ml = self.model.lower()
+        best_key = ""
+        best_val: int | None = None
+        for key, val in self._OUTPUT_LIMITS.items():
+            if ml.startswith(key) and len(key) > len(best_key):
+                best_key = key
+                best_val = val
+        return best_val
 
     # ------------------------------------------------------------------ #
     #  Headers
@@ -169,8 +191,9 @@ class OpenAIProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Always send a resolved cap so un-specified calls still get the
+        # full headroom the model supports (up to the 32K soft ceiling).
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking)
@@ -216,8 +239,9 @@ class OpenAIProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Always send a resolved cap so un-specified calls still get the
+        # full headroom the model supports (up to the 32K soft ceiling).
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking)
