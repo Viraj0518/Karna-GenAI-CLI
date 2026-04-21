@@ -647,10 +647,14 @@ class OutputRenderer:
                 # Only treat as a flush point when closing a fence
                 fence_closed = was_in_fence and not self._in_code_fence
 
-        # Only flush on sentence boundary if we have enough buffered text
-        # to avoid splitting tiny fragments like "I" from "'ve created..."
-        has_enough = len(joined) >= 40
-        if "\n\n" in joined[-3:] or fence_closed or (has_enough and _SENTENCE_RE.search(joined[-3:])):
+        # Flush only on paragraph breaks (``\n\n``) or code-fence closes.
+        # We used to also flush on sentence boundaries for streaming
+        # responsiveness, but that chunks markdown mid-block — bullets
+        # and numbered lists get fragmented and Rich re-renders them as
+        # unrelated lists, dropping items visually. Paragraph-level
+        # flushing costs a little interactive feel but preserves list
+        # structure, code fences, and headings end-to-end.
+        if "\n\n" in joined[-3:] or fence_closed:
             self._flush_text()
 
     def _flush_text(self) -> None:
@@ -668,7 +672,11 @@ class OutputRenderer:
             label.append(f"{_ICON_ASSISTANT} ", style=_STYLE_ASSISTANT_LABEL)
             label.append("nellie", style=_STYLE_ASSISTANT_LABEL)
             self.console.print(label)
-        self.console.print(Markdown(full), style=ASSISTANT_TEXT)
+        # NO ``style=`` override on the Markdown — that flattens Rich's
+        # built-in code-theme + link styling. Set code_theme explicitly so
+        # fenced blocks render with Python/JS/etc. syntax colors like
+        # Claude Code does.
+        self.console.print(Markdown(full, code_theme="ansi_dark"))
 
     # ── thinking / reasoning ───────────────────────────────────────────
 
@@ -979,6 +987,14 @@ class OutputRenderer:
     # ── usage / done ───────────────────────────────────────────────────
 
     def _on_usage(self, data: dict[str, Any] | None) -> None:
+        # Flush any buffered text/thinking so the cost line never prints
+        # before the reply itself. Short replies without a sentence
+        # boundary used to render in the wrong order.
+        if self._spinner_shown:
+            self._dismiss_spinner()
+        self._flush_thinking()
+        self._flush_text()
+
         data = data or {}
         prompt_tok = data.get("prompt_tokens", 0)
         completion_tok = data.get("completion_tokens", 0)
