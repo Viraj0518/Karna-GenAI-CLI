@@ -37,13 +37,6 @@ from karna.tui.cc_components.dialogs import (
     render_thinking_toggle,
     run_wizard,
 )
-from karna.tui.cc_components.input import (
-    ScrollKeybindings,
-    VimMode,
-    VimTextInput,
-    attach_configurable_shortcut_hint,
-    render_clickable_image_ref,
-)
 from karna.tui.cc_components.diffs import (
     render_file_edit_accepted,
     render_file_edit_rejected,
@@ -51,6 +44,13 @@ from karna.tui.cc_components.diffs import (
     render_structured_diff,
     render_tool_error,
     render_tool_rejected,
+)
+from karna.tui.cc_components.input import (
+    ScrollKeybindings,
+    VimMode,
+    VimTextInput,
+    attach_configurable_shortcut_hint,
+    render_clickable_image_ref,
 )
 from karna.tui.cc_components.markdown import (
     detect_language_from_path,

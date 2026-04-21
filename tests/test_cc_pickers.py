@@ -10,14 +10,11 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from prompt_toolkit.application import create_app_session
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 from karna.tui.cc_components import pickers
-
 
 # --------------------------------------------------------------------------- #
 #  Helpers

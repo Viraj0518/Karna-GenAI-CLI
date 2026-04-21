@@ -15,7 +15,6 @@ from typing import Iterator
 
 import pytest
 from rich.console import Console
-from rich.text import Text
 
 from karna.tui.cc_components import dialogs as cc_dialogs
 from karna.tui.cc_components.dialogs import (

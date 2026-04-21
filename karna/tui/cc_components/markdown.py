@@ -23,11 +23,9 @@ from __future__ import annotations
 import os
 import re
 import sys
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
-from rich.console import Console, ConsoleRenderable, Group, RenderableType
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown as RichMarkdown
 from rich.syntax import Syntax
 from rich.table import Table

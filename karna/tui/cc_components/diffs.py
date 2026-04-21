@@ -65,15 +65,15 @@ def _resolve_palette() -> dict[str, str]:
     """
     palette = {
         # CC dark theme (utils/theme.ts:141-146)
-        "diffAdded": "rgb(105,219,124)",       # line bg for added lines
-        "diffRemoved": "rgb(255,168,180)",     # line bg for removed lines
+        "diffAdded": "rgb(105,219,124)",  # line bg for added lines
+        "diffRemoved": "rgb(255,168,180)",  # line bg for removed lines
         "diffAddedDimmed": "rgb(199,225,203)",
         "diffRemovedDimmed": "rgb(253,210,216)",
-        "diffAddedWord": "rgb(47,157,68)",     # word-level highlight
+        "diffAddedWord": "rgb(47,157,68)",  # word-level highlight
         "diffRemovedWord": "rgb(209,69,75)",
         # Chrome
-        "subtle": "grey50",                    # CC uses theme 'subtle' for headers
-        "brand": "#3C73BD",                    # Nellie brand override
+        "subtle": "grey50",  # CC uses theme 'subtle' for headers
+        "brand": "#3C73BD",  # Nellie brand override
         "error": "red",
         "dim": "grey58",
     }
@@ -243,14 +243,10 @@ def render_structured_diff(
 
     for idx, hunk in enumerate(hunks):
         if idx > 0:
-            pieces.append(
-                Text(f"{NELLIE_TOOL_RESULT_GLYPH} ...", style=f"dim {palette['dim']}")
-            )
+            pieces.append(Text(f"{NELLIE_TOOL_RESULT_GLYPH} ...", style=f"dim {palette['dim']}"))
         # CC shows the hunk header (``@@ -a,b +c,d @@``) in a dimmer colour;
         # we match by rendering in ``palette['subtle']`` with ``dim``.
-        pieces.append(
-            Text(hunk["header"], style=f"dim {palette['subtle']}")
-        )
+        pieces.append(Text(hunk["header"], style=f"dim {palette['subtle']}"))
         pieces.append(_render_hunk(hunk, palette, dim=False))
 
     return Group(*pieces)
@@ -318,9 +314,7 @@ def render_file_edit_rejected(
                         style=f"dim {palette['dim']}",
                     )
                 )
-            body_parts.append(
-                Text(hunk["header"], style=f"dim {palette['subtle']}")
-            )
+            body_parts.append(Text(hunk["header"], style=f"dim {palette['subtle']}"))
             body_parts.append(_render_hunk(hunk, palette, dim=True))
     return Padding(Group(*body_parts), (0, 0, 0, 2))
 

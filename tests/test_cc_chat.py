@@ -101,9 +101,7 @@ def test_user_message_has_prompt_glyph():
 
 
 def test_tool_message_uses_continuation_marker():
-    msg = ChatMessage(
-        role="tool", content="42", tool_name="calculator", is_error=False
-    )
+    msg = ChatMessage(role="tool", content="42", tool_name="calculator", is_error=False)
     out = _render(render_tool_message(msg))
     # ⎿ marker lives in the response wrapper
     assert NELLIE_TOOL_RESULT_GLYPH in out

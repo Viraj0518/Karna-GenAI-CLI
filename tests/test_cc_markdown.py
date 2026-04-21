@@ -189,14 +189,7 @@ class TestRenderMarkdown:
         assert "body body" in out
 
     def test_gfm_table_is_promoted_to_rich_table(self):
-        md = (
-            "before\n\n"
-            "| H1 | H2 |\n"
-            "|----|----|\n"
-            "| a  | b  |\n"
-            "| c  | d  |\n\n"
-            "after\n"
-        )
+        md = "before\n\n| H1 | H2 |\n|----|----|\n| a  | b  |\n| c  | d  |\n\nafter\n"
         out = _render(render_markdown(md))
         for needle in ("before", "after", "H1", "H2", "a", "b", "c", "d"):
             assert needle in out

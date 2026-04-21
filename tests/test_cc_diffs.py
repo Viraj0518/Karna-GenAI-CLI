@@ -40,9 +40,7 @@ def _render(obj) -> str:
 
 def test_structured_diff_shows_added_and_removed_payload() -> None:
     """CC's StructuredDiffFallback emits ``+payload`` and ``-payload`` lines."""
-    out = _render(
-        render_structured_diff("alpha\nbeta\n", "alpha\ngamma\n", path="src/x.py")
-    )
+    out = _render(render_structured_diff("alpha\nbeta\n", "alpha\ngamma\n", path="src/x.py"))
     assert "src/x.py" in out
     assert "-beta" in out
     assert "+gamma" in out

@@ -98,33 +98,42 @@ def test_prompt_mcp_server_approval_yes_and_default_no(
 ) -> None:
     # Explicit yes → True.
     _patch_input(monkeypatch, "y")
-    assert asyncio.run(
-        perms.prompt_mcp_server_approval(
-            "pencil",
-            ["batch_get", "batch_design"],
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_mcp_server_approval(
+                "pencil",
+                ["batch_get", "batch_design"],
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is True
+        is True
+    )
 
     # Empty response → defaults to No (matches CC's `onCancel → no`).
     _patch_input(monkeypatch, "")
-    assert asyncio.run(
-        perms.prompt_mcp_server_approval(
-            "pencil",
-            ["batch_get"],
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_mcp_server_approval(
+                "pencil",
+                ["batch_get"],
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is False
+        is False
+    )
 
     # Unknown input also falls to No.
     _patch_input(monkeypatch, "maybe")
-    assert asyncio.run(
-        perms.prompt_mcp_server_approval(
-            "pencil",
-            [],
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_mcp_server_approval(
+                "pencil",
+                [],
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is False
+        is False
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -134,21 +143,27 @@ def test_prompt_mcp_server_approval_yes_and_default_no(
 
 def test_prompt_api_key_trust_defaults_to_no(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_input(monkeypatch, "")
-    assert asyncio.run(
-        perms.prompt_api_key_trust(
-            "anthropic",
-            "sk-ant-...abcd",
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_api_key_trust(
+                "anthropic",
+                "sk-ant-...abcd",
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is False
+        is False
+    )
     _patch_input(monkeypatch, "yes")
-    assert asyncio.run(
-        perms.prompt_api_key_trust(
-            "anthropic",
-            "sk-ant-...abcd",
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_api_key_trust(
+                "anthropic",
+                "sk-ant-...abcd",
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is True
+        is True
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -160,18 +175,24 @@ def test_prompt_bypass_permissions_default_no_and_accept(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_input(monkeypatch, "")
-    assert asyncio.run(
-        perms.prompt_bypass_permissions(
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_bypass_permissions(
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is False
+        is False
+    )
 
     _patch_input(monkeypatch, "accept")
-    assert asyncio.run(
-        perms.prompt_bypass_permissions(
-            console=Console(record=True, width=100, color_system=None),
+    assert (
+        asyncio.run(
+            perms.prompt_bypass_permissions(
+                console=Console(record=True, width=100, color_system=None),
+            )
         )
-    ) is True
+        is True
+    )
 
 
 # --------------------------------------------------------------------------- #

@@ -30,7 +30,6 @@ from karna.tui.cc_components.spinners import (
     render_tool_loader,
 )
 
-
 # --------------------------------------------------------------------------- #
 #  Frame tables
 # --------------------------------------------------------------------------- #
@@ -58,16 +57,23 @@ def test_spinner_frames_are_mirrored_and_nonempty() -> None:
 def test_tool_messages_cover_core_nellie_tools() -> None:
     """Every tool Nellie's output.py advertises should have a verb bucket."""
     required = {
-        "bash", "read", "write", "edit", "grep", "glob",
-        "git", "web_search", "web_fetch", "task", "thinking",
+        "bash",
+        "read",
+        "write",
+        "edit",
+        "grep",
+        "glob",
+        "git",
+        "web_search",
+        "web_fetch",
+        "task",
+        "thinking",
     }
     assert required.issubset(TOOL_MESSAGES.keys())
     for key, bucket in TOOL_MESSAGES.items():
         assert isinstance(bucket, list) and bucket, f"{key} has empty bucket"
         # Every curated verb must come from CC's master list (no invented words).
-        assert all(v in ALL_SPINNER_VERBS for v in bucket), (
-            f"{key} contains words not in CC's SPINNER_VERBS"
-        )
+        assert all(v in ALL_SPINNER_VERBS for v in bucket), f"{key} contains words not in CC's SPINNER_VERBS"
 
 
 def test_pick_tool_message_is_deterministic_with_seed() -> None:
@@ -92,6 +98,7 @@ def test_render_thinking_line_shape_and_glyph() -> None:
     out = render_thinking_line(elapsed_s=4.0, token_count=2100)
     # Strip ANSI for content assertions
     import re
+
     plain = re.sub(r"\x1b\[[0-9;]*m", "", out)
 
     assert THINKING_GLYPH in plain
@@ -164,10 +171,10 @@ def test_render_bash_progress_shape() -> None:
 
 def test_render_agent_progress_line_tree_chars() -> None:
     """Non-last row uses ├─; last row uses └─."""
-    mid = render_agent_progress_line("agent-1", status="Running", current_tool="Read",
-                                     is_last=False, tool_use_count=3, tokens=2100)
-    last = render_agent_progress_line("agent-2", status="Done",
-                                      is_last=True, tool_use_count=1)
+    mid = render_agent_progress_line(
+        "agent-1", status="Running", current_tool="Read", is_last=False, tool_use_count=3, tokens=2100
+    )
+    last = render_agent_progress_line("agent-2", status="Done", is_last=True, tool_use_count=1)
     assert isinstance(mid, Text)
     assert isinstance(last, Text)
     assert "├─" in mid.plain
@@ -193,11 +200,12 @@ def test_render_coordinator_status_empty_and_populated() -> None:
     assert "Agents" in out
     assert "no agents running" in out
 
-    populated = render_coordinator_status([
-        {"id": "main", "status": "running", "tool_use_count": 0},
-        {"id": "writer", "status": "writing", "current_tool": "Write",
-         "tool_use_count": 2, "tokens": 1500},
-    ])
+    populated = render_coordinator_status(
+        [
+            {"id": "main", "status": "running", "tool_use_count": 0},
+            {"id": "writer", "status": "writing", "current_tool": "Write", "tool_use_count": 2, "tokens": 1500},
+        ]
+    )
     console2 = Console(record=True, width=80, force_terminal=True)
     console2.print(populated)
     out2 = console2.export_text()

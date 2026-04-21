@@ -185,29 +185,19 @@ def test_render_cost_threshold_alert_panel() -> None:
 
 def test_render_memory_usage_levels() -> None:
     # With a limit: ratio-based thresholds
-    normal = _render_plain(
-        cc_status.render_memory_usage(100 * 1024 * 1024, 1024 * 1024 * 1024)
-    )
+    normal = _render_plain(cc_status.render_memory_usage(100 * 1024 * 1024, 1024 * 1024 * 1024))
     assert "mem " in normal
     assert "High memory" not in normal  # quiet under 75 %
 
-    high = _render_plain(
-        cc_status.render_memory_usage(800 * 1024 * 1024, 1024 * 1024 * 1024)
-    )
+    high = _render_plain(cc_status.render_memory_usage(800 * 1024 * 1024, 1024 * 1024 * 1024))
     assert "High memory (high)" in high
     assert "/heapdump" in high
 
-    crit = _render_plain(
-        cc_status.render_memory_usage(980 * 1024 * 1024, 1024 * 1024 * 1024)
-    )
+    crit = _render_plain(cc_status.render_memory_usage(980 * 1024 * 1024, 1024 * 1024 * 1024))
     assert "High memory (critical)" in crit
 
     # Without a limit: absolute thresholds
-    abs_high = _render_plain(
-        cc_status.render_memory_usage(600 * 1024 * 1024, None)
-    )
+    abs_high = _render_plain(cc_status.render_memory_usage(600 * 1024 * 1024, None))
     assert "High memory (high)" in abs_high
-    abs_crit = _render_plain(
-        cc_status.render_memory_usage(2 * 1024 * 1024 * 1024, None)
-    )
+    abs_crit = _render_plain(cc_status.render_memory_usage(2 * 1024 * 1024 * 1024, None))
     assert "High memory (critical)" in abs_crit

@@ -50,7 +50,7 @@ Upstream license: MIT (see ``NOTICES.md``).
 from __future__ import annotations
 
 import asyncio
-from typing import Iterable, Literal, Sequence
+from typing import Literal, Sequence
 
 from rich.box import ROUNDED
 from rich.console import Console, Group, RenderableType
@@ -401,8 +401,7 @@ async def prompt_bypass_permissions(console: Console | None = None) -> bool:
         ),
         Text(""),
         Text(
-            "By proceeding, you accept all responsibility for actions "
-            "taken while running in Bypass Permissions mode.",
+            "By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.",
             style=MUTED,
         ),
     )

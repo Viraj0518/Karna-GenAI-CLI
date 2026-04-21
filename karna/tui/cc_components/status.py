@@ -256,9 +256,7 @@ def render_context_bar(tokens_used: int, context_window: int) -> Text:
     return t
 
 
-def render_token_warning(
-    tokens_used: int, context_window: int
-) -> Optional[RenderableType]:
+def render_token_warning(tokens_used: int, context_window: int) -> Optional[RenderableType]:
     """Return a `Panel` only when we've crossed the warning/error threshold.
 
     Mirrors CC's `TokenWarning.tsx` — silent under 80 %, muted warning at
@@ -297,9 +295,7 @@ def render_token_warning(
     )
 
 
-def render_effort_indicator(
-    thinking_enabled: bool, thinking_budget: Optional[int]
-) -> Text:
+def render_effort_indicator(thinking_enabled: bool, thinking_budget: Optional[int]) -> Text:
     """Inline effort-level pill (low/medium/high/max + ✦ sparkle).
 
     Mirrors `EffortIndicator.ts`'s `effortLevelToSymbol` + `EffortCallout.tsx`
@@ -360,9 +356,7 @@ def render_pr_badge(pr_number: int, status: str) -> Text:
     return t
 
 
-def render_cost_threshold_alert(
-    current_usd: float, threshold_usd: float
-) -> RenderableType:
+def render_cost_threshold_alert(current_usd: float, threshold_usd: float) -> RenderableType:
     """Panel shown when session cost crosses a user-configured threshold.
 
     Mirrors CC's `CostThresholdDialog.tsx` (pure renderer — no Select/Link

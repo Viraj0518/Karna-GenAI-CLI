@@ -183,9 +183,7 @@ def render_interrupted_by_user() -> Text:
 # =========================================================================
 
 
-def wrap_response(
-    body: RenderableType, *, nested: bool = False
-) -> RenderableType:
+def wrap_response(body: RenderableType, *, nested: bool = False) -> RenderableType:
     """Prefix ``body`` with the dim ``⎿`` continuation marker.
 
     When ``nested=True`` the caller is already inside another response
@@ -481,8 +479,7 @@ def render_messages(
         parts.append(
             Rule(
                 title=Text(
-                    f"\u2026 {overflow} older message"
-                    + ("s" if overflow != 1 else ""),
+                    f"\u2026 {overflow} older message" + ("s" if overflow != 1 else ""),
                     style="dim",
                 ),
                 characters="\u2500",

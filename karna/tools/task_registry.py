@@ -184,9 +184,7 @@ class TaskRegistry:
         running = [
             entry
             for entry in self._tasks.values()
-            if entry.status == TaskStatus.RUNNING
-            and entry._asyncio_task is not None
-            and not entry._asyncio_task.done()
+            if entry.status == TaskStatus.RUNNING and entry._asyncio_task is not None and not entry._asyncio_task.done()
         ]
         for entry in running:
             assert entry._asyncio_task is not None

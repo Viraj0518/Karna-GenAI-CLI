@@ -30,14 +30,13 @@ from __future__ import annotations
 import asyncio
 import sys
 from enum import Enum
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
 from karna.tui.design_tokens import COLORS
-
 
 # --------------------------------------------------------------------------- #
 #  Enums
@@ -189,9 +188,7 @@ async def idle_return(*, idle_minutes: int) -> bool:
     return await confirm(msg, default=True)
 
 
-async def _idle_return_4way(
-    *, idle_minutes: int, total_input_tokens: int = 0
-) -> IdleReturnAction:
+async def _idle_return_4way(*, idle_minutes: int, total_input_tokens: int = 0) -> IdleReturnAction:
     """Full 4-way variant matching ``IdleReturnDialog.tsx``."""
     formatted = _format_idle_duration(idle_minutes)
     tokens = f"{total_input_tokens:,}" if total_input_tokens else "0"
@@ -308,12 +305,8 @@ async def run_wizard(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
             choices = list(step.get("choices", []))
             for idx, opt in enumerate(choices, start=1):
                 print(f"  [{idx}] {opt}")
-            default_idx = (
-                choices.index(default) + 1 if default in choices else 1
-            )
-            raw = (
-                await _prompt(f"{step['prompt']} [{default_idx}]: ")
-            ).strip()
+            default_idx = choices.index(default) + 1 if default in choices else 1
+            raw = (await _prompt(f"{step['prompt']} [{default_idx}]: ")).strip()
             if raw.lower() == ":back":
                 val = None
             elif raw.lower() == ":cancel":

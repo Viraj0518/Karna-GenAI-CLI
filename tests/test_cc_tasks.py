@@ -34,23 +34,20 @@ def test_render_task_list_empty_and_all_statuses() -> None:
 
     tasks = [
         {"id": "1", "subject": "Draft proposal", "status": "pending"},
-        {"id": "2", "subject": "Ship v1",         "status": "in_progress",
-         "owner": "alpha"},
-        {"id": "3", "subject": "Deploy",          "status": "completed"},
-        {"id": "4", "subject": "Scrap idea",      "status": "deleted"},
-        {"id": "5", "subject": "Blocked work",    "status": "pending",
-         "blockedBy": ["2"]},
+        {"id": "2", "subject": "Ship v1", "status": "in_progress", "owner": "alpha"},
+        {"id": "3", "subject": "Deploy", "status": "completed"},
+        {"id": "4", "subject": "Scrap idea", "status": "deleted"},
+        {"id": "5", "subject": "Blocked work", "status": "pending", "blockedBy": ["2"]},
     ]
     out = _render_plain(cc_tasks.render_task_list(tasks))
 
     # Every status glyph surfaces exactly where the spec demands.
-    assert cc_tasks.GLYPH_PENDING in out       # ○
-    assert cc_tasks.GLYPH_IN_PROGRESS in out   # ◐
-    assert cc_tasks.GLYPH_COMPLETED in out     # ●
-    assert cc_tasks.GLYPH_DELETED in out       # ×
+    assert cc_tasks.GLYPH_PENDING in out  # ○
+    assert cc_tasks.GLYPH_IN_PROGRESS in out  # ◐
+    assert cc_tasks.GLYPH_COMPLETED in out  # ●
+    assert cc_tasks.GLYPH_DELETED in out  # ×
     # Subjects all present
-    for subj in ("Draft proposal", "Ship v1", "Deploy", "Scrap idea",
-                 "Blocked work"):
+    for subj in ("Draft proposal", "Ship v1", "Deploy", "Scrap idea", "Blocked work"):
         assert subj in out
     # Owner tag present with @ prefix
     assert "@alpha" in out
@@ -62,8 +59,8 @@ def test_render_task_list_sort_priority_matches_cc() -> None:
     """CC prefers in_progress > pending > completed > deleted."""
     tasks = [
         {"id": "10", "subject": "completed-10", "status": "completed"},
-        {"id": "20", "subject": "deleted-20",   "status": "deleted"},
-        {"id": "30", "subject": "pending-30",   "status": "pending"},
+        {"id": "20", "subject": "deleted-20", "status": "deleted"},
+        {"id": "30", "subject": "pending-30", "status": "pending"},
         {"id": "40", "subject": "in_progress-40", "status": "in_progress"},
     ]
     out = _render_plain(cc_tasks.render_task_list(tasks))
@@ -72,9 +69,7 @@ def test_render_task_list_sort_priority_matches_cc() -> None:
     i_p = out.find("pending-30")
     i_c = out.find("completed-10")
     i_d = out.find("deleted-20")
-    assert 0 <= i_ip < i_p < i_c < i_d, (
-        f"sort order wrong: ip={i_ip}, p={i_p}, c={i_c}, d={i_d}"
-    )
+    assert 0 <= i_ip < i_p < i_c < i_d, f"sort order wrong: ip={i_ip}, p={i_p}, c={i_c}, d={i_d}"
 
 
 # --------------------------------------------------------------------------- #
@@ -112,11 +107,13 @@ def test_render_compact_summary_formats_tokens_and_counts() -> None:
 
 
 def test_render_resume_task_prompt_includes_subject_and_choice() -> None:
-    t = cc_tasks.render_resume_task_prompt({
-        "id": "7",
-        "subject": "Finish auto-compact wiring",
-        "status": "in_progress",
-    })
+    t = cc_tasks.render_resume_task_prompt(
+        {
+            "id": "7",
+            "subject": "Finish auto-compact wiring",
+            "status": "in_progress",
+        }
+    )
     assert isinstance(t, Text)
     out = _render_plain(t)
     assert "Resume" in out
@@ -144,7 +141,9 @@ def test_render_session_preview_tail_and_empty() -> None:
         {"role": "user", "content": [{"type": "text", "text": "thanks!"}]},
     ]
     renderable = cc_tasks.render_session_preview(
-        "01HZX-demo", messages, max_messages=3,
+        "01HZX-demo",
+        messages,
+        max_messages=3,
     )
     out = _render_plain(renderable)
     assert "01HZX-demo" in out
@@ -195,8 +194,8 @@ def test_render_agent_list_empty_and_mixed_statuses() -> None:
 
     agents = [
         {"name": "alpha", "status": "running", "currentTool": "Bash"},
-        {"name": "beta",  "status": "done",    "currentTool": "Write"},
-        {"name": "gamma", "status": "error",   "subtitle": "rate limited"},
+        {"name": "beta", "status": "done", "currentTool": "Write"},
+        {"name": "gamma", "status": "error", "subtitle": "rate limited"},
         {"name": "delta", "status": "idle"},
     ]
     out = _render_plain(cc_tasks.render_agent_list(agents))
@@ -210,6 +209,6 @@ def test_render_agent_list_empty_and_mixed_statuses() -> None:
     assert "rate limited" in out
     # Each status family gets its designated glyph
     assert cc_tasks.GLYPH_IN_PROGRESS in out  # running
-    assert cc_tasks.GLYPH_COMPLETED in out    # done
-    assert cc_tasks.GLYPH_DELETED in out      # error
-    assert cc_tasks.GLYPH_PENDING in out      # idle
+    assert cc_tasks.GLYPH_COMPLETED in out  # done
+    assert cc_tasks.GLYPH_DELETED in out  # error
+    assert cc_tasks.GLYPH_PENDING in out  # idle

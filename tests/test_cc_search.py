@@ -192,14 +192,10 @@ def test_history_search_filters_user_messages_and_ranks() -> None:
         Message(role="tool", content="ignored tool output"),
         Message(role="user", content=""),  # empty — filtered out
     ]
-    user_prompts = [
-        m for m in msgs if m.role == "user" and (m.content or "").strip()
-    ]
+    user_prompts = [m for m in msgs if m.role == "user" and (m.content or "").strip()]
     assert len(user_prompts) == 2
 
-    ranked_texts = cc_search.fuzzy_match(
-        [m.content for m in user_prompts], "deploy"
-    )
+    ranked_texts = cc_search.fuzzy_match([m.content for m in user_prompts], "deploy")
     # Both contain "deploy" — order is preserved for ties within the
     # exact-substring bucket (rapidfuzz may reorder by score).
     assert len(ranked_texts) == 2

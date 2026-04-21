@@ -30,9 +30,7 @@ import re as _re_mod
 import shutil
 import subprocess as _subprocess_mod
 import tempfile as _tempfile_mod
-import threading
 import time
-from collections import deque
 from contextlib import contextmanager
 from io import StringIO
 from pathlib import Path
@@ -46,15 +44,12 @@ from prompt_toolkit import print_formatted_text as _pt_print
 from prompt_toolkit.application import Application
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI as _PT_ANSI
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
+from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
-from prompt_toolkit.layout.menus import CompletionsMenu
-from prompt_toolkit.layout.processors import BeforeInput
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style as PTStyle
 from prompt_toolkit.widgets import TextArea
@@ -102,7 +97,8 @@ from karna.tui.themes import BRAND_BLUE, KARNA_THEME
 # faces, and tool-preview helpers.  Shim it when absent so the REPL still
 # imports cleanly on fresh checkouts / tests.
 try:  # pragma: no cover — optional sibling module
-    from karna.tui import hermes_display as _hermes_display  # type: ignore
+    # type: ignore[import-untyped] — hermes_display has no stub file; attrs are runtime-checked below.
+    from karna.tui import hermes_display as _hermes_display  # type: ignore[import-untyped]
 except Exception:  # noqa: BLE001
     _hermes_display = None  # type: ignore[assignment]
 
@@ -349,9 +345,7 @@ async def _agent_loop(
         except Exception:
             pass
 
-        system_prompt = build_system_prompt(
-            config, tools, skill_manager=skill_manager, rag_context=rag_context
-        )
+        system_prompt = build_system_prompt(config, tools, skill_manager=skill_manager, rag_context=rag_context)
 
         turn_compactor = compactor or Compactor(provider, threshold=0.80)
         context_window = 128_000
@@ -507,9 +501,7 @@ async def _run_agent_turn(
         state.status_text = ""
         app.invalidate()
 
-    full_reply = "".join(
-        e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str)
-    )
+    full_reply = "".join(e.data for e in events if e.kind == EventKind.TEXT_DELTA and isinstance(e.data, str))
 
     saw_error = any(e.kind == EventKind.ERROR for e in events)
     saw_tool = any(e.kind == EventKind.TOOL_CALL_START for e in events)
@@ -668,9 +660,7 @@ async def run_hermes_repl(
         conversation = resume_conversation
         session_id = resume_session_id
     else:
-        conversation = Conversation(
-            model=config.active_model, provider=config.active_provider
-        )
+        conversation = Conversation(model=config.active_model, provider=config.active_provider)
         cwd = os.getcwd()
         git_branch: str | None = None
         try:
@@ -785,9 +775,7 @@ async def run_hermes_repl(
                     if app_ref[0] is not None:
                         app_ref[0].exit()
                     return
-                console.print(
-                    "[yellow]Agent is working. Slash commands are available when idle.[/yellow]"
-                )
+                console.print("[yellow]Agent is working. Slash commands are available when idle.[/yellow]")
                 return
 
             state.input_queue.put_nowait(text)
@@ -831,11 +819,7 @@ async def run_hermes_repl(
             else:
                 return
 
-        matched_skills = (
-            skill_manager.match_trigger(user_input)
-            if not user_input.startswith("/")
-            else []
-        )
+        matched_skills = skill_manager.match_trigger(user_input) if not user_input.startswith("/") else []
         if matched_skills:
             preamble_parts = []
             for skill in matched_skills:
@@ -933,9 +917,7 @@ async def run_hermes_repl(
         if state.agent_running:
             state.interrupt_requested = True
             state.status_text = "interrupting..."
-            console.print(
-                "\n[bright_black]Esc — stopping at next checkpoint. Ctrl-C to force-cancel.[/bright_black]"
-            )
+            console.print("\n[bright_black]Esc — stopping at next checkpoint. Ctrl-C to force-cancel.[/bright_black]")
 
     @kb.add("c-c")
     def _ctrl_c(event):  # type: ignore[no-untyped-def]
@@ -949,9 +931,7 @@ async def run_hermes_repl(
                 event.app.exit()
                 return
             state.last_ctrl_c_time = now
-            console.print(
-                "\n[yellow]\u26a1 Interrupting agent... (press Ctrl+C again to force exit)[/yellow]"
-            )
+            console.print("\n[yellow]\u26a1 Interrupting agent... (press Ctrl+C again to force exit)[/yellow]")
             state.interrupt_requested = True
             state.agent_task.cancel()
             state.agent_running = False

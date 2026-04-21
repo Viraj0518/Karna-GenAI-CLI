@@ -44,9 +44,7 @@ def test_every_cc_tool_has_a_cc_prompt(all_cc_tools):
     """Each CC-mapped tool exposes the verbatim CC prompt."""
     for tool in all_cc_tools:
         assert tool.cc_prompt, f"{tool.name}: cc_prompt is empty"
-        assert tool.cc_prompt == CC_TOOL_PROMPTS[tool.name], (
-            f"{tool.name}: cc_prompt doesn't match central registry"
-        )
+        assert tool.cc_prompt == CC_TOOL_PROMPTS[tool.name], f"{tool.name}: cc_prompt doesn't match central registry"
 
 
 def test_model_facing_description_prefers_cc_prompt(all_cc_tools):
@@ -75,9 +73,7 @@ def test_system_prompt_includes_cc_prompt(all_cc_tools):
     """generate_tool_docs() inlines the full cc_prompt into the system prompt."""
     docs = generate_tool_docs(all_cc_tools)
     for tool in all_cc_tools:
-        assert tool.cc_prompt in docs, (
-            f"{tool.name}: cc_prompt body missing from generated tool docs"
-        )
+        assert tool.cc_prompt in docs, f"{tool.name}: cc_prompt body missing from generated tool docs"
 
 
 def test_short_description_still_populated_for_ui(all_cc_tools):

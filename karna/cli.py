@@ -11,6 +11,7 @@ Commands
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 
 import typer
@@ -19,6 +20,16 @@ from rich.table import Table
 
 from karna import __version__
 from karna.config import effective_thinking, load_config, save_config
+
+# Windows legacy cp1252 consoles mangle the em-dashes in help strings and
+# Rich renderables — reconfigure stdout/stderr to UTF-8 with replacement
+# fallback so `nellie --help` + banner print cleanly instead of showing `�`
+# glyphs. Newer Windows Terminal / PowerShell 7 already use UTF-8; this
+# is idempotent there.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # --------------------------------------------------------------------------- #
 #  App & sub-groups

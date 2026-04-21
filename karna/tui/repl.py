@@ -278,6 +278,7 @@ class TUIOutputWriter:
         if len(self._lines) > self._VISIBLE_CHUNKS:
             # deque slicing via islice
             import itertools
+
             start = len(self._lines) - self._VISIBLE_CHUNKS
             return "\n".join(itertools.islice(self._lines, start, None))
         return "\n".join(self._lines)

@@ -361,8 +361,7 @@ def render_session_preview(
     header.append("session ", style=f"dim {SUBTLE}")
     header.append(session_id or "(unknown)", style=f"bold {BRAND}")
     header.append(f"  {GLYPH_SEP}  ", style=f"dim {SUBTLE}")
-    header.append(f"{len(messages)} message" + ("" if len(messages) == 1 else "s"),
-                  style=MUTED)
+    header.append(f"{len(messages)} message" + ("" if len(messages) == 1 else "s"), style=MUTED)
 
     rows: list[RenderableType] = [header]
 
@@ -375,7 +374,7 @@ def render_session_preview(
 
     # Keep the last `max_messages`, render oldest-first so the preview
     # reads like a transcript.
-    tail = messages[-max(1, max_messages):]
+    tail = messages[-max(1, max_messages) :]
     for msg in tail:
         role = _get_attr(msg, "role", default="?")
         content = _get_attr(msg, "content", default="")
@@ -457,8 +456,7 @@ def render_session_background_hint(active_count: int) -> Optional[Text]:
     label = "session" if active_count == 1 else "sessions"
     t = Text()
     t.append(f"{GLYPH_AGENT_ACTIVE} ", style=WARNING)
-    t.append(f"{active_count} {label} running in background",
-             style=f"dim {WARNING}")
+    t.append(f"{active_count} {label} running in background", style=f"dim {WARNING}")
     t.append(f"  {GLYPH_SEP}  ", style=f"dim {SUBTLE}")
     t.append("ctrl+b to toggle", style=f"dim {SUBTLE}")
     return t

@@ -82,6 +82,9 @@ select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.per-file-ignores]
 "karna/memory/prompts.py" = ["E501"]
+# Verbatim Claude Code tool prompts live here — reflowing them would
+# change the model-facing text. Ignore line-length.
+"karna/prompts/cc_tool_prompts.py" = ["E501"]
 # Scripts + test harnesses routinely carry long docstring URLs, data
 # literals, and rich-formatted print strings. Enforcing line-length on
 # them is noise, not signal — ignore E501 across these directories.

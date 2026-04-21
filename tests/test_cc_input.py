@@ -10,14 +10,11 @@ The module is a library (no REPL wiring), so these are pure unit tests:
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
-import pytest
 from rich.console import Console
 from rich.text import Text
 
-from karna.tui.cc_components import input as cc_input
 from karna.tui.cc_components.input import (
     ScrollKeybindings,
     VimMode,

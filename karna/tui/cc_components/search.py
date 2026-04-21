@@ -196,9 +196,7 @@ class TagTabs:
         Truncates the visible window around ``selected_index`` to fit
         ``available_width`` — matching CC's windowing behavior.
         """
-        resume_label = (
-            "Resume (All Projects)" if self.show_all_projects else "Resume"
-        )
+        resume_label = "Resume (All Projects)" if self.show_all_projects else "Resume"
         hint = "(tab to cycle)"
         # Budget for the tabs portion itself.
         budget = max(0, available_width - len(resume_label) - len(hint) - 4)
@@ -331,9 +329,7 @@ async def _run_picker(
         return FormattedText(out)
 
     def _header_ft() -> FormattedText:
-        return FormattedText(
-            [("class:title", f"{title}\n")]
-        )
+        return FormattedText([("class:title", f"{title}\n")])
 
     def _input_ft() -> FormattedText:
         return render_search_box(placeholder, query[0])
@@ -418,9 +414,7 @@ async def history_search(
     responses and tool results are skipped, same as CC's prompt history.
     """
     # Pre-filter to user prompts with content. Preserve chronological order.
-    candidates: list[Message] = [
-        m for m in session_messages if m.role == "user" and (m.content or "").strip()
-    ]
+    candidates: list[Message] = [m for m in session_messages if m.role == "user" and (m.content or "").strip()]
 
     def _fetch(q: str) -> list[Message]:
         if not q:

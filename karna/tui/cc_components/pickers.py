@@ -47,7 +47,6 @@ this file's docstring in the commit message):
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional, Sequence
 
@@ -79,11 +78,11 @@ MUTED = COLORS.text.secondary
 
 
 # Box-drawing glyphs (match CC's design-system `Dialog` chrome).
-_BOX_TL, _BOX_TR, _BOX_BL, _BOX_BR = "\u256D", "\u256E", "\u2570", "\u256F"  # ╭ ╮ ╰ ╯
+_BOX_TL, _BOX_TR, _BOX_BL, _BOX_BR = "\u256d", "\u256e", "\u2570", "\u256f"  # ╭ ╮ ╰ ╯
 _BOX_H, _BOX_V = "\u2500", "\u2502"  # ─ │
 # Pointer — CC uses `figures.pointer` which resolves to "❯" on modern
 # terminals (same Unicode char used by inquirer.js).
-_POINTER = "\u276F"  # ❯
+_POINTER = "\u276f"  # ❯
 
 
 # --------------------------------------------------------------------------- #
@@ -254,7 +253,7 @@ def _render_dialog(
 
     # --- Top border + title ------------------------------------------------
     frags.append(("class:picker.border", _BOX_TL + _BOX_H * (body_width - 2) + _BOX_TR + "\n"))
-    title_pad = (body_width - 2 - len(title) - 1)
+    title_pad = body_width - 2 - len(title) - 1
     frags.append(("class:picker.border", _BOX_V))
     frags.append(("class:picker.title", " " + title))
     frags.append(("", " " * max(title_pad, 0)))
@@ -277,9 +276,7 @@ def _render_dialog(
         filler = body_width - 2 - len(prefix) - len(row_text)
         frags.append(("class:picker.border", _BOX_V))
         frags.append(("class:picker.pointer" if is_focused else "", prefix))
-        frags.append(
-            ("class:picker.selected" if is_focused else "class:picker.option", row_text)
-        )
+        frags.append(("class:picker.selected" if is_focused else "class:picker.option", row_text))
         frags.append(("", " " * max(filler, 0)))
         frags.append(("class:picker.border", _BOX_V + "\n"))
 
@@ -470,8 +467,7 @@ async def pick_output_style(current: str) -> Optional[str]:
         "dark-code": "Dim prose, bright code blocks",
     }
     options: list[Option] = [
-        (name, name.replace("-", " ").title(), descriptions.get(name, ""))
-        for name in BUILTIN_STYLES
+        (name, name.replace("-", " ").title(), descriptions.get(name, "")) for name in BUILTIN_STYLES
     ]
     return await _run_picker("Preferred output style", options, current)
 
@@ -483,9 +479,7 @@ async def pick_language(current: str, available: Sequence[str]) -> Optional[str]
     input via the main prompt, so the dialog form here is a simple list
     pick. Pass an empty-string option to represent "auto/default".
     """
-    options: list[Option] = [
-        (lang, lang if lang else "auto (default)", "") for lang in available
-    ]
+    options: list[Option] = [(lang, lang if lang else "auto (default)", "") for lang in available]
     return await _run_picker("Syntax highlight language", options, current)
 
 
