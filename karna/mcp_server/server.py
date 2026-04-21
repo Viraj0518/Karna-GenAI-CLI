@@ -22,9 +22,12 @@ persistence on this surface — that belongs to the interactive TUI.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
+import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from karna.agents.loop import agent_loop
@@ -32,7 +35,7 @@ from karna.config import load_config
 from karna.models import Conversation, Message
 from karna.prompts import build_system_prompt
 from karna.providers import get_provider, resolve_model
-from karna.tools import get_all_tools
+from karna.tools import _TOOL_PATHS  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ _NELLIE_AGENT_TOOL: dict[str, Any] = {
         "has full access to Nellie's tool registry (bash, read/write, "
         "grep/glob, git, web_search/web_fetch, db, browser, etc.) and "
         "runs the same tool-use loop as the interactive REPL. Returns "
-        "the agent's final text reply once the loop terminates."
+        "the agent's final text reply plus an optional event trace."
     ),
     "inputSchema": {
         "type": "object",
@@ -76,10 +79,60 @@ _NELLIE_AGENT_TOOL: dict[str, Any] = {
                 "description": "Maximum tool-use iterations (default 25).",
                 "default": 25,
             },
+            "workspace": {
+                "type": "string",
+                "description": (
+                    "Absolute path to the directory the agent should "
+                    "treat as its working directory. When set, bash's "
+                    "cwd + write/edit's allowed_roots are pinned here, "
+                    "so the agent can create/modify files inside this "
+                    "path even if the MCP server was launched elsewhere. "
+                    "Created if missing. Defaults to the MCP server's "
+                    "own cwd."
+                ),
+            },
+            "include_events": {
+                "type": "boolean",
+                "description": (
+                    "If true, the response carries a compact event "
+                    "trace (tool calls, errors, halt reason) alongside "
+                    "the final text so the caller can see what the "
+                    "agent actually did. Default false."
+                ),
+                "default": False,
+            },
         },
         "required": ["prompt"],
     },
 }
+
+
+# ----------------------------------------------------------------------- #
+#  Tool factory with optional workspace scoping
+# ----------------------------------------------------------------------- #
+
+
+def _instantiate_tools(workspace: str | None) -> list:
+    """Instantiate every registered tool, scoped to ``workspace`` if given.
+
+    ``write`` and ``edit`` take an optional ``allowed_roots`` kwarg that
+    gates their path-safety check; passing the workspace lets the agent
+    create files outside the MCP server's own cwd. ``bash`` tracks its
+    own ``_cwd`` attribute which we overwrite after construction.
+    """
+    tools = []
+    allowed_roots = [Path(workspace)] if workspace else None
+    for name, (module_path, class_name) in _TOOL_PATHS.items():
+        mod = importlib.import_module(module_path)
+        cls = getattr(mod, class_name)
+        if allowed_roots and name in ("write", "edit"):
+            instance = cls(allowed_roots=allowed_roots)
+        else:
+            instance = cls()
+        if workspace and name == "bash" and hasattr(instance, "_cwd"):
+            instance._cwd = workspace  # type: ignore[attr-defined]
+        tools.append(instance)
+    return tools
 
 
 # ----------------------------------------------------------------------- #
@@ -92,8 +145,21 @@ async def _run_nellie_agent(
     *,
     model: str | None = None,
     max_iterations: int = 25,
-) -> str:
-    """Drive one turn of the agent loop on ``prompt`` and return its text."""
+    workspace: str | None = None,
+) -> dict[str, Any]:
+    """Drive one turn of the agent loop and return ``{text, events, halt}``.
+
+    - ``text`` is the concatenated assistant text (stripped). Empty if
+      the agent never emitted real text — detected and surfaced as an
+      error rather than silently returning success.
+    - ``events`` is a compact trace: each tool call + result, each
+      error, and the terminal reason. Callers can opt in via
+      ``include_events``; always collected so the server can decide
+      whether to return it.
+    - ``halt`` describes why the loop ended: ``done`` | ``error`` |
+      ``empty_reply`` | ``max_iterations``. Prevents the "10-minute
+      silent success" failure mode.
+    """
     config = load_config()
 
     model_spec = model or f"{config.active_provider}:{config.active_model}"
@@ -101,7 +167,10 @@ async def _run_nellie_agent(
     provider = get_provider(provider_name)
     provider.model = model_name
 
-    tools = get_all_tools()
+    if workspace:
+        os.makedirs(workspace, exist_ok=True)
+
+    tools = _instantiate_tools(workspace)
     conversation = Conversation()
     conversation.messages.append(Message(role="user", content=prompt))
 
@@ -109,6 +178,9 @@ async def _run_nellie_agent(
 
     text_parts: list[str] = []
     error_parts: list[str] = []
+    events: list[dict[str, Any]] = []
+    saw_done = False
+
     async for event in agent_loop(
         provider=provider,
         conversation=conversation,
@@ -116,21 +188,45 @@ async def _run_nellie_agent(
         system_prompt=system_prompt,
         max_iterations=max_iterations,
     ):
-        if event.type == "text" and event.text:
+        et = event.type
+        if et == "text" and event.text:
             text_parts.append(event.text)
-        elif event.type == "error":
-            # StreamEvent carries the message in the ``error`` field,
-            # not ``text``. The original check on event.text silently
-            # dropped provider/auth/max-iter failures and made the
-            # tool return "(no reply)" with isError=false — flagged
-            # by Codex as P1.
+        elif et == "tool_call_end" and event.tool_call:
+            # Capture at *end* so streaming arguments have finished
+            # assembling. Capturing at tool_call_start reads an empty
+            # arguments string because deltas haven't arrived yet —
+            # that was a diagnostic dead-end last iteration.
+            tc = event.tool_call
+            events.append({
+                "kind": "tool_call",
+                "name": tc.name,
+                "arguments": str(tc.arguments)[:500],
+                # event.text at tool_call_end is the tool's result
+                # string; include a trimmed version so we can see
+                # whether the tool actually succeeded.
+                "result": (event.text or "")[:500],
+            })
+        elif et == "error":
             err = event.error or event.text
             if err:
                 error_parts.append(err)
+                events.append({"kind": "error", "text": err[:500]})
+        elif et == "done":
+            saw_done = True
 
-    if error_parts and not text_parts:
-        raise RuntimeError("; ".join(error_parts))
-    return "".join(text_parts)
+    text = "".join(text_parts).strip()
+
+    if error_parts and not text:
+        halt = "error"
+    elif not text and not saw_done:
+        halt = "max_iterations"
+    elif not text:
+        halt = "empty_reply"
+    else:
+        halt = "done"
+
+    events.append({"kind": "halt", "reason": halt})
+    return {"text": text, "events": events, "halt": halt, "errors": error_parts}
 
 
 # ----------------------------------------------------------------------- #
@@ -194,9 +290,14 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
             return _make_error(req_id, -32602, "'prompt' must be a non-empty string")
         model = args.get("model")
         max_iterations = int(args.get("max_iterations") or 25)
+        workspace = args.get("workspace")
+        include_events = bool(args.get("include_events", False))
         try:
-            text = await _run_nellie_agent(
-                prompt, model=model, max_iterations=max_iterations
+            result = await _run_nellie_agent(
+                prompt,
+                model=model,
+                max_iterations=max_iterations,
+                workspace=workspace,
             )
         except Exception as exc:  # noqa: BLE001 - surface to client
             logger.exception("nellie_agent call failed")
@@ -209,13 +310,38 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                     "isError": True,
                 },
             )
-        return _make_result(
-            req_id,
-            {
-                "content": [{"type": "text", "text": text or "(no reply)"}],
-                "isError": False,
-            },
-        )
+
+        halt = result["halt"]
+        text = result["text"]
+        errors = result["errors"]
+        is_error = halt in ("error", "max_iterations", "empty_reply")
+
+        # Build a user-facing body. For success, just the text. For
+        # failure, tack on the halt reason and the error bundle so the
+        # caller knows why nothing came back.
+        if is_error:
+            body_parts = []
+            if text:
+                body_parts.append(text)
+            body_parts.append(f"[halt:{halt}]")
+            if errors:
+                body_parts.append("errors: " + "; ".join(errors[-3:]))
+            body = "\n".join(body_parts)
+        else:
+            body = text
+
+        content: list[dict[str, Any]] = [{"type": "text", "text": body or "(no reply)"}]
+        if include_events:
+            # Attach the event trace as a second content block encoded
+            # as a JSON string — clients can parse it; humans can read
+            # it. Keeps the primary text clean.
+            content.append(
+                {
+                    "type": "text",
+                    "text": "EVENTS:\n" + json.dumps(result["events"], indent=2),
+                }
+            )
+        return _make_result(req_id, {"content": content, "isError": is_error})
 
     if method in ("shutdown", "exit"):
         return _make_result(req_id, {})
