@@ -26,7 +26,7 @@ Viraj's "full scope buddy" call.
 | 16 | WebSockets | real-time updates | `karna/rest_server/app.py::session_ws` at `ws://host:port/v1/ws/sessions/{id}` — same event vocabulary as SSE + ping/cancel/message control frames, 5 protocol tests | alpha | ✅ shipped |
 | 17 | ACP server (Agent Client Protocol) | JSON-RPC stdio | `karna/acp_server/` (session/new/list/prompt/cancel/close + session/update stream) | alpha | ✅ shipped (PR #48) |
 | 18 | MCP server wrapping Nellie | — | `karna/mcp_server/` | — | ✅ shipped (unique to Nellie) |
-| 19 | Desktop app | Electron + React | ❌ | gamma | 🔴 todo (was "web UI MVP" — scope now includes Electron) |
+| 19 | Desktop app | Electron + React | `electron/` — BrowserWindow loads gamma's web UI (#20), single-instance lock, graceful child-process teardown (SIGTERM + taskkill), security hardened (nodeIntegration off, contextIsolation + sandbox on), cross-platform builds via electron-builder | alpha | ✅ shipped |
 | 20 | Web UI | served by goosed | `karna/web/` — FastAPI + Jinja2 + htmx; 4 pages (sessions, live SSE transcript, recipes, memory); `nellie web`; 17 tests | gamma | ✅ shipped (PR #50 commit 41a1f49) |
 | 21 | Permission modes | ask / deny / approve | 3-tier ALLOW/ASK/DENY per tool | — | ✅ shipped |
 | 22 | Prompt injection detection | built-in | ❌ (path/SSRF/secret guards only) | beta | 🟡 in flight (B2) |
@@ -47,7 +47,7 @@ Viraj's "full scope buddy" call.
 
 - alpha: lane closed (#5 computer_controller shipped by beta, #16 WebSockets shipped, #26 telemetry shipped)
 - beta: #2+#13 canonical registry (expand scope to 1000+ models), #22 prompt-injection, #12 keyring, CI/test harden
-- gamma: #19 Electron desktop (confirmed: web UI done, Electron wrapper on gamma next)
+- gamma: lane closed (Electron scaffolded by alpha in `electron/`)
 
 ## Exit criteria — "Nellie > Goose"
 

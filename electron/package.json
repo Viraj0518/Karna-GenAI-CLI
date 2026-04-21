@@ -1,0 +1,41 @@
+{
+  "name": "nellie-desktop",
+  "productName": "Nellie",
+  "version": "0.1.0",
+  "description": "Nellie desktop shell — Electron wrapper around the Karna web UI.",
+  "main": "main.js",
+  "author": {
+    "name": "Kaeva",
+    "email": "viraj@kaeva.app"
+  },
+  "license": "LicenseRef-Proprietary",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "app.kaeva.nellie",
+    "productName": "Nellie",
+    "files": ["main.js", "preload.js", "assets/**/*"],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    }
+  }
+}
