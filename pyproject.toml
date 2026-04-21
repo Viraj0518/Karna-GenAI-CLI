@@ -24,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 tokens = ["tiktoken>=0.7"]
 web = ["trafilatura>=1.8"]
-vertex = ["google-auth>=2.0"]
+vertex = ["google-auth>=2.49.2"]
 bedrock = ["boto3>=1.34"]
 cron = ["croniter>=2.0", "pyyaml>=6.0"]
 db = ["psycopg2-binary>=2.9", "pymysql>=1.1"]
