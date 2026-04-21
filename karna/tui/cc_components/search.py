@@ -463,7 +463,7 @@ async def global_search(
         if not q.strip():
             return []
         try:
-            rows = store.search(q, limit=50)
+            rows = store.search(_fts5_escape(q), limit=50)
         except Exception:
             return []
         out: list[tuple[str, Message, str]] = []
@@ -549,6 +549,23 @@ async def quick_open_file(
 
 
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache"}
+
+
+def _fts5_escape(query: str) -> str:
+    """Quote a user query so SQLite FTS5 treats it as a safe phrase.
+
+    FTS5's MATCH grammar treats ``"``, ``*``, ``(``, ``)``, ``:`` and a
+    handful of operator words (``AND``, ``OR``, ``NOT``, ``NEAR``) as
+    reserved. A free-text query from a prompt_toolkit search box will
+    routinely contain spaces, punctuation, and mixed case — wrapping the
+    query in double-quotes (and escaping embedded quotes) makes FTS5
+    interpret it as a single phrase token, which is what the dialog
+    actually wants.
+    """
+    cleaned = query.strip().replace('"', '""')
+    if not cleaned:
+        return cleaned
+    return f'"{cleaned}"'
 
 
 def _walk_files(root: Path) -> Iterable[Path]:

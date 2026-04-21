@@ -134,6 +134,18 @@ def test_display_path_prefers_relative_to_root(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def test_fts5_escape_wraps_query_as_phrase() -> None:
+    """Free-text queries must be quoted before hitting FTS5 or the
+    virtual table will raise on punctuation (``:``, ``(``, etc.) and on
+    reserved operator words."""
+    assert cc_search._fts5_escape("hello world") == '"hello world"'
+    # Embedded double-quotes get doubled (SQL-style escape).
+    assert cc_search._fts5_escape('say "hi"') == '"say ""hi"""'
+    # Empty / whitespace-only queries pass through untouched so callers
+    # can short-circuit before calling SessionDB.search().
+    assert cc_search._fts5_escape("   ") == ""
+
+
 def test_global_search_backend_uses_fts5(tmp_path: Path) -> None:
     """The dialog's data source is ``SessionDB.search()``. Seed two
     sessions with distinct content, then verify the FTS5 query surfaces
@@ -156,6 +168,12 @@ def test_global_search_backend_uses_fts5(tmp_path: Path) -> None:
 
         # Negative — query with no hits returns an empty list.
         assert db.search("zzzquantum") == []
+
+        # A multi-word phrase with punctuation would blow up raw FTS5;
+        # the _fts5_escape helper turns it into a safe phrase match.
+        escaped = cc_search._fts5_escape("search dialog")
+        rows_phrase = db.search(escaped)
+        assert rows_phrase and rows_phrase[0]["session_id"] == sid_a
     finally:
         db.close()
 
