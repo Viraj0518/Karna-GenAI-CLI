@@ -93,7 +93,14 @@ from karna.tools import TOOLS, get_all_tools
 from karna.tui.completer import NellieCompleter
 from karna.tui.output import (
     BRAILLE_FRAMES,
+    # FACES + VERBS look "unused" to static analysis (ruff F401) but the
+    # status-bar closure in _build_application resolves them by name at
+    # render time, and test_status_bar_formatting_components_are_importable
+    # imports them from this module. Keep the imports and silence the lint.
+    # Stripping them broke CI once already — see commit 5faad85.
+    FACES,  # noqa: F401
     LONG_RUN_CHARMS,
+    VERBS,  # noqa: F401
     EventKind,
     OutputRenderer,
     StreamEvent,

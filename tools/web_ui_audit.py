@@ -211,7 +211,11 @@ def _audit_page(
     try:
         response = page.goto(f"{base_url}{path}", wait_until="domcontentloaded", timeout=15000)
         result.status = response.status if response else 0
-        page.wait_for_load_state("networkidle", timeout=10000)
+        # Don't wait for ``networkidle`` — session detail pages hold a
+        # long-lived EventSource on /stream and never go idle. "load" is
+        # enough: the DOM is parsed, fonts + stylesheets are resolved,
+        # scripts have run. That's all we need to screenshot + inspect.
+        page.wait_for_load_state("load", timeout=10000)
 
         result.title = page.title() or ""
 

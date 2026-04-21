@@ -27,6 +27,11 @@ import time
 from pathlib import Path
 
 _OUT = Path(__file__).resolve().parent.parent / "_cli_audit"
+# ANSI escape sequences (CSI ``\x1b[...m``, OSC, etc.) are legitimate in
+# rich-formatted help output — we strip them before checking for real
+# mojibake. What remains should be printable text; any U+FFFD (replacement
+# char) or C0 control (except TAB / LF / CR) is a genuine encoding issue.
+_ANSI_ESC = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[@-_]")
 _MOJIBAKE = re.compile(r"[\ufffd\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 # Commands we audit. Each entry: (argv tail, expected zero-exit)
@@ -73,7 +78,10 @@ def _run(argv: list[str], timeout: float = 15.0) -> dict:
         )
         elapsed = time.time() - t0
         out = proc.stdout + proc.stderr
-        mojibake = bool(_MOJIBAKE.search(out))
+        # Strip legitimate ANSI escape sequences before checking — rich
+        # help output is dense with them.
+        stripped = _ANSI_ESC.sub("", out)
+        mojibake = bool(_MOJIBAKE.search(stripped))
         return {
             "argv": argv,
             "exit": proc.returncode,
