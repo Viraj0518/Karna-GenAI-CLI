@@ -28,7 +28,7 @@
         </div>
         {% endfor %}
     </div>
-    <div id="stream-output"></div>
+    <div id="stream-output" data-session-id="{{ session.id }}"></div>
 </div>
 
 <div class="input-area">
@@ -66,6 +66,72 @@
             document.getElementById('message-input').value = '';
         }
     });
+
+    // Live SSE subscription — the backend already streams token-level
+    // events on /sessions/{id}/stream. Without this the transcript only
+    // updates after each turn completes (htmx POST swap). With this the
+    // user sees text stream in token-by-token, tool calls surface live,
+    // and long turns don't look frozen.
+    (function connectSSE() {
+        var el = document.getElementById('stream-output');
+        if (!el) return;
+        var sid = el.dataset.sessionId;
+        if (!sid) return;
+
+        function buildMessage(role, textContent) {
+            // Safe DOM construction — no innerHTML with untrusted data.
+            var wrap = document.createElement('div');
+            wrap.className = 'message message-' + role;
+            var r = document.createElement('div');
+            r.className = 'message-role';
+            r.textContent = role;
+            var c = document.createElement('div');
+            c.className = 'message-content';
+            c.textContent = textContent || '';
+            wrap.appendChild(r);
+            wrap.appendChild(c);
+            return wrap;
+        }
+
+        var es = new EventSource('/sessions/' + sid + '/stream');
+        var currentText = null;
+        es.onmessage = function (ev) {
+            // Each line is `data: {...}`. The /stream proxy re-emits
+            // the REST SSE frames, each one a JSON object with
+            // {kind: text|tool_call|tool_result|done, ...}.
+            var data;
+            try { data = JSON.parse(ev.data); } catch (_) { return; }
+            var kind = data.kind || data.type;
+            if (kind === 'text' && data.delta) {
+                if (!currentText) {
+                    currentText = buildMessage('assistant', '');
+                    el.appendChild(currentText);
+                }
+                var c = currentText.querySelector('.message-content');
+                c.textContent += data.delta;
+                scrollToBottom();
+            } else if (kind === 'tool_call') {
+                var tc = document.createElement('div');
+                tc.className = 'message message-tool-call';
+                tc.textContent = '\u25cf ' + (data.name || 'tool') + '(' +
+                    (data.context || '') + ')';
+                el.appendChild(tc);
+                scrollToBottom();
+            } else if (kind === 'tool_result') {
+                var tr = document.createElement('div');
+                tr.className = 'message message-tool-result';
+                tr.textContent = '  \u23bf  ' + (data.summary || 'done');
+                el.appendChild(tr);
+                scrollToBottom();
+            } else if (kind === 'done') {
+                currentText = null;   // reset for next turn
+            }
+        };
+        es.onerror = function () {
+            // Silent — server may be down, but don't spam console.
+            // Browser auto-reconnects.
+        };
+    })();
 
     // Submit on Enter (Shift+Enter for newline)
     document.getElementById('message-input').addEventListener('keydown', function(e) {
