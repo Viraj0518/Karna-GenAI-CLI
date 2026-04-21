@@ -1,6 +1,28 @@
 # Phase 4 Design Document -- Advanced Features
 
-**Status:** Draft
+> **SUPERSEDED — 2026-04-20 [alpha].** This document is a historical design
+> record. Most of the features it proposes have since shipped (often with
+> different interfaces than the designs below). See
+> [docs/CODEBASE_MAP.md](CODEBASE_MAP.md) for the current state and
+> [docs/DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for the architecture
+> walkthrough. Mapping from the sections below to what actually landed:
+>
+> | Section | Current implementation |
+> |---|---|
+> | 1. Autonomous Loop Mode | [karna/agents/autonomous.py](../karna/agents/autonomous.py) + `/loop` slash command ([karna/tui/slash.py](../karna/tui/slash.py)) |
+> | 2. Multi-Model Verification | Mixture-of-agents — see `tests/test_moa.py` and the MOA references in [karna/agents/](../karna/agents/) |
+> | 3. Cost-Aware Auto-Routing | Not yet implemented; still the design of record |
+> | 4. Fork / Replay | Session fork — see `tests/test_fork_session.py` |
+> | 5. Collaborative Multi-Agent | [karna/agents/subagent.py](../karna/agents/subagent.py) + [karna/tools/task.py](../karna/tools/task.py) (FSM + worktree isolation); parallel dispatch in [karna/agents/parallel.py](../karna/agents/parallel.py) |
+> | 6. Full Compaction with LLM Summarization | [karna/compaction/compactor.py](../karna/compaction/compactor.py) (threshold, circuit breaker, preserved tail) |
+> | 7. Web Frontend (Next.js 15) | Not yet implemented; `web/` is the tracking directory |
+> | 8. Gateway -- Telegram | Not yet implemented; still the design of record |
+>
+> Interface names and field shapes in the design below are **not** current —
+> refer to the code. Sections 3, 7, and 8 are still unimplemented and can
+> still be treated as the design of record for those features.
+
+**Status:** Draft (historical)
 **Author:** gamma (Claude)
 **Date:** 2026-04-17
 **Branch:** `claude/gamma-scaffold`

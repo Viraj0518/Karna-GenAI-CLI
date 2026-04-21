@@ -13,6 +13,25 @@ from karna.comms.inbox import AgentInbox
 from karna.config import load_config
 from karna.tools.base import BaseTool
 
+# Cap single-message size at 1 MB. A model-generated 1 GB payload would
+# exhaust inbox disk before any other limit kicks in; 1 MB covers every
+# legitimate message we've seen by two orders of magnitude.
+_MAX_MESSAGE_BYTES = 1_000_000
+
+
+def _body_exceeds_limit(body: str) -> bool:
+    """Return True iff ``body`` would serialise to more than the cap.
+
+    UTF-8 uses 1–4 bytes per code point, so a string with fewer than
+    ``_MAX_MESSAGE_BYTES // 4`` characters cannot possibly exceed the
+    cap — short-circuit without allocating the full ``.encode("utf-8")``
+    copy in the common case. Only strings past that threshold pay the
+    encoding cost to confirm exactly.
+    """
+    if len(body) * 4 <= _MAX_MESSAGE_BYTES:
+        return False
+    return len(body.encode("utf-8")) > _MAX_MESSAGE_BYTES
+
 
 class CommsTool(BaseTool):
     """Send, check, read, and reply to inter-agent messages.
@@ -89,6 +108,12 @@ class CommsTool(BaseTool):
             return "[error] 'subject' is required for send action."
         if not body:
             return "[error] 'body' is required for send action."
+        if _body_exceeds_limit(body):
+            return (
+                f"[error] Message body exceeds the {_MAX_MESSAGE_BYTES:,}-byte "
+                "limit. Split the content across multiple messages or save it "
+                "to a file and share the path."
+            )
         try:
             msg = self._inbox.send(to, subject, body)
         except ValueError as exc:
@@ -144,6 +169,12 @@ class CommsTool(BaseTool):
             return "[error] 'message_id' is required for reply action."
         if not body:
             return "[error] 'body' is required for reply action."
+        if _body_exceeds_limit(body):
+            return (
+                f"[error] Reply body exceeds the {_MAX_MESSAGE_BYTES:,}-byte "
+                "limit. Split the content across multiple messages or save it "
+                "to a file and share the path."
+            )
         # Read the original message first
         original = self._inbox.read_message(message_id)
         if original is None:
