@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from karna.agents.subagent import SubAgentManager, spawn_subagent
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,7 @@ class TaskTool(BaseTool):
         "existing ones, or stop running ones. Subagents run with their "
         "own conversation context and filtered tool subset."
     )
+    cc_prompt = CC_TOOL_PROMPTS["task"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

@@ -21,6 +21,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 _USER_AGENT = "Nellie/0.1.0 (Karna AI assistant)"
@@ -350,9 +351,8 @@ class WebFetchTool(BaseTool):
     """
 
     name = "web_fetch"
-    description = (
-        "Fetch a web page and extract its readable text content. Use after web_search to read a specific result."
-    )
+    description = "Fetch and extract readable content from a URL (HTML/JSON/text)."
+    cc_prompt = CC_TOOL_PROMPTS["web_fetch"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 # --------------------------------------------------------------------------- #
@@ -208,6 +209,7 @@ class NotebookTool(BaseTool):
 
     name = "notebook"
     description = "Read, edit, and execute Jupyter notebook (.ipynb) cells."
+    cc_prompt = CC_TOOL_PROMPTS["notebook"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

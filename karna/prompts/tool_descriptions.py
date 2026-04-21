@@ -56,18 +56,27 @@ _TOOL_GUIDANCE: dict[str, tuple[str, str]] = {
 
 
 def _format_tool_section(tool: "BaseTool") -> str:
-    """Format a single tool into a documentation block."""
-    lines = [f"### {tool.name}"]
-    lines.append(tool.description)
+    """Format a single tool into a documentation block.
 
-    guidance = _TOOL_GUIDANCE.get(tool.name)
-    if guidance:
-        use_for, not_for = guidance
-        lines.append(f"Use for: {use_for}.")
-        lines.append(f"Do NOT use for: {not_for}.")
+    When the tool ships a verbatim Claude Code prompt (``cc_prompt``),
+    we emit that alone — CC's prompt already contains usage notes,
+    constraints, and do/don't lists, so our legacy ``_TOOL_GUIDANCE``
+    hints would duplicate content.
+    """
+    lines = [f"### {tool.name}"]
+
+    if tool.cc_prompt:
+        lines.append(tool.cc_prompt)
     else:
-        # Generic guidance — just include the description
-        lines.append("Use when this tool's capabilities match the task at hand.")
+        lines.append(tool.description)
+        guidance = _TOOL_GUIDANCE.get(tool.name)
+        if guidance:
+            use_for, not_for = guidance
+            lines.append(f"Use for: {use_for}.")
+            lines.append(f"Do NOT use for: {not_for}.")
+        else:
+            # Generic guidance — just include the description
+            lines.append("Use when this tool's capabilities match the task at hand.")
 
     # Add parameter summary from JSON schema
     props = tool.parameters.get("properties", {})

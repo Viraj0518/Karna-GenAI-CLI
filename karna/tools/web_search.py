@@ -20,6 +20,7 @@ from typing import Any
 
 import httpx
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 _USER_AGENT = "Nellie/0.1.0 (Karna AI assistant)"
@@ -203,10 +204,8 @@ class WebSearchTool(BaseTool):
     """
 
     name = "web_search"
-    description = (
-        "Search the web. Returns titles, URLs, and snippets. "
-        "Use when you need current information beyond your training data."
-    )
+    description = "Search the web. Returns titles, URLs, and snippets."
+    cc_prompt = CC_TOOL_PROMPTS["web_search"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

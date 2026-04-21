@@ -28,8 +28,19 @@ class BaseTool(ABC):
 
     name: str = ""
     description: str = ""
+    # Verbatim Claude Code tool prompt when available (see
+    # ``karna/prompts/cc_tool_prompts.py``). Takes precedence over
+    # ``description`` for the model-facing surfaces: API tool schemas
+    # (OpenAI / Anthropic) and the system-prompt tool-docs section.
+    # ``description`` stays short for UI display (web, TUI, slash help).
+    cc_prompt: str = ""
     parameters: dict[str, Any] = {}  # JSON Schema
     sequential: bool = False  # If True, never run in parallel with other calls
+
+    @property
+    def model_facing_description(self) -> str:
+        """Rich LLM-facing prompt — prefer ``cc_prompt`` when set."""
+        return self.cc_prompt or self.description
 
     # ------------------------------------------------------------------ #
     #  Core interface
@@ -59,7 +70,7 @@ class BaseTool(ABC):
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": self.description,
+                "description": self.model_facing_description,
                 "parameters": self.parameters,
             },
         }
@@ -72,6 +83,6 @@ class BaseTool(ABC):
         """
         return {
             "name": self.name,
-            "description": self.description,
+            "description": self.model_facing_description,
             "input_schema": self.parameters,
         }

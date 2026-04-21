@@ -30,6 +30,7 @@ import tempfile
 from typing import Any
 from uuid import uuid4
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.security.guards import check_dangerous_command
 from karna.tools.base import BaseTool
 from karna.tools.task_registry import TaskType, get_task_registry
@@ -75,6 +76,7 @@ class BashTool(BaseTool):
         "The working directory persists between calls. "
         "Set run_in_background=true to spawn the process and return immediately."
     )
+    cc_prompt = CC_TOOL_PROMPTS["bash"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

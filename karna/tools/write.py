@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.security.guards import is_safe_path
 from karna.tools.base import BaseTool
 
@@ -35,6 +36,7 @@ class WriteTool(BaseTool):
     name = "write"
     sequential = True  # File writes must not run concurrently
     description = "Write content to a file. Creates parent directories if needed. Overwrites existing files."
+    cc_prompt = CC_TOOL_PROMPTS["write"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
