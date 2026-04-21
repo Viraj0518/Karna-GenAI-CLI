@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Memory{% endblock %}
+{% block nav_memory %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Memory Browser</h1>
+    <button class="btn btn-primary" onclick="document.getElementById('create-modal').classList.add('active')">
+        New Memory
+    </button>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<!-- Type filter -->
+<div class="filter-bar">
+    <a href="/memory" class="filter-chip {% if not type_filter %}active{% endif %}">All</a>
+    {% for t in types %}
+    <a href="/memory?type_filter={{ t }}" class="filter-chip {% if type_filter == t %}active{% endif %}">{{ t }}</a>
+    {% endfor %}
+</div>
+
+{% if memories %}
+<div class="memory-list">
+    {% for mem in memories %}
+    <div class="memory-card">
+        <div class="memory-card-header">
+            <h3>{{ mem.name }}</h3>
+            <span class="memory-type badge badge-{{ mem.type }}">{{ mem.type }}</span>
+        </div>
+        <p class="memory-description">{{ mem.description }}</p>
+        <div class="memory-content-preview">
+            <pre>{{ mem.content[:200] }}{% if mem.content|length > 200 %}...{% endif %}</pre>
+        </div>
+        <div class="memory-card-footer">
+            <span class="memory-date">Updated: {{ mem.updated_at }}</span>
+            <div class="memory-actions">
+                <button
+                    class="btn btn-sm btn-secondary"
+                    onclick="openEditModal('{{ mem.file_path }}', `{{ mem.content | replace('`', '\\`') | replace('\n', '\\n') }}`)"
+                >Edit</button>
+                <form method="post" action="/memory/delete" class="inline-form">
+                    <input type="hidden" name="file_path" value="{{ mem.file_path }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No memories found{% if type_filter %} for type "{{ type_filter }}"{% endif %}.</p>
+    <p class="empty-hint">Memories are stored in <code>~/.karna/memory/</code></p>
+</div>
+{% endif %}
+
+<!-- Create modal -->
+<div class="modal" id="create-modal">
+    <div class="modal-backdrop" onclick="this.parentElement.classList.remove('active')"></div>
+    <div class="modal-content">
+        <h2>Create Memory</h2>
+        <form method="post" action="/memory/create">
+            <div class="form-group">
+                <label for="name">Name</label>
+                <input type="text" id="name" name="name" required class="form-input">
+            </div>
+            <div class="form-group">
+                <label for="memory_type">Type</label>
+                <select id="memory_type" name="memory_type" class="form-input">
+                    <option value="user">user</option>
+                    <option value="feedback">feedback</option>
+                    <option value="project">project</option>
+                    <option value="reference">reference</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="description">Description</label>
+                <input type="text" id="description" name="description" class="form-input" placeholder="One-line summary">
+            </div>
+            <div class="form-group">
+                <label for="content">Content</label>
+                <textarea id="content" name="content" required class="form-input" rows="6" placeholder="Memory content..."></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').classList.remove('active')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal" id="edit-modal">
+    <div class="modal-backdrop" onclick="this.parentElement.classList.remove('active')"></div>
+    <div class="modal-content">
+        <h2>Edit Memory</h2>
+        <form method="post" action="/memory/update">
+            <input type="hidden" id="edit-file-path" name="file_path" value="">
+            <div class="form-group">
+                <label for="edit-content">Content</label>
+                <textarea id="edit-content" name="content" required class="form-input" rows="10"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').classList.remove('active')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function openEditModal(filePath, content) {
+        document.getElementById('edit-file-path').value = filePath;
+        document.getElementById('edit-content').value = content.replace(/\\n/g, '\n');
+        document.getElementById('edit-modal').classList.add('active');
+    }
+</script>
+{% endblock %}
