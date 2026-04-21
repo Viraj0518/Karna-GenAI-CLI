@@ -62,6 +62,7 @@ from karna.skills.loader import SkillManager
 from karna.tools import TOOLS, get_all_tools
 from karna.tui.completer import NellieCompleter
 from karna.tui.output import (
+    BRAILLE_FRAMES,
     FACES,
     LONG_RUN_CHARMS,
     VERBS,
