@@ -182,6 +182,7 @@ IMPORTANT - Use the correct year in search queries:
   - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
 """
 
+
 def _build_web_search_prompt() -> str:
     """Render the WebSearch prompt with the current month/year injected.
 

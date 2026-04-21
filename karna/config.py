@@ -40,6 +40,7 @@ class ConfigError(RuntimeError):
     raw tomllib traceback.
     """
 
+
 class MemoryConfig(BaseModel):
     """Configuration for the persistent memory system.
 

@@ -33,6 +33,7 @@ class CredentialNotFoundError(FileNotFoundError):
     so the user is not left staring at an obscure 401 further downstream.
     """
 
+
 def _ensure_dir() -> None:
     """Create the credentials directory if it doesn't exist.
 

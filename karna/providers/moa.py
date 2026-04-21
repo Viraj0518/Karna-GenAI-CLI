@@ -56,6 +56,7 @@ _BEST_OF_N_SYSTEM_PROMPT = (
 class MoAError(RuntimeError):
     """Raised when MoA cannot produce a result (e.g. all candidates failed)."""
 
+
 class MixtureOfAgentsProvider(BaseProvider):
     """Run the same prompt across N providers and synthesize the best answer.
 

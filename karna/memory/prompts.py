@@ -1,6 +1,4 @@
-"""Memory-specific system prompt section.
-
-"""
+"""Memory-specific system prompt section."""
 
 from __future__ import annotations
 

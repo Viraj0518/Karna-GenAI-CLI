@@ -48,6 +48,7 @@ class PluginManifestError(ValueError):
     """Raised when a plugin's ``plugin.toml`` is missing required fields
     or specifies an entry point that cannot be resolved."""
 
+
 @dataclass
 class Plugin:
     """An on-disk plugin that has been discovered but may not yet be loaded."""

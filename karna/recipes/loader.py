@@ -19,6 +19,7 @@ from karna.recipes.model import Recipe, RecipeParameter, SubRecipeRef
 class RecipeLoadError(ValueError):
     """Raised when a recipe YAML is malformed or references unknown keys."""
 
+
 _REQUIRED_FIELDS = ("name", "instructions")
 _KNOWN_FIELDS = {
     "name",

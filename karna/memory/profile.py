@@ -64,6 +64,7 @@ Recent conversation:
 
 New facts about the user (one per line):"""
 
+
 class UserProfile:
     """Accrues durable facts about the user into ``user_profile.md``."""
 

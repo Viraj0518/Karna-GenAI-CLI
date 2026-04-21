@@ -36,6 +36,7 @@ _REQUEST_TIMEOUT = 30  # seconds per JSON-RPC call
 class MCPClientError(RuntimeError):
     """Raised for MCP client-side failures (dead reader, crashed server)."""
 
+
 # ----------------------------------------------------------------------- #
 #  MCP Server Connection
 # ----------------------------------------------------------------------- #

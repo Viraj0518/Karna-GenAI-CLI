@@ -52,6 +52,7 @@ _FAILOVER_STATUS_CODES = frozenset({401, 403, 429, 500, 502, 503, 504})
 class AllInstancesExhaustedError(RuntimeError):
     """Raised when every instance is in cooldown and no call can proceed."""
 
+
 def _is_failover_exception(exc: BaseException) -> bool:
     """Return True if *exc* should trigger rotation to the next instance."""
     if isinstance(exc, httpx.HTTPStatusError):
