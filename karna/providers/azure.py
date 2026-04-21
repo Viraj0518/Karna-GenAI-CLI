@@ -30,15 +30,18 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider, resolve_max_tokens
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 
 DEFAULT_API_VERSION = "2024-06-01"
 
 
 class AzureOpenAIProvider(BaseProvider):
     def _max_output(self) -> int | None:
-        """Delegate to OpenAIProvider's family table — Azure deployments
-        are GPT under the hood."""
+        """Canonical registry wins (treat the Azure deployment as GPT).
+        Falls back to OpenAIProvider's family table."""
+        cap = lookup_model_max_output("openai", self.model)
+        if cap is not None:
+            return cap
         from karna.providers.openai import OpenAIProvider
 
         ml = self.model.lower() if self.model else ""

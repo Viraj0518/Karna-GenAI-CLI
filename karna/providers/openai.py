@@ -22,7 +22,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider, resolve_max_tokens
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 
 
 class OpenAIProvider(BaseProvider):
@@ -55,7 +55,16 @@ class OpenAIProvider(BaseProvider):
         self._api_key = cred.get("api_key") or os.environ.get("OPENAI_API_KEY")
 
     def _max_output(self) -> int | None:
-        """Resolve the current model's max output cap via longest-prefix match."""
+        """Resolve the current model's max output cap.
+
+        Canonical registry wins when present (beta's PR #49 — 1,359 models
+        with per-model ``max_output``). Falls back to the local prefix
+        table so this provider keeps working even if the registry file is
+        missing or hasn't been loaded yet.
+        """
+        cap = lookup_model_max_output("openai", self.model)
+        if cap is not None:
+            return cap
         ml = self.model.lower()
         best_key = ""
         best_val: int | None = None

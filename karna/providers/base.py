@@ -143,6 +143,30 @@ def resolve_max_tokens(
     return fallback
 
 
+def lookup_model_max_output(provider: str, model: str) -> int | None:
+    """Consult the canonical registry (beta's ``canonical_models.json``) for
+    a model's authoritative max_output cap.
+
+    Returns ``None`` when the registry isn't loaded yet (pre-PR #49) OR the
+    model isn't catalogued — callers should fall back to their local
+    per-family table in either case. Single entry point here keeps the
+    fallback story consistent across all 7 providers.
+    """
+    try:
+        # Imported lazily to avoid a circular import at module load.
+        from karna.providers import model_capabilities  # type: ignore[attr-defined]
+    except ImportError:
+        return None
+    spec = f"{provider}:{model}" if ":" not in model else model
+    caps = model_capabilities(spec)
+    if caps is None:
+        return None
+    raw = caps.get("max_output")
+    if raw is None or not isinstance(raw, (int, float)) or raw <= 0:
+        return None
+    return int(raw)
+
+
 class BaseProvider(ABC):
     """Base class for model providers."""
 

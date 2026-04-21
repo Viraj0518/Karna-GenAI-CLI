@@ -30,7 +30,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
-from karna.providers.base import BaseProvider, resolve_max_tokens
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 
 _GOOGLE_AUTH_IMPORT_ERROR = (
     "The 'google-auth' package is required for the Vertex AI provider. "
@@ -250,6 +250,10 @@ class VertexProvider(BaseProvider):
     }
 
     def _max_output(self) -> int | None:
+        """Canonical registry wins; falls back to the prefix table."""
+        cap = lookup_model_max_output("vertex", self.model)
+        if cap is not None:
+            return cap
         ml = self.model.lower() if self.model else ""
         best_key = ""
         best_val: int | None = None

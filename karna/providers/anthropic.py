@@ -23,7 +23,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider, resolve_max_tokens
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 from karna.providers.caching import PromptCache
 
 # Anthropic API version
@@ -270,7 +270,10 @@ class AnthropicProvider(BaseProvider):
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._serialize_messages(messages),
-            "max_tokens": resolve_max_tokens(max_tokens, _get_max_output_tokens(self.model)),
+            "max_tokens": resolve_max_tokens(
+                max_tokens,
+                lookup_model_max_output("anthropic", self.model) or _get_max_output_tokens(self.model),
+            ),
         }
         if system_prompt:
             # Use structured system with cache_control for prompt caching
@@ -327,7 +330,10 @@ class AnthropicProvider(BaseProvider):
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._serialize_messages(messages),
-            "max_tokens": resolve_max_tokens(max_tokens, _get_max_output_tokens(self.model)),
+            "max_tokens": resolve_max_tokens(
+                max_tokens,
+                lookup_model_max_output("anthropic", self.model) or _get_max_output_tokens(self.model),
+            ),
             "stream": True,
         }
         if system_prompt:
