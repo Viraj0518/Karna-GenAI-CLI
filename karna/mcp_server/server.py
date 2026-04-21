@@ -118,8 +118,15 @@ async def _run_nellie_agent(
     ):
         if event.type == "text" and event.text:
             text_parts.append(event.text)
-        elif event.type == "error" and event.text:
-            error_parts.append(event.text)
+        elif event.type == "error":
+            # StreamEvent carries the message in the ``error`` field,
+            # not ``text``. The original check on event.text silently
+            # dropped provider/auth/max-iter failures and made the
+            # tool return "(no reply)" with isError=false — flagged
+            # by Codex as P1.
+            err = event.error or event.text
+            if err:
+                error_parts.append(err)
 
     if error_parts and not text_parts:
         raise RuntimeError("; ".join(error_parts))
