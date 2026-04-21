@@ -443,6 +443,27 @@ def history_delete(
 
 
 # --------------------------------------------------------------------------- #
+#  REST server command
+# --------------------------------------------------------------------------- #
+
+
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
+    port: int = typer.Option(3030, "--port", help="Bind port"),
+) -> None:
+    """Run Nellie as a REST + SSE server over HTTP.
+
+    Exposes session-scoped agent turns via ``/v1/sessions`` and live
+    events via ``/v1/sessions/{id}/events`` (Server-Sent Events).
+    Requires the ``rest`` optional extra: ``pip install 'karna[rest]'``.
+    """
+    from karna.rest_server import serve as _serve
+
+    _serve(host=host, port=port)
+
+
+# --------------------------------------------------------------------------- #
 #  Resume command
 # --------------------------------------------------------------------------- #
 
