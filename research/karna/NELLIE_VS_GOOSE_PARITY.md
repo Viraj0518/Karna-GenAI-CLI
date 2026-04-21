@@ -17,7 +17,7 @@ Viraj's "full scope buddy" call.
 | 7 | SessionManager + SQLite | `sessions.db`, durable | `karna/sessions/` (SQLite + FTS5, multi-session CLI) | — | ✅ shipped |
 | 8 | In-process session manager (for REST) | concurrent sessions in `goosed` | `karna/rest_server/session_manager.py` | alpha | ✅ shipped (PR #48) |
 | 9 | Recipe Engine | YAML + MiniJinja | ❌ Skills are triggers, not workflows | alpha | 🔴 todo (next) |
-| 10 | Sub-recipes | recipes invoking recipes | ❌ | gamma | 🟡 in flight (G1 — blocked on #9) |
+| 10 | Sub-recipes | recipes invoking recipes | `karna/recipes/sub.py` — 3-level nesting, Jinja2 param flow, 17 tests | gamma | ✅ shipped (PR #50 commit 4aee3a4) |
 | 11 | Scheduler | tokio-cron | `karna/cron/` | — | ✅ shipped |
 | 12 | Configuration + keyring | OS keyring | 🟡 JSON files with 0600 | beta | 🟡 in flight (B3) |
 | 13 | Canonical model registry | 1700 LLMs × capabilities | ❌ | beta | 🟡 in flight (B1, scoped 200 → now 1000+) |
@@ -27,7 +27,7 @@ Viraj's "full scope buddy" call.
 | 17 | ACP server (Agent Client Protocol) | JSON-RPC stdio | `karna/acp_server/` (session/new/list/prompt/cancel/close + session/update stream) | alpha | ✅ shipped (PR #48) |
 | 18 | MCP server wrapping Nellie | — | `karna/mcp_server/` | — | ✅ shipped (unique to Nellie) |
 | 19 | Desktop app | Electron + React | ❌ | gamma | 🔴 todo (was "web UI MVP" — scope now includes Electron) |
-| 20 | Web UI | served by goosed | ❌ | gamma | 🟡 in flight (G3) |
+| 20 | Web UI | served by goosed | `karna/web/` — FastAPI + Jinja2 + htmx; 4 pages (sessions, live SSE transcript, recipes, memory); `nellie web`; 17 tests | gamma | ✅ shipped (PR #50 commit 41a1f49) |
 | 21 | Permission modes | ask / deny / approve | 3-tier ALLOW/ASK/DENY per tool | — | ✅ shipped |
 | 22 | Prompt injection detection | built-in | ❌ (path/SSRF/secret guards only) | beta | 🟡 in flight (B2) |
 | 23 | Context auto-compaction | at 80% | `karna/compaction/` | — | ✅ shipped |
@@ -47,7 +47,7 @@ Viraj's "full scope buddy" call.
 
 - alpha: #5 computer_controller MCP, #16 WebSockets, #26 telemetry
 - beta: #2+#13 canonical registry (expand scope to 1000+ models), #22 prompt-injection, #12 keyring, CI/test harden
-- gamma: #10 sub-recipes, #19 Electron desktop, #20 web UI
+- gamma: #19 Electron desktop (clarifying with gamma whether this is deferred after web UI ship)
 
 ## Exit criteria — "Nellie > Goose"
 

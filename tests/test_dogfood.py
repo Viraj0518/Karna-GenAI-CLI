@@ -510,7 +510,10 @@ class TestTUIRendering:
         )
         renderer.finish()
         output = buf.getvalue()
-        assert "terminal" in output or "bash" in output  # verb mapping shows "terminal" for bash
+        # Claude-Code-style: `● Bash(...)` header + `  ⎿ ` result branch.
+        assert "\u25cf " in output, "missing Claude-Code bullet glyph"
+        assert "Bash" in output, "tool header should show CamelCased name"
+        assert "\u23bf" in output, "missing Claude-Code result L-branch glyph"
 
     def test_output_renderer_error(self) -> None:
         from rich.console import Console

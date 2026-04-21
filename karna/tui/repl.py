@@ -291,6 +291,9 @@ class REPLState:
         self.status_text: str = ""
         self.session_cost: SessionCost = SessionCost()
         self.session_start: float = time.time()
+        # Current turn start — set when agent_running flips True so the
+        # status bar can render a live ``✢ Thinking (4s · ↑ 2.1k)`` counter.
+        self.turn_start: float = 0.0
         # Context usage tracking
         self.context_tokens_used: int = 0
         self.context_window: int = 128_000
@@ -766,13 +769,22 @@ def _build_application(
         now = time.time()
         parts = [f" {model}"]
 
-        # Animated kawaii face + verb when agent is running
+        # Claude-Code-style live counter: ✢ Thinking (4s · ↑ 2.1k · esc)
         if state.agent_running:
-            face = FACES[int(now * 0.4) % len(FACES)]
-            verb = VERBS[int(now * 0.1) % len(VERBS)]
-            parts.append(f"{face} {verb}...")
+            braille = BRAILLE_FRAMES[int(now * 10) % len(BRAILLE_FRAMES)]
+            turn_t = now - state.turn_start if state.turn_start > 0 else 0.0
+            bits = [f"\x1b[38;5;111m{braille} Thinking\x1b[38;5;245m"]
+            bits.append(f"{int(turn_t)}s")
+            tok_in = state.context_tokens_used
+            if tok_in > 0:
+                if tok_in >= 1000:
+                    bits.append(f"\u2191 {tok_in / 1000:.1f}k tok")
+                else:
+                    bits.append(f"\u2191 {tok_in} tok")
+            bits.append("esc")
+            parts.append(" · ".join(bits))
 
-            # Long-run charm (>10s on a tool call)
+            # Long-run charm (>10s on a tool call) — kept as an easter egg
             if state.long_run_start > 0:
                 tool_elapsed = now - state.long_run_start
                 if tool_elapsed > 10 and not state.long_run_charm_shown:
@@ -1042,6 +1054,7 @@ async def run_repl(
         session_db.add_message(session_id, user_msg)
 
         state.agent_running = True
+        state.turn_start = time.time()
         state.status_text = "thinking..."
 
         state.agent_task = asyncio.create_task(

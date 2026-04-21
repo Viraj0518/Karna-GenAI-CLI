@@ -213,6 +213,8 @@ def test_renderer_handles_tool_call() -> None:
     renderer.handle(StreamEvent(kind=EventKind.TOOL_RESULT, data={"content": "file.txt\n", "is_error": False}))
     renderer.finish()
     output = buf.getvalue()
-    # Hermes-style: tool verb "terminal" replaces raw name "bash"
-    assert "terminal" in output
+    # Claude-Code-style: `● Bash(ls)` header + `  ⎿ ` result branch.
+    assert "\u25cf " in output, "missing Claude-Code bullet glyph"
+    assert "Bash" in output, "tool name should be CamelCased"
     assert "ls" in output
+    assert "\u23bf" in output, "missing Claude-Code result L-branch glyph"
