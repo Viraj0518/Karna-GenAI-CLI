@@ -520,7 +520,12 @@ async def _run_agent_turn(
     Runs as an ``asyncio.Task`` so the input loop stays responsive.
     """
     renderer = OutputRenderer(console)
-    renderer.show_spinner()
+    # The REPL accept-handler has already printed the turn-break divider
+    # and the ``✦ Thinking…`` indicator synchronously (see below in
+    # ``_accept_input`` near ``app.invalidate()``). Mark those as already
+    # shown so the renderer doesn't emit duplicates on the first event.
+    renderer._turn_started = True
+    renderer._spinner_shown = True
 
     events: list[StreamEvent] = []
     try:
@@ -1077,6 +1082,24 @@ async def run_repl(
         state.turn_start = time.time()
         state.status_text = "thinking..."
 
+        # Synchronous feedback BEFORE yielding to the event loop.
+        # Without this, the user stares at a blank pane for however long
+        # the provider takes to first-byte (often 1–5s, sometimes more
+        # on openrouter/auto). Print a turn-break divider + the
+        # `✦ Thinking…` indicator directly so the user always sees
+        # their input was accepted — even if the task crashes before
+        # emitting any event. The OutputRenderer inside _run_agent_turn
+        # will skip its own divider/spinner once it sees _turn_started.
+        from rich.rule import Rule as _Rule
+        console.print()
+        console.print(_Rule(style="bright_black", characters="\u2500"))
+        console.print()
+        _thinking_line = RichText()
+        _thinking_line.append("\u2726 ", style="dim")
+        _thinking_line.append("Thinking…", style="dim")
+        _thinking_line.append("  (esc to interrupt)", style="dim")
+        console.print(_thinking_line)
+
         state.agent_task = asyncio.create_task(
             _run_agent_turn(
                 state,
@@ -1090,6 +1113,10 @@ async def run_repl(
                 tool_names,
             )
         )
+        # Force immediate status-bar repaint so the live Thinking counter
+        # ( ⠙ Thinking · 0s · ↑ tok · esc) shows up right away instead of
+        # waiting for the 500ms refresh tick.
+        app.invalidate()
 
     # Tab-completion for slash commands, file paths, and model names
     completer = NellieCompleter()
