@@ -1,0 +1,38 @@
+[
+  {
+    "contract": "AWS Infrastructure",
+    "ceiling": 500000,
+    "burn_percent": 45,
+    "remaining": 275000
+  },
+  {
+    "contract": "Salesforce CRM",
+    "ceiling": 120000,
+    "burn_percent": 72,
+    "remaining": 33600
+  },
+  {
+    "contract": "Datadog Monitoring",
+    "ceiling": 85000,
+    "burn_percent": 58,
+    "remaining": 35700
+  },
+  {
+    "contract": "GitHub Enterprise",
+    "ceiling": 42000,
+    "burn_percent": 31,
+    "remaining": 28980
+  },
+  {
+    "contract": "Slack Workspace",
+    "ceiling": 24000,
+    "burn_percent": 88,
+    "remaining": 2880
+  },
+  {
+    "contract": "PagerDuty",
+    "ceiling": 36000,
+    "burn_percent": 64,
+    "remaining": 12960
+  }
+]

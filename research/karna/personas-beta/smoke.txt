@@ -1,0 +1,69 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Contract Dashboard</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; max-width: 800px; }
+            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+            th { background-color: #4CAF50; color: white; }
+            tr:nth-child(even) { background-color: #f2f2f2; }
+        </style>
+    </head>
+    <body>
+        <h1>Contract Dashboard</h1>
+        <table>
+            <tr>
+                <th>Contract</th>
+                <th>Ceiling $</th>
+                <th>Burn %</th>
+                <th>Remaining $</th>
+            </tr>
+    
+            <tr>
+                <td>AWS Infrastructure</td>
+                <td>$500,000</td>
+                <td>45%</td>
+                <td>$275,000</td>
+            </tr>
+        
+            <tr>
+                <td>Salesforce CRM</td>
+                <td>$120,000</td>
+                <td>72%</td>
+                <td>$33,600</td>
+            </tr>
+        
+            <tr>
+                <td>Datadog Monitoring</td>
+                <td>$85,000</td>
+                <td>58%</td>
+                <td>$35,700</td>
+            </tr>
+        
+            <tr>
+                <td>GitHub Enterprise</td>
+                <td>$42,000</td>
+                <td>31%</td>
+                <td>$28,980</td>
+            </tr>
+        
+            <tr>
+                <td>Slack Workspace</td>
+                <td>$24,000</td>
+                <td>88%</td>
+                <td>$2,880</td>
+            </tr>
+        
+            <tr>
+                <td>PagerDuty</td>
+                <td>$36,000</td>
+                <td>64%</td>
+                <td>$12,960</td>
+            </tr>
+        
+        </table>
+    </body>
+    </html>
+    
