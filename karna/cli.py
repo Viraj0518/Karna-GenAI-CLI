@@ -561,7 +561,7 @@ def web(
     host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
     port: int = typer.Option(3030, "--port", help="Bind port"),
 ) -> None:
-    """Launch the web UI — opens browser automatically.
+    """Launch the web UI -- opens browser automatically.
 
     Serves a browser-based interface with session management, live
     transcript streaming, recipe browsing, and memory management.

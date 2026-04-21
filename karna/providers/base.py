@@ -151,20 +151,71 @@ def lookup_model_max_output(provider: str, model: str) -> int | None:
     model isn't catalogued — callers should fall back to their local
     per-family table in either case. Single entry point here keeps the
     fallback story consistent across all 7 providers.
+
+    Lookup strategy (first hit wins):
+      1. Exact match on ``provider:model`` via ``model_capabilities``.
+      2. Strip trailing date suffix (``-YYYYMMDD``) and retry — wire model
+         IDs like ``claude-opus-4-20250514`` collapse to the registry's
+         short form ``claude-opus-4``.
+      3. Longest-prefix match against the registry's entries for this
+         provider — catches ``claude-opus-4-7-1m`` → ``claude-opus-4-7``.
     """
     try:
-        # Imported lazily to avoid a circular import at module load.
-        from karna.providers import model_capabilities  # type: ignore[attr-defined]
+        # Lazy imports to avoid circular-import at module load.
+        from karna.providers import canonical_models, model_capabilities  # type: ignore[attr-defined]
     except ImportError:
         return None
+
+    def _extract_cap(caps: dict | None) -> int | None:
+        if not caps:
+            return None
+        raw = caps.get("max_output")
+        if raw is None or not isinstance(raw, (int, float)) or raw <= 0:
+            return None
+        return int(raw)
+
+    # 1. Exact match.
     spec = f"{provider}:{model}" if ":" not in model else model
-    caps = model_capabilities(spec)
-    if caps is None:
+    cap = _extract_cap(model_capabilities(spec))
+    if cap is not None:
+        return cap
+
+    # 2. Strip trailing ``-YYYYMMDD`` wire suffix.
+    import re as _re
+    stripped = _re.sub(r"-\d{8}$", "", model)
+    if stripped != model:
+        cap = _extract_cap(model_capabilities(f"{provider}:{stripped}"))
+        if cap is not None:
+            return cap
+
+    # 3. Longest-prefix match. Registry is ~1,359 entries so this is
+    #    cheap, but we filter by provider first to shrink the scan.
+    try:
+        entries = canonical_models()
+    except Exception:  # noqa: BLE001
         return None
-    raw = caps.get("max_output")
-    if raw is None or not isinstance(raw, (int, float)) or raw <= 0:
-        return None
-    return int(raw)
+    best_len = 0
+    best_cap: int | None = None
+    model_lower = model.lower()
+    provider_lower = provider.lower()
+    for m in entries:
+        mid = m.get("id", "")
+        if not mid:
+            continue
+        # Match ``anthropic/claude-*`` entries for provider=anthropic
+        if "/" in mid:
+            mprov, mname = mid.split("/", 1)
+            if mprov.lower() != provider_lower:
+                continue
+            candidate = mname.lower()
+        else:
+            candidate = mid.lower()
+        if model_lower.startswith(candidate) and len(candidate) > best_len:
+            raw = m.get("max_output")
+            if raw and isinstance(raw, (int, float)) and raw > 0:
+                best_len = len(candidate)
+                best_cap = int(raw)
+    return best_cap
 
 
 class BaseProvider(ABC):
