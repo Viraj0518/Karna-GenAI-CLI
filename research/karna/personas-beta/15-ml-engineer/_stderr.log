@@ -1,0 +1,2 @@
+/home/viraj/karna-personas-run/karna/tokens/counter.py:82: UserWarning: tiktoken not installed — token counts will use len//4 fallback. Install with: pip install karna[tokens]
+  if _has_tiktoken():
