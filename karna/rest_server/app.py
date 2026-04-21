@@ -35,7 +35,7 @@ from karna.tools import _TOOL_PATHS  # type: ignore[attr-defined]
 logger = logging.getLogger(__name__)
 
 _SERVER_NAME = "nellie-rest"
-_SERVER_VERSION = "0.1.0"
+_SERVER_VERSION = "0.1.3"
 
 
 # ----------------------------------------------------------------------- #

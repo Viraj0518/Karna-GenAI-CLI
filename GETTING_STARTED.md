@@ -30,7 +30,7 @@ pip install -e ".[tokens]"
 pip install -e ".[web]"
 ```
 
-Verify: `nellie --version` should print `0.1.0`.
+Verify: `nellie --version` should print `0.1.3`.
 
 ### 2. Get an OpenRouter API key
 

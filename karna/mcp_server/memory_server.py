@@ -32,7 +32,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _SERVER_NAME = "nellie-memory"
-_SERVER_VERSION = "0.1.0"
+_SERVER_VERSION = "0.1.3"
 _PROTOCOL_VERSION = "2024-11-05"
 
 

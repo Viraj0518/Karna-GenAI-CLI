@@ -177,7 +177,7 @@ These three are ACKNOWLEDGED ship-with issues for 0.1.3 — documented here and 
 
 - [ ] **Playwright web-UI interactions: 3 tests flaky under load** — module-scoped `live_server` fixture shares one uvicorn worker; function-scope fix deferred. Noted in `docs/AUTONOMOUS_PUSH_4H.md`.
 - [ ] **Visual regression baselines: Ubuntu 5/5 regress** — font metrics differ from Windows-generated baselines. Workflow doesn't gate other CI. Follow-up: matrix-rebaseline on Linux OR pin to ansi-text renderer.
-- [ ] **`test_background_bash.py`: 2 racy assertions** (`test_background_with_failing_command`, `test_background_timeout_produces_error`) — pass in isolation, flip between runs. Pre-existing, masked by the now-fixed hang. Follow-up tracked.
+- [ ] **`test_background_bash.py`: 3 racy assertions** (`test_background_with_failing_command`, `test_background_timeout_produces_error`, `test_background_completion_notification`) — pass in isolation, flip between runs. Pre-existing, masked by the now-fixed hang. Follow-up tracked.
 
 Additional gaps to surface in release notes:
 - [ ] REPL ↔ cc_components integration pass (visual chrome migration) is gated to a follow-up — `cc_components` ships as a library in 0.1.3.

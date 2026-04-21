@@ -41,7 +41,7 @@ from karna.tools import _TOOL_PATHS  # type: ignore[attr-defined]
 logger = logging.getLogger(__name__)
 
 _SERVER_NAME = "nellie"
-_SERVER_VERSION = "0.1.0"
+_SERVER_VERSION = "0.1.3"
 # Match the MCP spec version the client in karna/tools/mcp.py negotiates
 # against; bump in lockstep if we upgrade either side.
 _PROTOCOL_VERSION = "2024-11-05"

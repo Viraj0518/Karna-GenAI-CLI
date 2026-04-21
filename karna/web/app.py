@@ -30,7 +30,7 @@ def create_web_app() -> FastAPI:
     # Create the web UI app that wraps the REST app
     app = FastAPI(
         title="Nellie Web UI",
-        version="0.1.0",
+        version="0.1.3",
         description="Browser interface for Nellie's agent loop",
     )
 
