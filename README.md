@@ -413,6 +413,12 @@ karna/                            ~22K lines, 105 .py files
 ├── tokens/                       -- Token counting (tiktoken or fallback)
 ├── security/                     -- Path traversal, SSRF, secret scrub, dangerous cmd
 └── tui/                          -- Rich REPL, streaming, 18 slash commands
+    ├── hermes_repl.py            -- patch_stdout-wrapped Application (native terminal scrollback)
+    ├── hermes_display.py         -- ported Hermes display primitives (spinner, tool preview, diff)
+    └── cc_components/            -- 11-module Claude Code UI port: chat, markdown, diffs,
+                                     status, spinners, permissions, pickers, search,
+                                     tasks, input, dialogs (132 tests). See
+                                     docs/CC_COMPONENT_LIBRARY.md.
 ```
 
 ---
@@ -425,6 +431,9 @@ karna/                            ~22K lines, 105 .py files
 | [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Full architecture walkthrough, module reference, extension guide |
 | [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) | One-liner per file (105 files) |
 | [docs/DIFF_AUDIT.md](docs/DIFF_AUDIT.md) | Competitive comparison vs Claude Code, Cursor, etc. |
+| [docs/CC_COMPONENT_LIBRARY.md](docs/CC_COMPONENT_LIBRARY.md) | The 11-module CC UI port (`karna.tui.cc_components`) — upstream mapping, exports, gaps |
+| [docs/TEST_PIPELINE.md](docs/TEST_PIPELINE.md) | 7-layer regression pipeline + CI workflow map |
+| [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) | Copy-paste 7-minute demo sequence |
 
 ---
 

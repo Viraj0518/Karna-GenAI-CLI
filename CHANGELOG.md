@@ -14,6 +14,9 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ### Added
 
+- **TUI: `karna.tui.hermes_repl`** — patch_stdout-wrapped `Application(full_screen=False)` REPL port from Hermes. Native terminal scrollback, scrollbar, and copy/paste now Just Work; no more custom scroll buffer. Gated on `_USE_HERMES_REPL=True` in `karna/tui/__init__.py` for one-line rollback. Paired with `karna.tui.hermes_display` (spinner, tool preview, diff primitives).
+- **TUI: `karna.tui.cc_components`** — 11-module faithful port of Claude Code's TUI chrome (`/c/cc-src/src/components/*`) to Rich renderables. 81 exported symbols, 132 tests green. Clusters: `chat`, `markdown`, `diffs`, `status`, `spinners`, `permissions`, `pickers`, `search`, `tasks`, `input`, `dialogs`. Library-only — REPL integration is a separate pass documented in `docs/CC_COMPONENT_LIBRARY.md`. Nellie brand skin applied (`#3C73BD`, `◆ nellie` assistant label, `✦/●/⎿` glyph vocabulary).
+- `docs/CC_COMPONENT_LIBRARY.md` — upstream mapping, public surface, integration gaps, and CC→Rich semantic compromises for the component library.
 - TUI scroll keybindings: PgUp / PgDn (page), Home / End (jump + toggle autoscroll lock), Ctrl-Up / Ctrl-Down (line). Output window is focusable so `Window.vertical_scroll` tracks properly. (`karna/tui/repl.py`)
 - Esc-to-interrupt: cooperative soft interrupt distinct from Ctrl-C's hard cancel. Sets `state.interrupt_requested`; the agent loop winds down at the next event boundary. (`karna/tui/repl.py`)
 - Autoscroll-to-bottom on new output unless the user has scrolled up (re-engaged with End).
@@ -30,6 +33,7 @@ All notable changes to Nellie will be documented here. Format: [Keep a Changelog
 
 ### Fixed
 
+- **PTY driver**: `_write` referenced `self._backend` which was never assigned on the instance — the ptyprocess branch never fired. Swap to module-level `_BACKEND` set by `_detect_backend()`. (`tools/tui_pty_driver.py`)
 - Rotating placeholder text inside the REPL input buffer (removed per user direction — input line is now a bare chevron + cursor). (`karna/tui/repl.py`)
 - Scrollbar arrows hidden; scrollbar itself is now interactive because the output window is focusable.
 
