@@ -125,6 +125,11 @@ class ModelInfo(BaseModel):
     name: str = ""
     provider: str = ""
     context_window: int | None = None
+    # Authoritative max-output cap for this model. Providers clamp a
+    # caller's requested max_tokens to this value (OpenClaw pattern) so
+    # callers don't silently hit the wire-level limit. None means
+    # unknown — provider should fall back to a conservative default.
+    max_output_tokens: int | None = None
     pricing: dict[str, Any] | None = None
 
 

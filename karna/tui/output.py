@@ -103,6 +103,8 @@ _STYLE_DANGER = _token("accent_danger", "red")
 _STYLE_META = _token("meta", "bright_black")
 _STYLE_BRAND_DIM = _token("accent_brand_dim", f"dim {BRAND_BLUE}")
 _STYLE_DIVIDER = _token("divider", "bright_black")
+_STYLE_TOOL_BULLET = _token("tool_bullet", BRAND_BLUE)
+_STYLE_RESULT_BRANCH = _token("result_branch", "bright_black")
 
 # --------------------------------------------------------------------------- #
 #  Icon set detection: Nerd Font → Emoji → ASCII
@@ -116,7 +118,7 @@ _ICON_SETS = {
     "nerd": {
         "user": "\uf061",  # nf-fa-arrow_right
         "assistant": "\uf005",  # nf-fa-star
-        "thinking": "\uf0eb",  # nf-fa-lightbulb_o
+        "thinking": "\u2726",  # ✦ black four-pointed star — same as Claude Code
         "tool": "\uf085",  # nf-fa-cogs
         "success": "\uf00c",  # nf-fa-check
         "failure": "\uf00d",  # nf-fa-times
@@ -315,6 +317,34 @@ def _get_tool_verb(name: str) -> str:
     return TOOL_VERBS.get(base, TOOL_VERBS.get(name.lower(), name.lower()))
 
 
+def _get_tool_display_name(name: str) -> str:
+    """Claude-Code-style CamelCase tool name for the header bullet line.
+
+    ``read`` → ``Read``, ``web_search`` → ``WebSearch``, ``bash`` → ``Bash``.
+    """
+    if not name:
+        return "Tool"
+    parts = re.split(r"[_\s]+", str(name))
+    return "".join(p[:1].upper() + p[1:] for p in parts if p)
+
+
+def _summarise_tool_result(name: str, content: str, is_error: bool) -> str:
+    """Claude-Code-style one-line summary for a tool result.
+
+    ``read``/``write`` → `` Read 42 lines``; generic → first line of
+    output, elided to 80 chars. Used in the ``⎿`` branch line.
+    """
+    if is_error or not content:
+        return ""
+    stripped = content.strip()
+    base = _tool_base_name(name)
+    lines = stripped.splitlines()
+    if base in ("read", "write", "edit"):
+        return f"{len(lines)} lines"
+    first = lines[0] if lines else ""
+    return first if len(first) <= 80 else first[:77] + "…"
+
+
 def _extract_tool_context(name: str, args_buffer: str) -> str:
     """Extract a short context string from tool arguments."""
     try:
@@ -434,18 +464,24 @@ class _ToolState:
     status_text: str = "preparing..."
     start_time: float = field(default_factory=time.time)
     charm_shown: bool = False
+    args_printed: bool = False  # True once header emitted with full context
 
     def header(self, spinner_frame: str | None = None) -> Text:
-        """Render the single-line status header for this tool call."""
-        emoji = _get_tool_emoji(self.name)
-        verb = _get_tool_verb(self.name)
+        """Render the single-line status header for this tool call.
+
+        Claude-Code shape: ``● ToolName(context)`` — bullet + bold tool name
+        + parenthesized short arg. Status icon (✓/✗ + elapsed) appended on
+        completion; spinner frame appended while running.
+        """
         context = _extract_tool_context(self.name, self.args_buffer)
+        display_name = _get_tool_display_name(self.name)
         line = Text()
-        line.append("\u251c\u2500 ", style=_STYLE_META)
-        line.append(f"{emoji} ", style=_STYLE_META)
-        line.append(verb, style="bold")
+        line.append("\u25cf ", style=_STYLE_TOOL_BULLET)
+        line.append(display_name, style="bold")
         if context:
-            line.append(f"  {context}", style=_STYLE_META)
+            line.append("(", style=_STYLE_META)
+            line.append(context, style=_STYLE_META)
+            line.append(")", style=_STYLE_META)
         if self.status in ("pending", "running"):
             if spinner_frame:
                 line.append(f"  {spinner_frame}", style=_STYLE_BRAND_DIM)
@@ -519,20 +555,17 @@ class OutputRenderer:
     def show_spinner(self) -> None:
         """Display a waiting indicator until the first event.
 
-        Instead of a Live spinner (which fights with prompt_toolkit),
-        we print a static indicator with a random kawaii face + verb,
-        hermes-style. The animated version runs in the status bar.
+        Claude-Code style: ``✢ Thinking… (esc to interrupt)``. The animated
+        counter (elapsed + token usage) lives in the status bar; this inline
+        indicator is a single quiet line that disappears on first content.
         """
         if self._spinner_shown:
             return
         self._ensure_turn_break()
-        face = random.choice(FACES)  # noqa: S311
-        verb = random.choice(VERBS)  # noqa: S311
         indicator = Text()
-        indicator.append("\u251c\u2500 ", style=_STYLE_META)
-        indicator.append(BRAILLE_FRAMES[0], style=_STYLE_BRAND_DIM)
-        indicator.append(f" {face} ", style=_STYLE_BRAND_DIM)
-        indicator.append(f"{verb}...", style=_STYLE_BRAND_DIM)
+        indicator.append(f"{_ICON_THINKING} ", style=_STYLE_BRAND_DIM)
+        indicator.append("Thinking…", style=_STYLE_BRAND_DIM)
+        indicator.append("  (esc to interrupt)", style="dim")
         self.console.print(indicator)
         self._spinner_shown = True
 
@@ -614,10 +647,14 @@ class OutputRenderer:
                 # Only treat as a flush point when closing a fence
                 fence_closed = was_in_fence and not self._in_code_fence
 
-        # Only flush on sentence boundary if we have enough buffered text
-        # to avoid splitting tiny fragments like "I" from "'ve created..."
-        has_enough = len(joined) >= 40
-        if "\n\n" in joined[-3:] or fence_closed or (has_enough and _SENTENCE_RE.search(joined[-3:])):
+        # Flush only on paragraph breaks (``\n\n``) or code-fence closes.
+        # We used to also flush on sentence boundaries for streaming
+        # responsiveness, but that chunks markdown mid-block — bullets
+        # and numbered lists get fragmented and Rich re-renders them as
+        # unrelated lists, dropping items visually. Paragraph-level
+        # flushing costs a little interactive feel but preserves list
+        # structure, code fences, and headings end-to-end.
+        if "\n\n" in joined[-3:] or fence_closed:
             self._flush_text()
 
     def _flush_text(self) -> None:
@@ -635,7 +672,11 @@ class OutputRenderer:
             label.append(f"{_ICON_ASSISTANT} ", style=_STYLE_ASSISTANT_LABEL)
             label.append("nellie", style=_STYLE_ASSISTANT_LABEL)
             self.console.print(label)
-        self.console.print(Markdown(full), style=ASSISTANT_TEXT)
+        # NO ``style=`` override on the Markdown — that flattens Rich's
+        # built-in code-theme + link styling. Set code_theme explicitly so
+        # fenced blocks render with Python/JS/etc. syntax colors like
+        # Claude Code does.
+        self.console.print(Markdown(full, code_theme="ansi_dark"))
 
     # ── thinking / reasoning ───────────────────────────────────────────
 
@@ -729,8 +770,13 @@ class OutputRenderer:
             start_time=time.time(),
         )
 
-        # Print hermes-style tree branch with emoji + verb + context
-        self.console.print(self._tool.header())
+        # Print the Claude-Code-style bullet header ONLY if we already have
+        # enough to render ``● Tool(context)`` cleanly. If args are still
+        # streaming, defer the print to _on_tool_call_end so we don't emit
+        # a bare ``● Tool`` line followed by a corrected one.
+        if _extract_tool_context(name, self._tool.args_buffer):
+            self.console.print(self._tool.header())
+            self._tool.args_printed = True
 
     def _on_tool_call_args_delta(self, delta: str) -> None:
         if self._tool is None or not delta:
@@ -741,8 +787,11 @@ class OutputRenderer:
         if self._tool is None:
             return
 
-        # We no longer need an intermediate "called" header; the final
-        # status is rendered by _on_tool_result.  Just keep _tool around.
+        # Deferred case: TOOL_CALL_START had no context, so we held the print.
+        # Now that args are fully buffered, emit the header exactly once.
+        if not self._tool.args_printed:
+            self.console.print(self._tool.header())
+            self._tool.args_printed = True
 
     def _on_tool_result(self, data: dict[str, Any] | None) -> None:
         # --- robust extraction: data may be str, dict, or None ---
@@ -784,15 +833,13 @@ class OutputRenderer:
                 except Exception:  # noqa: BLE001
                     pass
 
-            # Hermes-style result line
-            emoji = _get_tool_emoji(tool_name)
+            # Claude-Code-style result branch: `  ⎿  wrote <path>  ✓ 0.3s`
             verb = _get_tool_verb(tool_name)
             status_line = Text()
-            status_line.append("\u251c\u2500 ", style=_STYLE_META)
-            status_line.append(f"{emoji} ", style=_STYLE_META)
-            status_line.append(verb, style="bold")
+            status_line.append("  \u23bf  ", style=_STYLE_RESULT_BRANCH)
+            status_line.append(verb, style=_STYLE_META)
             if file_hint:
-                status_line.append(f"  {file_hint}", style=_STYLE_META)
+                status_line.append(f" {file_hint}", style=_STYLE_META)
             status_line.append(f"  {_ICON_OK} {elapsed_str}", style=_STYLE_SUCCESS)
             self.console.print(status_line)
 
@@ -808,20 +855,19 @@ class OutputRenderer:
         if self._tool:
             self._tool.status = "err" if is_error else "ok"
 
-        # Hermes-style result line with emoji + verb + elapsed
-        emoji = _get_tool_emoji(tool_name)
+        # Claude-Code-style result branch: `  ⎿  summary  ✓ 0.3s`
         verb = _get_tool_verb(tool_name)
-        context = _extract_tool_context(tool_name, self._tool.args_buffer if self._tool else "")
+        summary = _summarise_tool_result(tool_name, content, is_error)
 
         status_icon = _ICON_ERR if is_error else _ICON_OK
         status_style = _STYLE_DANGER if is_error else _STYLE_SUCCESS
 
         status_line = Text()
-        status_line.append("\u251c\u2500 ", style=_STYLE_META)
-        status_line.append(f"{emoji} ", style=_STYLE_META)
-        status_line.append(verb, style="bold")
-        if context:
-            status_line.append(f"  {context}", style=_STYLE_META)
+        status_line.append("  \u23bf  ", style=_STYLE_RESULT_BRANCH)
+        if summary:
+            status_line.append(summary, style=_STYLE_META)
+        else:
+            status_line.append(verb, style=_STYLE_META)
         status_line.append(f"  {status_icon} {elapsed_str}", style=status_style)
         self.console.print(status_line)
 
@@ -941,6 +987,14 @@ class OutputRenderer:
     # ── usage / done ───────────────────────────────────────────────────
 
     def _on_usage(self, data: dict[str, Any] | None) -> None:
+        # Flush any buffered text/thinking so the cost line never prints
+        # before the reply itself. Short replies without a sentence
+        # boundary used to render in the wrong order.
+        if self._spinner_shown:
+            self._dismiss_spinner()
+        self._flush_thinking()
+        self._flush_text()
+
         data = data or {}
         prompt_tok = data.get("prompt_tokens", 0)
         completion_tok = data.get("completion_tokens", 0)

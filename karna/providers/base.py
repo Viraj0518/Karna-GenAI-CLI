@@ -109,6 +109,64 @@ def _parse_retry_after(response: httpx.Response) -> float | None:
         return None
 
 
+# Shared across every provider so no caller silently hits a 4K output cap
+# when their model supports 128K. Caller-specified ``requested`` wins (but
+# still clamped to what the model actually accepts); otherwise we pick a
+# generous-but-not-wasteful default rather than always reserving the full
+# cap. Port of OpenClaw's ``resolveAnthropicVertexMaxTokens`` with the same
+# 32K soft ceiling it uses for un-requested generations.
+_DEFAULT_SOFT_CEILING = 32_000
+_FALLBACK_WHEN_UNKNOWN = 4_096
+
+
+def resolve_max_tokens(
+    requested: int | None,
+    model_max: int | None,
+    *,
+    fallback: int = _FALLBACK_WHEN_UNKNOWN,
+    soft_ceiling: int = _DEFAULT_SOFT_CEILING,
+) -> int:
+    """Resolve the effective ``max_tokens`` for an API call.
+
+    - If the caller passed ``requested``, clamp it to ``model_max`` and return.
+    - Otherwise, if we know the model's cap, default to
+      ``min(model_max, soft_ceiling)`` so big-context models like Opus-4
+      (128K output) don't waste the full budget on small turns.
+    - If we know neither, return ``fallback``.
+    """
+    req = int(requested) if requested and requested > 0 else None
+    mmax = int(model_max) if model_max and model_max > 0 else None
+    if req is not None:
+        return min(req, mmax) if mmax is not None else req
+    if mmax is not None:
+        return min(mmax, soft_ceiling)
+    return fallback
+
+
+def lookup_model_max_output(provider: str, model: str) -> int | None:
+    """Consult the canonical registry (beta's ``canonical_models.json``) for
+    a model's authoritative max_output cap.
+
+    Returns ``None`` when the registry isn't loaded yet (pre-PR #49) OR the
+    model isn't catalogued — callers should fall back to their local
+    per-family table in either case. Single entry point here keeps the
+    fallback story consistent across all 7 providers.
+    """
+    try:
+        # Imported lazily to avoid a circular import at module load.
+        from karna.providers import model_capabilities  # type: ignore[attr-defined]
+    except ImportError:
+        return None
+    spec = f"{provider}:{model}" if ":" not in model else model
+    caps = model_capabilities(spec)
+    if caps is None:
+        return None
+    raw = caps.get("max_output")
+    if raw is None or not isinstance(raw, (int, float)) or raw <= 0:
+        return None
+    return int(raw)
+
+
 class BaseProvider(ABC):
     """Base class for model providers."""
 

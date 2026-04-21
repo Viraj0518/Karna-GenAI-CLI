@@ -35,6 +35,7 @@ auth_app = typer.Typer(help="Authentication commands.")
 model_app = typer.Typer(help="Model selection commands.", invoke_without_command=True)
 config_app = typer.Typer(help="Configuration commands.")
 mcp_app = typer.Typer(help="MCP server management commands.")
+acp_app = typer.Typer(help="Agent Client Protocol (ACP) server commands.")
 
 history_app = typer.Typer(help="Session history commands.", invoke_without_command=True)
 cost_app = typer.Typer(help="Cost tracking commands.")
@@ -45,6 +46,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(model_app, name="model")
 app.add_typer(config_app, name="config")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(acp_app, name="acp")
 app.add_typer(history_app, name="history")
 app.add_typer(cost_app, name="cost")
 app.add_typer(cron_app, name="cron")
@@ -443,6 +445,78 @@ def history_delete(
 
 
 # --------------------------------------------------------------------------- #
+#  Recipe runner
+# --------------------------------------------------------------------------- #
+
+
+@app.command("run")
+def run_recipe_cli(
+    recipe: str = typer.Option(..., "--recipe", "-r", help="Path to a recipe YAML file"),
+    param: list[str] = typer.Option(
+        [], "--param", "-p",
+        help="key=value recipe parameter (repeatable)",
+    ),
+    workspace: str = typer.Option(
+        "", "--workspace", "-w",
+        help="Directory the recipe's tools should scope to (bash cwd + write/edit allowed_roots)",
+    ),
+) -> None:
+    """Execute a recipe YAML end-to-end.
+
+    A recipe bundles instructions + parameters + tool allowlist + model
+    pin into one reusable spec. Goose-parity surface.
+    """
+    from karna.recipes import load_recipe, run_recipe
+
+    params: dict[str, str] = {}
+    for kv in param:
+        if "=" not in kv:
+            rprint(f"[red]--param must be key=value (got: {kv!r})[/red]")
+            raise typer.Exit(code=1)
+        k, v = kv.split("=", 1)
+        params[k.strip()] = v
+
+    try:
+        rec = load_recipe(recipe)
+    except Exception as exc:
+        rprint(f"[red]Failed to load recipe: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    result = asyncio.run(run_recipe(rec, params, workspace=workspace or None))
+    halt = result["halt"]
+    rprint(f"[bright_black]halt: {halt}[/bright_black]")
+    if halt == "done":
+        rprint(result["text"])
+    else:
+        if result.get("text"):
+            rprint(result["text"])
+        if result["errors"]:
+            rprint(f"[red]errors: {'; '.join(result['errors'][-3:])}[/red]")
+        raise typer.Exit(code=1)
+
+
+# --------------------------------------------------------------------------- #
+#  REST server command
+# --------------------------------------------------------------------------- #
+
+
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
+    port: int = typer.Option(3030, "--port", help="Bind port"),
+) -> None:
+    """Run Nellie as a REST + SSE server over HTTP.
+
+    Exposes session-scoped agent turns via ``/v1/sessions`` and live
+    events via ``/v1/sessions/{id}/events`` (Server-Sent Events).
+    Requires the ``rest`` optional extra: ``pip install 'karna[rest]'``.
+    """
+    from karna.rest_server import serve as _serve
+
+    _serve(host=host, port=port)
+
+
+# --------------------------------------------------------------------------- #
 #  Resume command
 # --------------------------------------------------------------------------- #
 
@@ -612,6 +686,21 @@ def mcp_serve() -> None:
         {"command": "nellie", "args": ["mcp", "serve"]}
     """
     from karna.mcp_server import serve
+
+    serve()
+
+
+@acp_app.command("serve")
+def acp_serve() -> None:
+    """Run Nellie as an ACP (Agent Client Protocol) server over stdio.
+
+    ACP is JSON-RPC 2.0 over stdio for agent↔agent communication — a peer
+    agent opens a session, streams user prompts, and receives ``session/update``
+    notifications from us. Connect with a client config like::
+
+        {"command": "nellie", "args": ["acp", "serve"]}
+    """
+    from karna.acp_server import serve
 
     serve()
 

@@ -1,6 +1,6 @@
 # Nellie Codebase Map -- Karna Engineering
 
-> One-liner per file. Each entry links to the source. Updated 2026-04-20.
+> One-liner per file. Each entry links to the source. Updated 2026-04-21.
 
 ## Core
 
@@ -166,6 +166,40 @@
 - [karna/comms/inbox.py](../karna/comms/inbox.py) — `AgentInbox`: file-based inbox at `~/.karna/comms/inbox/{agent}/`, send/check/read/reply.
 - [karna/comms/message.py](../karna/comms/message.py) — `AgentMessage`: `.md` files with YAML frontmatter (from/to/timestamp/subject/priority/thread-id).
 
+## REST + SSE Server (Goose-parity)
+
+- [karna/rest_server/__init__.py](../karna/rest_server/__init__.py) — Re-exports `create_app`, `serve`. Lazy-imports FastAPI so `karna` imports without `karna[rest]` installed.
+- [karna/rest_server/app.py](../karna/rest_server/app.py) — FastAPI app factory: 10 endpoints (`/health`, `/v1/tools`, CRUD+list on `/v1/sessions`, `POST /v1/sessions/{id}/messages`, SSE `/v1/sessions/{id}/events`). `serve(host, port)` wraps `uvicorn.run`. Tool instantiation is scoped to the session's `workspace` (bash cwd, write/edit allowed_roots).
+- [karna/rest_server/session_manager.py](../karna/rest_server/session_manager.py) — `Session` (conversation + SSE queue + asyncio lock) and `SessionManager` (async create/get/list/close + `touch`). Per-session `asyncio.Queue` backs the SSE event stream; overflow drops oldest so a slow consumer can't stall the agent.
+- CLI: `nellie serve [--host 127.0.0.1 --port 3030]` — see [cli.py](../karna/cli.py).
+- Optional extra: `pip install 'karna[rest]'` (fastapi + uvicorn).
+- Tests: [tests/test_rest_server.py](../tests/test_rest_server.py) (12 green).
+
+## ACP Server (Agent Client Protocol)
+
+- [karna/acp_server/__init__.py](../karna/acp_server/__init__.py) — Re-exports `serve`.
+- [karna/acp_server/server.py](../karna/acp_server/server.py) — JSON-RPC 2.0 over stdio. Methods: `initialize`, `session/new`, `session/list`, `session/prompt`, `session/cancel`, `session/close`, `ping`, `shutdown`. Emits `session/update` notifications (kinds: `text`, `tool_call`, `tool_result`, `error`, `done`, `cancelled`). Windows-safe stdio read via `loop.run_in_executor(None, sys.stdin.readline)`.
+- CLI: `nellie acp serve` — see [cli.py](../karna/cli.py).
+- Distinct from MCP: **ACP is peer-to-peer agent↔agent**; MCP is host↔extension (tool-server). Shares the `agent_loop` + session plumbing with the REST/MCP servers.
+- Tests: [tests/test_acp_server.py](../tests/test_acp_server.py) (15 green).
+
+## Recipe Engine (Goose-parity)
+
+- [karna/recipes/__init__.py](../karna/recipes/__init__.py) — Public API: `Recipe`, `RecipeParameter`, `SubRecipeRef`, `load_recipe`, `load_recipe_from_dict`, `run_recipe`, `RecipeLoadError`.
+- [karna/recipes/model.py](../karna/recipes/model.py) — Dataclasses. `RecipeParameter` types: `string | integer | number | boolean` with `required`/`default` + coerce-and-validate. `Recipe` carries `instructions`, `parameters`, `extensions` (tool allowlist), `model`, `max_iterations`, `sub_recipes`, `schedule`. `resolve_parameters` validates provided dict against schema.
+- [karna/recipes/loader.py](../karna/recipes/loader.py) — YAML parser. `load_recipe(path)` reads + parses + validates; `load_recipe_from_dict` for in-memory. Accepts both `["bash"]` and `[{name: bash}]` extension shapes. Reserved field `version` for forward-compat.
+- [karna/recipes/runner.py](../karna/recipes/runner.py) — `run_recipe(recipe, params, workspace=...)` — validates params, renders instructions via Jinja2 `StrictUndefined` (or `{{var}}`-only fallback if Jinja2 unavailable), filters tools to the `extensions` allowlist, dispatches through `agent_loop`. Returns `{text, halt, errors}`.
+- CLI: `nellie run --recipe path.yaml --param key=value [--workspace DIR]` — see [cli.py](../karna/cli.py).
+- Optional extra: `pip install 'karna[recipes]'` (pyyaml + jinja2). pyyaml also comes with `karna[cron]`.
+- Tests: [tests/test_recipes.py](../tests/test_recipes.py) (17 green).
+
+## MCP Server wrapping Nellie
+
+- [karna/mcp_server/__init__.py](../karna/mcp_server/__init__.py) — Re-exports `serve`.
+- [karna/mcp_server/server.py](../karna/mcp_server/server.py) — JSON-RPC 2.0 stdio exposing a single `nellie_agent` tool that spawns a full agent-loop turn. CLI: `nellie mcp serve`.
+
+> **Memory MCP server** (`nellie mcp serve-memory`, four tools `memory_list/get/save/delete`) shipped on `claude/gamma-nellie-surfaces-20260420` at commit `6533f80`, but was accidentally reverted in gamma's follow-up commit `1e2f353` (installer-polish). Pending recovery before the gamma branch merges.
+
 ## Cron Scheduler
 
 - [karna/cron/__init__.py](../karna/cron/__init__.py) — Re-exports `CronJob`, `CronScheduler`, `CronStore`, `YAMLJobStore`, `next_fire_time`, `parse_expression`.
@@ -210,6 +244,9 @@ Test suite in [tests/](../tests/). Notable files landed on dev:
 - [tests/test_background_bash.py](../tests/test_background_bash.py) — Background bash task integration with `TaskRegistry`.
 - [tests/test_fork_session.py](../tests/test_fork_session.py) — Session forking.
 - [tests/test_moa.py](../tests/test_moa.py) — Multi-model / Mixture-of-Agents tests.
+- [tests/test_rest_server.py](../tests/test_rest_server.py) — REST + SSE server: session CRUD, message turn, streaming events (12 tests).
+- [tests/test_recipes.py](../tests/test_recipes.py) — Recipe loader + runner: YAML parse, Jinja2 rendering, param coercion, tool allowlist, sub-recipes (17 tests).
+- [tests/test_acp_server.py](../tests/test_acp_server.py) — ACP JSON-RPC stdio: handshake, session lifecycle, notification streaming, cancel (15 tests).
 - Full list: see [tests/](../tests/) directory.
 
 ## Project Files
