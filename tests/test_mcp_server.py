@@ -110,7 +110,5 @@ def test_tool_schema_json_serialisable():
 async def test_handler_never_hangs_on_empty_params():
     """Params may be missing — handler must use {} as default."""
     req = {"jsonrpc": "2.0", "id": 8, "method": "tools/list"}
-    resp = await asyncio.wait_for(
-        mcp_server._handle_request(req), timeout=1.0
-    )
+    resp = await asyncio.wait_for(mcp_server._handle_request(req), timeout=1.0)
     assert resp["result"]["tools"][0]["name"] == "nellie_agent"

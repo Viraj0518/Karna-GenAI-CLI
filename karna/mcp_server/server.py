@@ -237,11 +237,13 @@ async def _run_nellie_agent(
                 events[idx]["result"] = str(tr.content)[:1500]
                 events[idx]["is_error"] = bool(tr.is_error)
             else:
-                events.append({
-                    "kind": "tool_result",
-                    "content": str(tr.content)[:1500],
-                    "is_error": bool(tr.is_error),
-                })
+                events.append(
+                    {
+                        "kind": "tool_result",
+                        "content": str(tr.content)[:1500],
+                        "is_error": bool(tr.is_error),
+                    }
+                )
         elif et == "error":
             err = event.error or event.text
             if err:
@@ -422,9 +424,7 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
             return _make_result(
                 req_id,
                 {
-                    "content": [
-                        {"type": "text", "text": f"[error] {type(exc).__name__}: {exc}"}
-                    ],
+                    "content": [{"type": "text", "text": f"[error] {type(exc).__name__}: {exc}"}],
                     "isError": True,
                 },
             )
@@ -451,9 +451,7 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
             else:
                 primary = text
 
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": primary or "(no reply)"}
-        ]
+        content: list[dict[str, Any]] = [{"type": "text", "text": primary or "(no reply)"}]
         if include_events:
             # Also attach the raw JSON event trace for programmatic
             # consumers. Keeps the rendered transcript clean while
@@ -516,9 +514,7 @@ async def _serve_stdio() -> None:
             response = await _handle_request(message)
         except Exception as exc:  # noqa: BLE001
             logger.exception("dispatch error")
-            response = _make_error(
-                message.get("id"), -32603, f"Internal error: {exc}"
-            )
+            response = _make_error(message.get("id"), -32603, f"Internal error: {exc}")
         if response is not None:
             _write(response)
 

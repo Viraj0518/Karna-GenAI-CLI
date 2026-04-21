@@ -56,9 +56,11 @@ def _silence_hf_output():
             saved_levels[name] = lg.level
             lg.setLevel(logging.ERROR)
         try:
-            with open(os.devnull, "w") as devnull, \
-                 contextlib.redirect_stdout(devnull), \
-                 contextlib.redirect_stderr(devnull):
+            with (
+                open(os.devnull, "w") as devnull,
+                contextlib.redirect_stdout(devnull),
+                contextlib.redirect_stderr(devnull),
+            ):
                 yield
         finally:
             for name, level in saved_levels.items():

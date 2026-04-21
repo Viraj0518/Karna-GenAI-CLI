@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from karna.tools.comms import CommsTool, _MAX_MESSAGE_BYTES
+from karna.tools.comms import _MAX_MESSAGE_BYTES, CommsTool
 
 
 class TestCommsSizeLimit:

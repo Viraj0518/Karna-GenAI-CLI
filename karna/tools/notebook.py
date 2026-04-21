@@ -89,9 +89,7 @@ def _new_cell(cell_type: str = "code", source: str = "") -> dict:
 # --------------------------------------------------------------------------- #
 
 
-def _run_subprocess_execution(
-    in_path: Path, out_path: Path
-) -> tuple[dict | None, list[str]]:
+def _run_subprocess_execution(in_path: Path, out_path: Path) -> tuple[dict | None, list[str]]:
     """Execute ``in_path`` to ``out_path`` via nbconvert, then papermill.
 
     Returns ``(notebook_dict, [])`` on success, or ``(None, diagnostics)``
@@ -120,10 +118,21 @@ def _run_subprocess_execution(
     out_dir = str(out_path.parent)
     out_base = out_path.name
     for name, argv in (
-        ("jupyter nbconvert", [
-            "jupyter", "nbconvert", "--to", "notebook", "--execute",
-            "--output", out_base, "--output-dir", out_dir, str(in_path),
-        ]),
+        (
+            "jupyter nbconvert",
+            [
+                "jupyter",
+                "nbconvert",
+                "--to",
+                "notebook",
+                "--execute",
+                "--output",
+                out_base,
+                "--output-dir",
+                out_dir,
+                str(in_path),
+            ],
+        ),
         ("papermill", ["papermill", str(in_path), str(out_path)]),
     ):
         try:
@@ -139,9 +148,7 @@ def _run_subprocess_execution(
 
         if result.returncode == 0:
             return _read_nb(out_path), []
-        diagnostics.append(
-            f"{name}: exit {result.returncode} — {_truncate_stderr(result.stderr) or '(no stderr)'}"
-        )
+        diagnostics.append(f"{name}: exit {result.returncode} — {_truncate_stderr(result.stderr) or '(no stderr)'}")
 
     return None, diagnostics
 

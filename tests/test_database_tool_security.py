@@ -99,10 +99,6 @@ class TestDatabaseCredentialScrubbing:
     @pytest.mark.asyncio
     async def test_bearer_token_scrubbed_from_error(self, tmp_path):
         tool = DatabaseTool()
-        secret_dsn = (
-            "postgresql://u:Bearer abcdefghijklmnopqrstuvwxyz0123@public.example.com/db"
-        )
-        result = await tool.execute(
-            action="connect", connection_string=secret_dsn
-        )
+        secret_dsn = "postgresql://u:Bearer abcdefghijklmnopqrstuvwxyz0123@public.example.com/db"
+        result = await tool.execute(action="connect", connection_string=secret_dsn)
         assert "abcdefghijklmnopqrstuvwxyz0123" not in result
