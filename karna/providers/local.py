@@ -25,7 +25,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, resolve_max_tokens
 
 DEFAULT_BASE_URL = "http://localhost:8080/v1"
 
@@ -52,6 +52,9 @@ class LocalProvider(BaseProvider):
             "/"
         )
         self._api_key = cred.get("api_key") or os.environ.get("LOCAL_API_KEY")
+        # Resolved from ``/v1/models`` on first list_models call (vLLM
+        # reports ``max_model_len``; LM Studio reports ``context_length``).
+        self._max_output: int | None = None
 
     # ------------------------------------------------------------------ #
     #  Headers
@@ -156,8 +159,10 @@ class LocalProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Local servers (llama.cpp, vLLM, LM Studio) vary wildly on default
+        # cap — some use 128, some use ctx_len. Always send the resolved
+        # value so the caller's intent is respected.
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output)
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
@@ -209,8 +214,10 @@ class LocalProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Local servers (llama.cpp, vLLM, LM Studio) vary wildly on default
+        # cap — some use 128, some use ctx_len. Always send the resolved
+        # value so the caller's intent is respected.
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output)
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)

@@ -24,7 +24,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, resolve_max_tokens
 
 # Model aliases: short names -> full OpenRouter model IDs
 MODEL_ALIASES: dict[str, str] = {
@@ -68,6 +68,9 @@ class OpenRouterProvider(BaseProvider):
         super().__init__(max_retries=max_retries, timeout=timeout)
         self.model = _resolve_alias(model)
         self._api_key = self._resolve_key()
+        # Populated from OpenRouter's ``/models`` endpoint or left None
+        # and resolved by the shared resolver's soft-ceiling fallback.
+        self._max_output: int | None = None
 
     # ------------------------------------------------------------------ #
     #  Key resolution
@@ -207,8 +210,7 @@ class OpenRouterProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output)
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
@@ -253,8 +255,7 @@ class OpenRouterProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output)
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking, thinking_budget=thinking_budget)
@@ -350,6 +351,9 @@ class OpenRouterProvider(BaseProvider):
                 name=m.get("name", m["id"]),
                 provider="openrouter",
                 context_window=m.get("context_length"),
+                # OpenRouter exposes ``top_provider.max_completion_tokens``
+                # per model (falls back to context_length when absent).
+                max_output_tokens=(m.get("top_provider") or {}).get("max_completion_tokens"),
                 pricing=m.get("pricing"),
             )
             for m in data.get("data", [])

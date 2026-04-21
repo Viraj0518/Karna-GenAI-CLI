@@ -30,12 +30,26 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, resolve_max_tokens
 
 DEFAULT_API_VERSION = "2024-06-01"
 
 
 class AzureOpenAIProvider(BaseProvider):
+    def _max_output(self) -> int | None:
+        """Delegate to OpenAIProvider's family table — Azure deployments
+        are GPT under the hood."""
+        from karna.providers.openai import OpenAIProvider
+
+        ml = self.model.lower() if self.model else ""
+        best = None
+        best_len = 0
+        for key, val in OpenAIProvider._OUTPUT_LIMITS.items():
+            if ml.startswith(key) and len(key) > best_len:
+                best_len = len(key)
+                best = val
+        return best
+
     """Azure OpenAI chat-completions provider."""
 
     name = "azure"
@@ -182,8 +196,9 @@ class AzureOpenAIProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Azure deployments inherit the underlying GPT model's cap; reuse
+        # OpenAIProvider's family table via the shared resolver.
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking)
@@ -227,8 +242,9 @@ class AzureOpenAIProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Azure deployments inherit the underlying GPT model's cap; reuse
+        # OpenAIProvider's family table via the shared resolver.
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking)
