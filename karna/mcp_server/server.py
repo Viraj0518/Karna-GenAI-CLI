@@ -175,11 +175,32 @@ async def _run_nellie_agent(
     conversation.messages.append(Message(role="user", content=prompt))
 
     system_prompt = build_system_prompt(config, tools)
+    if workspace:
+        # Without this, the model doesn't know the workspace exists and
+        # keeps trying to write to the MCP server's launch cwd (which is
+        # then rejected by allowed_roots, burning iterations on retries).
+        # Tell it explicitly. Normalise to forward slashes for a
+        # cross-shell-friendly display (both PowerShell and Git Bash
+        # accept forward slashes on Windows).
+        ws_display = str(Path(workspace)).replace("\\", "/")
+        system_prompt += (
+            f"\n\n## Workspace\n"
+            f"Your working directory is `{ws_display}`. All bash commands "
+            f"run with that cwd. File writes via the write/edit tools "
+            f"must stay inside this directory — anything outside is "
+            f"rejected by the path-safety guard. Prefer relative paths "
+            f"in tool calls (e.g. ``scraper.py`` not "
+            f"``C:/Users/.../karna-poc/scraper.py``)."
+        )
 
     text_parts: list[str] = []
     error_parts: list[str] = []
     events: list[dict[str, Any]] = []
     saw_done = False
+    # Track tool calls by id so the ``tool_result`` event (emitted by
+    # agent_loop after _execute_tool_calls) can be stitched onto the
+    # matching tool_call entry in the trace.
+    call_index_by_id: dict[str, int] = {}
 
     async for event in agent_loop(
         provider=provider,
@@ -194,18 +215,33 @@ async def _run_nellie_agent(
         elif et == "tool_call_end" and event.tool_call:
             # Capture at *end* so streaming arguments have finished
             # assembling. Capturing at tool_call_start reads an empty
-            # arguments string because deltas haven't arrived yet —
-            # that was a diagnostic dead-end last iteration.
+            # arguments string because deltas haven't arrived yet.
             tc = event.tool_call
-            events.append({
+            entry = {
                 "kind": "tool_call",
+                "id": tc.id,
                 "name": tc.name,
-                "arguments": str(tc.arguments)[:500],
-                # event.text at tool_call_end is the tool's result
-                # string; include a trimmed version so we can see
-                # whether the tool actually succeeded.
-                "result": (event.text or "")[:500],
-            })
+                "arguments": tc.arguments if isinstance(tc.arguments, dict) else str(tc.arguments)[:1000],
+                "result": None,
+                "is_error": None,
+            }
+            call_index_by_id[tc.id] = len(events)
+            events.append(entry)
+        elif et == "tool_result" and event.tool_result:
+            tr = event.tool_result
+            # Stitch onto the matching tool_call by id. If the id is
+            # missing (older providers don't supply one) append a
+            # standalone result entry.
+            idx = call_index_by_id.get(tr.tool_call_id)
+            if idx is not None:
+                events[idx]["result"] = str(tr.content)[:1500]
+                events[idx]["is_error"] = bool(tr.is_error)
+            else:
+                events.append({
+                    "kind": "tool_result",
+                    "content": str(tr.content)[:1500],
+                    "is_error": bool(tr.is_error),
+                })
         elif et == "error":
             err = event.error or event.text
             if err:
@@ -227,6 +263,88 @@ async def _run_nellie_agent(
 
     events.append({"kind": "halt", "reason": halt})
     return {"text": text, "events": events, "halt": halt, "errors": error_parts}
+
+
+def _render_transcript(events: list[dict[str, Any]], text: str, halt: str) -> str:
+    """Render an agent run as a Claude-Code-style transcript.
+
+    Example output::
+
+        ● Bash(pip install fastapi uvicorn -q)
+          ⎿  Successfully installed fastapi-0.118 uvicorn-0.37
+
+        ● Write(api.py)
+          ⎿  File created successfully at: C:/Users/12066/karna-poc/api.py
+
+        ● Read(api.py)
+          ⎿  [file content: 45 lines]
+
+        Done: built a FastAPI service...
+    """
+    lines: list[str] = []
+    for ev in events:
+        kind = ev.get("kind")
+        if kind == "tool_call":
+            name = ev.get("name", "tool")
+            args = ev.get("arguments") or {}
+            summary = _tool_arg_summary(name, args)
+            bullet = "●" if not ev.get("is_error") else "✗"
+            lines.append(f"{bullet} {name.capitalize()}({summary})")
+            result = ev.get("result")
+            if result:
+                # Trim + indent each result line under the ⎿ glyph.
+                rlines = str(result).rstrip().splitlines()
+                if rlines:
+                    lines.append(f"  ⎿  {rlines[0][:200]}")
+                    for r in rlines[1:4]:  # cap at 4 lines
+                        lines.append(f"     {r[:200]}")
+                    if len(rlines) > 4:
+                        lines.append(f"     ... ({len(rlines) - 4} more lines)")
+            lines.append("")
+        elif kind == "error":
+            lines.append(f"✗ error: {ev.get('text', '')[:200]}")
+            lines.append("")
+        elif kind == "halt":
+            reason = ev.get("reason", "")
+            if reason != "done":
+                lines.append(f"[halt: {reason}]")
+
+    if text:
+        lines.append(text.strip())
+    return "\n".join(lines).rstrip()
+
+
+def _tool_arg_summary(tool_name: str, args: Any) -> str:
+    """One-line summary of a tool's args for the transcript header.
+
+    Mirrors Claude Code's ``Bash(command)`` / ``Write(file_path)`` format.
+    """
+    if not isinstance(args, dict):
+        return str(args)[:80]
+    key_priority = {
+        "bash": ["command"],
+        "read": ["file_path", "path"],
+        "write": ["file_path"],
+        "edit": ["file_path"],
+        "grep": ["pattern"],
+        "glob": ["pattern"],
+        "web_fetch": ["url"],
+        "web_search": ["query"],
+        "db": ["sql", "action"],
+        "browser": ["url", "action"],
+        "notebook": ["path", "action"],
+        "document": ["file_path", "path"],
+        "comms": ["action"],
+        "git": ["action"],
+    }
+    for key in key_priority.get(tool_name, []):
+        if key in args and args[key]:
+            return str(args[key])[:100]
+    # Fallback: first populated value
+    for v in args.values():
+        if v:
+            return str(v)[:80]
+    return ""
 
 
 # ----------------------------------------------------------------------- #
@@ -316,29 +434,34 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
         errors = result["errors"]
         is_error = halt in ("error", "max_iterations", "empty_reply")
 
-        # Build a user-facing body. For success, just the text. For
-        # failure, tack on the halt reason and the error bundle so the
-        # caller knows why nothing came back.
-        if is_error:
-            body_parts = []
-            if text:
-                body_parts.append(text)
-            body_parts.append(f"[halt:{halt}]")
-            if errors:
-                body_parts.append("errors: " + "; ".join(errors[-3:]))
-            body = "\n".join(body_parts)
-        else:
-            body = text
-
-        content: list[dict[str, Any]] = [{"type": "text", "text": body or "(no reply)"}]
+        # Claude-Code-style transcript is the primary content block
+        # when events are requested. Shows tool calls + their results
+        # + final text, so the caller sees what the agent actually did.
         if include_events:
-            # Attach the event trace as a second content block encoded
-            # as a JSON string — clients can parse it; humans can read
-            # it. Keeps the primary text clean.
+            primary = _render_transcript(result["events"], text, halt)
+        else:
+            if is_error:
+                parts = []
+                if text:
+                    parts.append(text)
+                parts.append(f"[halt:{halt}]")
+                if errors:
+                    parts.append("errors: " + "; ".join(errors[-3:]))
+                primary = "\n".join(parts)
+            else:
+                primary = text
+
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": primary or "(no reply)"}
+        ]
+        if include_events:
+            # Also attach the raw JSON event trace for programmatic
+            # consumers. Keeps the rendered transcript clean while
+            # preserving full fidelity for tooling.
             content.append(
                 {
                     "type": "text",
-                    "text": "EVENTS:\n" + json.dumps(result["events"], indent=2),
+                    "text": "RAW_EVENTS:\n" + json.dumps(result["events"], indent=2, default=str),
                 }
             )
         return _make_result(req_id, {"content": content, "isError": is_error})
