@@ -118,7 +118,7 @@ _ICON_SETS = {
     "nerd": {
         "user": "\uf061",  # nf-fa-arrow_right
         "assistant": "\uf005",  # nf-fa-star
-        "thinking": "\uf0eb",  # nf-fa-lightbulb_o
+        "thinking": "\u2726",  # ✦ black four-pointed star — same as Claude Code
         "tool": "\uf085",  # nf-fa-cogs
         "success": "\uf00c",  # nf-fa-check
         "failure": "\uf00d",  # nf-fa-times
@@ -762,11 +762,12 @@ class OutputRenderer:
             start_time=time.time(),
         )
 
-        # Print the Claude-Code-style bullet header. If args aren't here yet
-        # (they may stream via TOOL_CALL_ARGS_DELTA), _on_tool_call_end will
-        # re-emit with full context once they arrive.
-        self.console.print(self._tool.header())
+        # Print the Claude-Code-style bullet header ONLY if we already have
+        # enough to render ``● Tool(context)`` cleanly. If args are still
+        # streaming, defer the print to _on_tool_call_end so we don't emit
+        # a bare ``● Tool`` line followed by a corrected one.
         if _extract_tool_context(name, self._tool.args_buffer):
+            self.console.print(self._tool.header())
             self._tool.args_printed = True
 
     def _on_tool_call_args_delta(self, delta: str) -> None:
@@ -778,12 +779,9 @@ class OutputRenderer:
         if self._tool is None:
             return
 
-        # If the initial header printed without context (because args streamed
-        # after TOOL_CALL_START), re-emit it now that the full args are
-        # buffered so the user sees `● Bash(ls)` instead of a bare `● Bash`.
-        if not self._tool.args_printed and _extract_tool_context(
-            self._tool.name, self._tool.args_buffer
-        ):
+        # Deferred case: TOOL_CALL_START had no context, so we held the print.
+        # Now that args are fully buffered, emit the header exactly once.
+        if not self._tool.args_printed:
             self.console.print(self._tool.header())
             self._tool.args_printed = True
 
