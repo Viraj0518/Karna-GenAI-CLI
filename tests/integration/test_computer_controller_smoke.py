@@ -1,73 +1,99 @@
-"""Smoke test for the computer_controller MCP — blocks on alpha's PR.
+"""Integration smoke test for the computer_controller MCP (Goose-parity #5).
 
-Exercises:
-- computer_controller tool registers with the MCP server
-- `screenshot`, `click`, and `type` actions return well-formed responses
-  under a headless / virtual display in CI
-- Tool rejects coordinates outside the screen bounds
-- Tool refuses actions when the relevant display/a11y permission is absent
+Now that the server module exists (see commit introducing
+``karna/mcp_servers/computer_controller_server.py``), the stub activates
+automatically. Exercises:
 
-Unskip by removing the `_available()` guard when alpha ships
-computer_controller.
+- MCP ``tools/list`` exposes the expected tool surface
+- ``get_screen_size`` returns a well-formed response on hosts with a
+  real display; skipped cleanly on headless CI
+
+Thorough protocol coverage + fake-pyautogui happy paths live in
+``tests/test_computer_controller_server.py``. This file is the outer
+ring — runs against the real display stack when one is available.
 """
 from __future__ import annotations
+
+import asyncio
+import json
 
 import pytest
 
 pytestmark = pytest.mark.integration
 
 
-_CC_PATHS = (
-    # Alpha confirmed (20260421T040500) the canonical module will be
-    # `karna.mcp_servers.computer_controller_server` + CLI `nellie mcp
-    # serve-computer`, matching gamma's memory MCP pattern. Legacy
-    # guesses kept for pre-merge drift; drop once alpha's PR is on dev.
-    "karna.mcp_servers.computer_controller_server",
-    "karna.tools.computer_controller",
-    "karna.computer_controller",
-)
+_CC_PATH = "karna.mcp_servers.computer_controller_server"
 
 
 def _cc_available() -> bool:
-    for mod in _CC_PATHS:
-        try:
-            __import__(mod)
-            return True
-        except ImportError:
-            continue
-    return False
+    try:
+        __import__(_CC_PATH)
+        return True
+    except ImportError:
+        return False
+
+
+def _has_display() -> bool:
+    """Check whether pyautogui's import actually works on this host."""
+    if not _cc_available():
+        return False
+    import importlib
+    cc = importlib.import_module(_CC_PATH)
+    pg, err = cc._load_pyautogui()  # type: ignore[attr-defined]
+    return pg is not None and err is None
 
 
 @pytest.fixture
-def cc_tool():
+def cc_mod():
     if not _cc_available():
-        pytest.skip("computer_controller not available — blocked on alpha's PR")
+        pytest.skip(f"{_CC_PATH} not importable")
     import importlib
-    for mod_path in _CC_PATHS:
-        try:
-            return importlib.import_module(mod_path)
-        except ImportError:
-            continue
-    pytest.skip("no computer_controller path resolved after probe")
+    return importlib.import_module(_CC_PATH)
 
 
-def test_screenshot_returns_bytes(cc_tool):
-    # Shape TBD once alpha's API is published
-    result = cc_tool.screenshot()  # type: ignore[attr-defined]
-    assert result is not None
+def _call(cc, method: str, params: dict | None = None) -> dict:
+    req = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+    return asyncio.run(cc._handle_request(req))  # type: ignore[attr-defined]
 
 
-def test_click_out_of_bounds_errors(cc_tool):
-    """Coordinates outside the screen should raise, not silently no-op."""
-    try:
-        cc_tool.click(-1, -1)  # type: ignore[attr-defined]
-    except (ValueError, RuntimeError):
-        pass
-    except Exception:
-        # Any structured exception is acceptable pre-spec.
-        pass
+def test_tools_list_exposes_seven_tools(cc_mod):
+    """Tool surface is part of the Goose-parity contract — breaking it
+    would silently shrink what downstream agents can do."""
+    resp = _call(cc_mod, "tools/list")
+    assert resp is not None
+    names = {t["name"] for t in resp["result"]["tools"]}
+    assert names == {
+        "screen_capture",
+        "get_screen_size",
+        "mouse_move",
+        "mouse_click",
+        "mouse_scroll",
+        "keyboard_type",
+        "keyboard_press",
+    }
 
 
-def test_type_empty_is_noop(cc_tool):
-    """Empty string should be a safe no-op, not a crash."""
-    cc_tool.type_text("")  # type: ignore[attr-defined]
+def test_initialize_handshake(cc_mod):
+    resp = _call(cc_mod, "initialize")
+    result = resp["result"]
+    assert result["serverInfo"]["name"] == "nellie-computer-controller"
+    assert result["protocolVersion"] == "2024-11-05"
+
+
+def test_get_screen_size_on_real_display(cc_mod):
+    """On a host with a real display, ``get_screen_size`` must return
+    positive width + height. On headless hosts, skip cleanly — the
+    happy-path behaviour is already covered in the unit tests via a
+    fake pyautogui."""
+    if not _has_display():
+        pytest.skip("no display available — headless CI")
+    resp = _call(
+        cc_mod,
+        "tools/call",
+        {"name": "get_screen_size", "arguments": {}},
+    )
+    result = resp["result"]
+    assert result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["width"] > 0
+    assert payload["height"] > 0
