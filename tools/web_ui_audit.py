@@ -193,6 +193,13 @@ def _audit_page(
     session_id: str | None,
 ) -> PageResult:
     path = spec.path.format(sid=session_id) if spec.needs_session else spec.path
+    # Session-detail pages hold a persistent EventSource on /stream,
+    # which starves uvicorn's single worker and breaks subsequent page
+    # loads in the same audit sweep. The template skips the subscription
+    # when ?no-sse is present — real users still get live streaming,
+    # the audit doesn't.
+    if spec.needs_session:
+        path = f"{path}?no-sse"
     result = PageResult(slug=spec.slug, path=path, viewport=vp_name)
 
     page = context.new_page()

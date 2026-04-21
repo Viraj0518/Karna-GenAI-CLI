@@ -77,6 +77,11 @@
         if (!el) return;
         var sid = el.dataset.sessionId;
         if (!sid) return;
+        // Skip the subscription when the audit / visual regression
+        // harness passes ``?no-sse`` — the persistent EventSource keeps
+        // the single-worker uvicorn busy and starves subsequent page
+        // navigations in the same sweep.
+        if (new URLSearchParams(window.location.search).has('no-sse')) return;
 
         function buildMessage(role, textContent) {
             // Safe DOM construction — no innerHTML with untrusted data.
