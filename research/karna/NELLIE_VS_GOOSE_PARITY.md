@@ -23,7 +23,7 @@ Viraj's "full scope buddy" call.
 | 13 | Canonical model registry | 1700 LLMs × capabilities | ❌ | beta | 🟡 in flight (B1, scoped 200 → now 1000+) |
 | 14 | CLI | `goose session`/`run`/`configure`/`mcp` | `nellie` + 12 subcommands | — | ✅ shipped (+`serve` in PR #48) |
 | 15 | HTTP server (goosed) | REST + SSE, 103 endpoints, OpenAPI | `karna/rest_server/` (10 endpoints, SSE, OpenAPI) | alpha | ✅ shipped (PR #48) |
-| 16 | WebSockets | real-time updates | 🟡 SSE only today | alpha | 🔴 todo (add WS when REST lands) |
+| 16 | WebSockets | real-time updates | `karna/rest_server/app.py::session_ws` at `ws://host:port/v1/ws/sessions/{id}` — same event vocabulary as SSE + ping/cancel/message control frames, 5 protocol tests | alpha | ✅ shipped |
 | 17 | ACP server (Agent Client Protocol) | JSON-RPC stdio | `karna/acp_server/` (session/new/list/prompt/cancel/close + session/update stream) | alpha | ✅ shipped (PR #48) |
 | 18 | MCP server wrapping Nellie | — | `karna/mcp_server/` | — | ✅ shipped (unique to Nellie) |
 | 19 | Desktop app | Electron + React | ❌ | gamma | 🔴 todo (was "web UI MVP" — scope now includes Electron) |
@@ -33,7 +33,7 @@ Viraj's "full scope buddy" call.
 | 23 | Context auto-compaction | at 80% | `karna/compaction/` | — | ✅ shipped |
 | 24 | OpenAPI spec generation | for client codegen | auto via FastAPI | alpha | ✅ shipped (PR #48) |
 | 25 | Installers | signed pkg / MSI / deb | `install.sh` + `install.ps1` + `install.py` (stdlib cross-platform) + Homebrew formula + twine-verified release.yml | gamma | ✅ shipped |
-| 26 | Telemetry | opt-in usage metrics | ❌ | — | 🔴 todo (explicit opt-in; "zero-telemetry" by default stays) |
+| 26 | Telemetry | opt-in usage metrics | `karna/telemetry.py` — `KARNA_TELEMETRY=1` or `[tui].telemetry_enabled` opt-in, append-only `~/.karna/telemetry.jsonl`, no network egress, tokens+duration only (never message content) | alpha | ✅ shipped |
 
 ## Unique-to-Nellie (keep)
 
@@ -45,7 +45,7 @@ Viraj's "full scope buddy" call.
 
 ## What's actually left (by subsystem)
 
-- alpha: #5 computer_controller MCP, #16 WebSockets, #26 telemetry
+- alpha: lane closed (#5 computer_controller shipped by beta, #16 WebSockets shipped, #26 telemetry shipped)
 - beta: #2+#13 canonical registry (expand scope to 1000+ models), #22 prompt-injection, #12 keyring, CI/test harden
 - gamma: #19 Electron desktop (confirmed: web UI done, Electron wrapper on gamma next)
 

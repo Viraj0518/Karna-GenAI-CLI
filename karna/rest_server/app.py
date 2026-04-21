@@ -19,6 +19,11 @@ import logging
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+try:  # pragma: no cover — FastAPI is an optional extra
+    from fastapi import WebSocket as _FastAPIWebSocket
+except ImportError:  # pragma: no cover
+    _FastAPIWebSocket = None  # type: ignore[misc,assignment]
+
 from karna.agents.loop import agent_loop
 from karna.config import load_config
 from karna.models import Message
@@ -162,7 +167,7 @@ async def _run_turn(
 def create_app():
     """Build the FastAPI app. Imported lazily so ``karna`` works without
     FastAPI installed (it's an optional extra)."""
-    from fastapi import Body, FastAPI, HTTPException
+    from fastapi import Body, FastAPI, HTTPException, WebSocket
     from fastapi.responses import StreamingResponse
 
     # Per-app SessionManager captured in closure. Avoids FastAPI's
@@ -290,6 +295,87 @@ def create_app():
                 yield f"data: {json.dumps(event)}\n\n".encode("utf-8")
 
         return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+    @app.websocket("/v1/ws/sessions/{sid}")
+    async def session_ws(websocket: _FastAPIWebSocket, sid: str):  # type: ignore[valid-type]
+        """Bidirectional WebSocket for a session — same event vocabulary
+        as SSE, plus client-to-server control messages.
+
+        Client → server JSON:
+          ``{"type": "message", "content": "..."}``  — enqueue a turn
+          ``{"type": "cancel"}``                      — cancel in-flight turn
+          ``{"type": "ping"}``                        — keepalive
+
+        Server → client JSON: same shape as SSE data frames
+        (``text``/``tool_call``/``tool_result``/``error``/``done``).
+        """
+        from starlette.websockets import WebSocketDisconnect
+
+        s = sm.get(sid)
+        if s is None:
+            await websocket.close(code=4404, reason="session not found")
+            return
+        await websocket.accept()
+
+        async def send_events() -> None:
+            """Drain the session's event queue into the socket."""
+            try:
+                while True:
+                    event = await s.event_queue.get()
+                    await websocket.send_json(event)
+                    if event.get("kind") == "done":
+                        # Done doesn't close the socket — a new message
+                        # can start another turn on the same session.
+                        continue
+            except WebSocketDisconnect:
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ws send_events ended: %s", exc)
+
+        drain_task = asyncio.create_task(send_events())
+        turn_task: asyncio.Task | None = None
+
+        async def _locked_turn(content: str, max_iters: int) -> None:
+            async with s.lock:
+                await _run_turn(s, content, max_iterations=max_iters)
+
+        try:
+            while True:
+                data = await websocket.receive_json()
+                mtype = data.get("type")
+                if mtype == "ping":
+                    await websocket.send_json({"kind": "pong"})
+                    continue
+                if mtype == "cancel":
+                    if turn_task and not turn_task.done():
+                        turn_task.cancel()
+                    await websocket.send_json({"kind": "cancelled"})
+                    continue
+                if mtype == "message":
+                    content = (data.get("content") or "").strip()
+                    if not content:
+                        await websocket.send_json({"kind": "error", "text": "empty message"})
+                        continue
+                    max_iters = int(data.get("max_iterations") or 25)
+                    if s.lock.locked():
+                        await websocket.send_json({"kind": "error", "text": "session busy"})
+                        continue
+                    turn_task = asyncio.create_task(_locked_turn(content, max_iters))
+                    sm.touch(sid)
+                    continue
+                await websocket.send_json({"kind": "error", "text": f"unknown type: {mtype!r}"})
+        except WebSocketDisconnect:
+            pass
+        finally:
+            drain_task.cancel()
+            if turn_task and not turn_task.done():
+                turn_task.cancel()
+            for t in (drain_task, turn_task):
+                if t is not None:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception):
+                        pass
 
     return app
 
