@@ -1053,7 +1053,20 @@ async def run_repl(
                 return
 
             state.input_queue.put_nowait(text)
-            console.print("[bright_black]  -> message queued (will be injected mid-stream)[/bright_black]")
+            # HIGHLY visible — Viraj's demo bug was typing a 2nd prompt while
+            # turn 1 was mid-stream, which got silently folded into turn 1
+            # with no fresh spinner. Now it's unmistakable that the new input
+            # is being stacked onto the in-flight turn, not starting a new one.
+            from rich.panel import Panel as _Panel
+            from rich.text import Text as _Txt
+            _queued = _Txt()
+            _queued.append("queued — turn is still running\n", style="bold yellow")
+            _queued.append(f"→ {text[:80]}", style="yellow")
+            _queued.append(
+                "\n\nWait for the current reply to finish, then the next turn will start.",
+                style="dim",
+            )
+            console.print(_Panel(_queued, border_style="yellow", padding=(0, 1), expand=False))
             return
 
         # ── Skill trigger matching (checked BEFORE slash commands) ─
