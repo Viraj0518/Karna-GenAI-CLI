@@ -237,7 +237,7 @@ class PtyDriver:
         # ptyprocess wants bytes — str raises ``TypeError: a bytes-like
         # object is required, not 'str'``. Encode per backend.
         assert self._proc is not None
-        if self._backend == "ptyprocess":
+        if _BACKEND == "ptyprocess":
             self._proc.write(payload.encode("utf-8"))
         else:
             self._proc.write(payload)
