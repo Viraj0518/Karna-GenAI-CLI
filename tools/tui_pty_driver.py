@@ -233,10 +233,14 @@ class PtyDriver:
         self._write(data)
 
     def _write(self, payload: str) -> None:
-        # pywinpty's ``write`` returns an int; ptyprocess returns bytes
-        # written. Both accept str.
+        # pywinpty accepts str directly.
+        # ptyprocess wants bytes — str raises ``TypeError: a bytes-like
+        # object is required, not 'str'``. Encode per backend.
         assert self._proc is not None
-        self._proc.write(payload)
+        if self._backend == "ptyprocess":
+            self._proc.write(payload.encode("utf-8"))
+        else:
+            self._proc.write(payload)
 
     def read_until(
         self,
