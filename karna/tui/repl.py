@@ -405,14 +405,32 @@ async def _agent_loop(
         tools = get_all_tools()
 
         # Query the RAG knowledge base for relevant context.
+        #
+        # Pre-flight: if the user has never indexed anything, the
+        # KnowledgeStore constructor still loads the sentence-
+        # transformers model (~41s on first instantiation in the
+        # process). That's a per-process cold-start tax the user can't
+        # see — status bar sits at "reasoning..." while HuggingFace
+        # silently hydrates a model we won't even use. Short-circuit
+        # when meta.json is empty or missing.
         rag_context: str | None = None
         try:
-            from karna.rag.context import build_rag_context
+            import json as _json
+            from pathlib import Path as _Path
 
-            # Use the latest user message as the query.
-            user_msgs = [m for m in conversation.messages if m.role == "user"]
-            if user_msgs:
-                rag_context = await build_rag_context(user_msgs[-1].content, top_k=5)
+            meta = _Path.home() / ".karna" / "rag" / "meta.json"
+            has_index = False
+            if meta.exists():
+                try:
+                    has_index = bool(_json.loads(meta.read_text(encoding="utf-8")).get("files"))
+                except (OSError, _json.JSONDecodeError):
+                    has_index = False
+            if has_index:
+                from karna.rag.context import build_rag_context
+
+                user_msgs = [m for m in conversation.messages if m.role == "user"]
+                if user_msgs:
+                    rag_context = await build_rag_context(user_msgs[-1].content, top_k=5)
         except Exception:
             pass  # RAG is best-effort — never block the agent loop.
 
