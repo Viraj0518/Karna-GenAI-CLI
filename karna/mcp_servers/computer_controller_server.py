@@ -91,8 +91,7 @@ _TOOLS: list[dict[str, Any]] = [
                     "minItems": 4,
                     "maxItems": 4,
                     "description": (
-                        "Optional ``[left, top, width, height]``. "
-                        "If omitted, captures the full primary display."
+                        "Optional ``[left, top, width, height]``. If omitted, captures the full primary display."
                     ),
                 },
                 "save_to": {
@@ -165,8 +164,7 @@ _TOOLS: list[dict[str, Any]] = [
     {
         "name": "keyboard_type",
         "description": (
-            "Type a string character-by-character through the OS keyboard "
-            "buffer. Honours the active keyboard layout."
+            "Type a string character-by-character through the OS keyboard buffer. Honours the active keyboard layout."
         ),
         "inputSchema": {
             "type": "object",
@@ -250,16 +248,13 @@ async def _screen_capture(args: dict[str, Any]) -> dict[str, Any]:
             path = Path(save_to)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(png_bytes)
-            content.append(
-                {"type": "text", "text": f"Saved screenshot to {path}"}
-            )
+            content.append({"type": "text", "text": f"Saved screenshot to {path}"})
         except Exception as exc:  # noqa: BLE001
             # Non-fatal — the image is still in the response.
             content.append(
                 {
                     "type": "text",
-                    "text": f"Warning: could not write save_to={save_to!r}: "
-                    f"{type(exc).__name__}: {exc}",
+                    "text": f"Warning: could not write save_to={save_to!r}: {type(exc).__name__}: {exc}",
                 }
             )
     else:
@@ -447,9 +442,7 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
             return _make_result(
                 req_id,
                 {
-                    "content": [
-                        {"type": "text", "text": f"[error] {type(exc).__name__}: {exc}"}
-                    ],
+                    "content": [{"type": "text", "text": f"[error] {type(exc).__name__}: {exc}"}],
                     "isError": True,
                 },
             )

@@ -6,12 +6,7 @@ from nchs_etl_refactored import transform_nchs_data
 @pytest.fixture
 def sample_data():
     """Sample NCHS data fixture."""
-    return pd.DataFrame({
-        "patient_id": [1, 2, 3],
-        "age_yrs": [25, 45, 60],
-        "sbp": [120, 140, 155],
-        "dbp": [80, 90, 95]
-    })
+    return pd.DataFrame({"patient_id": [1, 2, 3], "age_yrs": [25, 45, 60], "sbp": [120, 140, 155], "dbp": [80, 90, 95]})
 
 
 def test_column_renaming(sample_data):

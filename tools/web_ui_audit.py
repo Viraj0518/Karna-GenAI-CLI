@@ -297,9 +297,7 @@ def run_audit(
                             )
                         )
                         continue
-                    results.append(
-                        _audit_page(context, base_url, spec, vp_name, SCREENSHOT_DIR, session_id)
-                    )
+                    results.append(_audit_page(context, base_url, spec, vp_name, SCREENSHOT_DIR, session_id))
                 context.close()
             browser.close()
     finally:

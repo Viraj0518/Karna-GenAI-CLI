@@ -138,6 +138,7 @@ def detect_backend() -> Backend:
     """Return the backend that *would* be used without rendering anything."""
     try:
         import cairosvg  # type: ignore[import-not-found]  # noqa: F401
+
         # Probe a tiny render — cairocffi raises at call time, not import.
         cairosvg.svg2png(bytestring=b"<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>")
         return "cairosvg"
@@ -145,6 +146,7 @@ def detect_backend() -> Backend:
         pass
     try:
         from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]  # noqa: F401
+
         # Don't actually launch chromium — just presence of the module is enough.
         if shutil.which("playwright") or True:
             return "playwright"

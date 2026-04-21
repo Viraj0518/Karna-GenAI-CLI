@@ -12,6 +12,7 @@ Thorough protocol coverage + fake-pyautogui happy paths live in
 ``tests/test_computer_controller_server.py``. This file is the outer
 ring — runs against the real display stack when one is available.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,6 +39,7 @@ def _has_display() -> bool:
     if not _cc_available():
         return False
     import importlib
+
     cc = importlib.import_module(_CC_PATH)
     pg, err = cc._load_pyautogui()  # type: ignore[attr-defined]
     return pg is not None and err is None
@@ -48,6 +50,7 @@ def cc_mod():
     if not _cc_available():
         pytest.skip(f"{_CC_PATH} not importable")
     import importlib
+
     return importlib.import_module(_CC_PATH)
 
 

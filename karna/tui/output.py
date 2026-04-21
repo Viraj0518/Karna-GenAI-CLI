@@ -32,7 +32,6 @@ them from here.
 from __future__ import annotations
 
 import json as _json
-import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -47,7 +46,6 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 from karna.tui.themes import (
-    ASSISTANT_TEXT,
     BRAND_BLUE,
     COST_INFO,
     ERROR,

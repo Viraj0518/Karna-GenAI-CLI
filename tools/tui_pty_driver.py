@@ -41,7 +41,6 @@ import threading
 import time
 from typing import Iterable
 
-
 # --------------------------------------------------------------------------- #
 #  Backend selection
 # --------------------------------------------------------------------------- #
@@ -86,9 +85,9 @@ def backend_name() -> str | None:
 # Covers CSI (``\x1b[ … final``), OSC (``\x1b] … BEL|ST``), and stray
 # two-byte escapes like ``\x1b(B``.
 _ANSI_RE = re.compile(
-    r"\x1B\[[0-?]*[ -/]*[@-~]"      # CSI
+    r"\x1B\[[0-?]*[ -/]*[@-~]"  # CSI
     r"|\x1B\][^\x07\x1b]*(?:\x07|\x1B\\)"  # OSC … BEL or ST
-    r"|\x1B[@-Z\\-_]"                # two-byte ESC + final
+    r"|\x1B[@-Z\\-_]"  # two-byte ESC + final
 )
 
 
@@ -153,8 +152,7 @@ class PtyDriver:
         """Start the child under a PTY."""
         if _BACKEND is None:
             raise PtySupportUnavailable(
-                "No PTY backend available. Install one of: "
-                "`pywinpty` (Windows) or `ptyprocess` (POSIX)."
+                "No PTY backend available. Install one of: `pywinpty` (Windows) or `ptyprocess` (POSIX)."
             )
 
         if _BACKEND == "winpty":
@@ -163,9 +161,7 @@ class PtyDriver:
             self._spawn_ptyprocess()
 
         self._alive = True
-        self._reader = threading.Thread(
-            target=self._pump, name="pty-reader", daemon=True
-        )
+        self._reader = threading.Thread(target=self._pump, name="pty-reader", daemon=True)
         self._reader.start()
 
     def _spawn_winpty(self) -> None:
@@ -271,14 +267,10 @@ class PtyDriver:
                 if m:
                     return haystack[: m.end()]
                 raise TimeoutError(
-                    f"child exited before pattern {pattern!r} matched.\n"
-                    f"--- screen ---\n{self.screen()[-2000:]}"
+                    f"child exited before pattern {pattern!r} matched.\n--- screen ---\n{self.screen()[-2000:]}"
                 )
             time.sleep(poll)
-        raise TimeoutError(
-            f"pattern {pattern!r} not seen within {timeout}s.\n"
-            f"--- screen ---\n{self.screen()[-2000:]}"
-        )
+        raise TimeoutError(f"pattern {pattern!r} not seen within {timeout}s.\n--- screen ---\n{self.screen()[-2000:]}")
 
     def expect_absent(
         self,
@@ -297,9 +289,7 @@ class PtyDriver:
         while time.monotonic() < end:
             haystack = self.screen() if strip else self.raw_buffer()
             if regex.search(haystack):
-                raise AssertionError(
-                    f"pattern {pattern!r} appeared within {window}s window"
-                )
+                raise AssertionError(f"pattern {pattern!r} appeared within {window}s window")
             time.sleep(poll)
 
     def screen(self) -> str:

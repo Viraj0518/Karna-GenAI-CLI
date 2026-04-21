@@ -3,12 +3,12 @@ NHANES SAS XPT → Parquet ETL pipeline.
 Reads simulated NHANES XPT files, normalizes, writes to warehouse.
 """
 
-import os
 import logging
 from pathlib import Path
+
 import pandas as pd
-import pyarrow.parquet as pq
 import pyarrow as pa
+import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Initialize pipeline and run
     pipeline = NHANESETLPipeline(warehouse_dir="./warehouse")
     output_path = pipeline.run(synthetic_xpt_path, table_name="nhanes_demo")
-    
+
     logger.info(f"✓ Pipeline complete. Output: {output_path}")
 
     # Verify

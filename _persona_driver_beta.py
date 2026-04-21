@@ -6,7 +6,13 @@ I/O-bound (OpenRouter latency dominates), so threads are fine.
 """
 
 from __future__ import annotations
-import json, os, subprocess, sys, threading, time
+
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -164,10 +170,10 @@ def run_persona(persona: dict) -> dict:
         log(f"[{slug}] ❌ empty handshake")
         return {"slug": slug, "duration_s": 0, "is_error": True, "files_produced": [], "transcript_len": 0}
 
-    prompt = f"""You are acting as: **{persona['role']}**
+    prompt = f"""You are acting as: **{persona["role"]}**
 
 Task:
-{persona['task']}
+{persona["task"]}
 
 Be concise. Produce real files in the workspace. Finish with one line
 confirming completion."""
@@ -260,9 +266,7 @@ def main():
     for e in scoreboard:
         flag = "❌" if e["is_error"] else "✅"
         files = ", ".join(e["files_produced"]) or "—"
-        lines.append(
-            f"| {e['slug']} | {e['duration_s']}s | {flag} | {files} |"
-        )
+        lines.append(f"| {e['slug']} | {e['duration_s']}s | {flag} | {files} |")
     total = sum(e["duration_s"] for e in scoreboard)
     ok = sum(1 for e in scoreboard if not e["is_error"])
     lines += [

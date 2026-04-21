@@ -154,7 +154,9 @@ def auth_logout(
 @auth_app.command("migrate")
 def auth_migrate(
     keep_json: bool = typer.Option(
-        False, "--keep-json", help="Don't delete the JSON files after migration",
+        False,
+        "--keep-json",
+        help="Don't delete the JSON files after migration",
     ),
 ) -> None:
     """Move JSON credentials into the OS keyring.
@@ -179,7 +181,7 @@ def auth_migrate(
     if report["skipped"]:
         rprint(f"[yellow]Skipped:[/yellow] {', '.join(report['skipped'])}")
     if report["errors"]:
-        rprint(f"[red]Errors:[/red]")
+        rprint("[red]Errors:[/red]")
         for e in report["errors"]:
             rprint(f"  {e}")
         raise typer.Exit(code=2)

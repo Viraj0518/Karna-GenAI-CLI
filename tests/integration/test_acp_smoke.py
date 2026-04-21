@@ -9,6 +9,7 @@ Exercises:
 
 Unskip by removing the `_available()` guard when alpha ships ACP.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,6 +30,7 @@ def acp_module():
     if not _acp_available():
         pytest.skip("karna.acp_server not available — blocked on alpha's ACP PR")
     import karna.acp_server as acp
+
     return acp
 
 

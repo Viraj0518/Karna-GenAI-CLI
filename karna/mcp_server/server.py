@@ -173,8 +173,7 @@ async def _run_nellie_agent(
                 f"If this was a false positive, strip the flagged phrasing and retry."
             ],
             "events": [
-                {"kind": "halt", "reason": "injection_detected",
-                 "patterns": injection_hits},
+                {"kind": "halt", "reason": "injection_detected", "patterns": injection_hits},
             ],
             "halt": "injection_detected",
         }

@@ -23,7 +23,6 @@ import pytest
 
 from karna.mcp_servers import computer_controller_server as cc
 
-
 # ----------------------------------------------------------------------- #
 #  Fake pyautogui
 # ----------------------------------------------------------------------- #
@@ -216,9 +215,7 @@ async def test_screen_capture_region_passes_tuple(fake_pg: _FakePyautogui):
 
 
 @pytest.mark.asyncio
-async def test_screen_capture_save_to_writes_file(
-    fake_pg: _FakePyautogui, tmp_path
-):
+async def test_screen_capture_save_to_writes_file(fake_pg: _FakePyautogui, tmp_path):
     target = tmp_path / "shots" / "out.png"
     result = await _call_tool("screen_capture", {"save_to": str(target)})
     assert result["isError"] is False
@@ -259,18 +256,14 @@ async def test_mouse_click_defaults(fake_pg: _FakePyautogui):
 
 @pytest.mark.asyncio
 async def test_mouse_click_right_double(fake_pg: _FakePyautogui):
-    result = await _call_tool(
-        "mouse_click", {"x": 5, "y": 6, "button": "right", "clicks": 2}
-    )
+    result = await _call_tool("mouse_click", {"x": 5, "y": 6, "button": "right", "clicks": 2})
     assert result["isError"] is False
     assert fake_pg.calls[0][2] == {"button": "right", "clicks": 2}
 
 
 @pytest.mark.asyncio
 async def test_mouse_click_bad_button(fake_pg: _FakePyautogui):
-    result = await _call_tool(
-        "mouse_click", {"x": 5, "y": 6, "button": "purple"}
-    )
+    result = await _call_tool("mouse_click", {"x": 5, "y": 6, "button": "purple"})
     assert result["isError"] is True
     assert "invalid button" in result["content"][0]["text"]
     # pyautogui was NOT called because we rejected early.
@@ -279,9 +272,7 @@ async def test_mouse_click_bad_button(fake_pg: _FakePyautogui):
 
 @pytest.mark.asyncio
 async def test_mouse_click_bad_clicks(fake_pg: _FakePyautogui):
-    result = await _call_tool(
-        "mouse_click", {"x": 5, "y": 6, "clicks": 99}
-    )
+    result = await _call_tool("mouse_click", {"x": 5, "y": 6, "clicks": 99})
     assert result["isError"] is True
     assert "1..5" in result["content"][0]["text"]
     assert fake_pg.calls == []
@@ -309,9 +300,7 @@ async def test_mouse_scroll_with_position(fake_pg: _FakePyautogui):
 
 @pytest.mark.asyncio
 async def test_keyboard_type(fake_pg: _FakePyautogui):
-    result = await _call_tool(
-        "keyboard_type", {"text": "hello world", "interval": 0.05}
-    )
+    result = await _call_tool("keyboard_type", {"text": "hello world", "interval": 0.05})
     assert result["isError"] is False
     (name, args, kwargs) = fake_pg.calls[0]
     assert name == "typewrite"
@@ -368,9 +357,7 @@ async def test_keyboard_press_rejects_empty(fake_pg: _FakePyautogui):
         ("keyboard_press", {"keys": "enter"}),
     ],
 )
-async def test_every_tool_fails_gracefully_when_headless(
-    headless, tool: str, args: dict[str, Any]
-):
+async def test_every_tool_fails_gracefully_when_headless(headless, tool: str, args: dict[str, Any]):
     result = await _call_tool(tool, args)
     assert result["isError"] is True
     assert "unavailable" in result["content"][0]["text"].lower()
@@ -385,6 +372,7 @@ async def test_every_tool_fails_gracefully_when_headless(
 async def test_tool_handler_exception_is_surfaced(monkeypatch: pytest.MonkeyPatch):
     """When a tool's handler raises unexpectedly, the server must return
     an ``isError`` result rather than crashing the JSON-RPC loop."""
+
     async def _boom(args: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("synthetic blowup")
 

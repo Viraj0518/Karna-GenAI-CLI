@@ -182,6 +182,7 @@ def lookup_model_max_output(provider: str, model: str) -> int | None:
 
     # 2. Strip trailing ``-YYYYMMDD`` wire suffix.
     import re as _re
+
     stripped = _re.sub(r"-\d{8}$", "", model)
     if stripped != model:
         cap = _extract_cap(model_capabilities(f"{provider}:{stripped}"))

@@ -98,7 +98,7 @@ def _pixel_diff(baseline: Path, current: Path, diff_out: Path) -> tuple[float, s
     fraction = changed / total_pixels
     diff_out.parent.mkdir(parents=True, exist_ok=True)
     diff.save(diff_out)
-    return fraction, f"{changed}/{total_pixels} pixels differ ({fraction*100:.2f}%)"
+    return fraction, f"{changed}/{total_pixels} pixels differ ({fraction * 100:.2f}%)"
 
 
 def _text_diff(baseline: Path, current: Path, diff_out: Path) -> tuple[float, str]:
@@ -119,9 +119,11 @@ def _text_diff(baseline: Path, current: Path, diff_out: Path) -> tuple[float, st
     diff_out.write_text("".join(diff_lines), encoding="utf-8")
     # Fraction = changed-line count / total-line count of baseline.
     base_lines = base_text.splitlines() or [""]
-    changed = sum(1 for line in diff_lines if line.startswith(("+ ", "- ", "+", "-")) and not line.startswith(("+++", "---")))
+    changed = sum(
+        1 for line in diff_lines if line.startswith(("+ ", "- ", "+", "-")) and not line.startswith(("+++", "---"))
+    )
     fraction = min(1.0, changed / max(1, len(base_lines)))
-    return fraction, f"{changed} line(s) differ ({fraction*100:.2f}% of baseline lines)"
+    return fraction, f"{changed} line(s) differ ({fraction * 100:.2f}% of baseline lines)"
 
 
 def run_baseline(backend_hint: Backend | None) -> list[ScenarioResult]:
@@ -171,7 +173,11 @@ def run_check(threshold: float, backend_hint: Backend | None) -> tuple[list[Scen
         ansi_baseline = BASELINE_DIR / f"{name}.ansi"
 
         # Prefer PNG diff when both sides can do pixels.
-        can_pixel = effective_backend in ("cairosvg", "playwright") and png_baseline.exists() and png_baseline.stat().st_size > 0
+        can_pixel = (
+            effective_backend in ("cairosvg", "playwright")
+            and png_baseline.exists()
+            and png_baseline.stat().st_size > 0
+        )
         if can_pixel:
             cur_png = OUT_DIR / f"{name}.current.png"
             _write_png(name, ansi, cur_png, backend_hint=effective_backend)
@@ -237,7 +243,7 @@ def _write_report(results: list[ScenarioResult], backend: Backend, threshold: fl
     lines: list[str] = []
     lines.append("# Visual regression report\n")
     lines.append(f"- Backend: `{backend}`\n")
-    lines.append(f"- Threshold: {threshold*100:.2f}% pixel/line difference\n")
+    lines.append(f"- Threshold: {threshold * 100:.2f}% pixel/line difference\n")
     all_pass = all(r.passed for r in results)
     lines.append(f"- Overall: {'PASS' if all_pass else 'FAIL'}\n\n")
 
@@ -285,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     results, backend = run_check(args.threshold, args.backend)
-    print(f"Visual regression — backend={backend}, threshold={args.threshold*100:.2f}%")
+    print(f"Visual regression — backend={backend}, threshold={args.threshold * 100:.2f}%")
     fail = 0
     for r in results:
         tag = "PASS" if r.passed else "FAIL"

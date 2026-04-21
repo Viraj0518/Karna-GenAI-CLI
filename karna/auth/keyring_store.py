@@ -25,6 +25,7 @@ Security invariants:
   fast and backend-independent. The index contains NO secret data — only
   provider slugs.
 """
+
 from __future__ import annotations
 
 import json
@@ -124,6 +125,7 @@ def save_credential(provider: str, data: dict[str, Any]) -> None:
     JSON and stored as the keyring password. Updates the plaintext index.
     """
     import keyring  # type: ignore[import-untyped]
+
     serialized = json.dumps(data)
     keyring.set_password(KARNA_SERVICE, provider, serialized)
     _add_to_index(provider)
@@ -138,12 +140,10 @@ def load_credential(provider: str) -> dict[str, Any]:
     cross-importing.
     """
     import keyring  # type: ignore[import-untyped]
+
     raw = keyring.get_password(KARNA_SERVICE, provider)
     if raw is None:
-        raise KeyError(
-            f"No credential for {provider!r} in keyring. "
-            f"Run: nellie auth login {provider}"
-        )
+        raise KeyError(f"No credential for {provider!r} in keyring. Run: nellie auth login {provider}")
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
@@ -186,6 +186,7 @@ def verify() -> dict[str, str]:
           "in_sync".
     """
     import keyring  # type: ignore[import-untyped]
+
     indexed = set(_read_index())
     missing = []
     for p in indexed:
@@ -212,6 +213,7 @@ def migrate_from_json(*, delete_json: bool = True) -> dict[str, Any]:
     keeping plaintext copies on disk.
     """
     from karna.auth import credentials as c
+
     report: dict[str, list[str]] = {"migrated": [], "skipped": [], "errors": []}
     if not c.CREDENTIALS_DIR.exists():
         return report

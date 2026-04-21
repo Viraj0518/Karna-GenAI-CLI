@@ -1,13 +1,15 @@
-from flask import Flask
 import json
+
+from flask import Flask
 
 app = Flask(__name__)
 
-@app.route('/')
+
+@app.route("/")
 def dashboard():
-    with open('contracts.json', 'r') as f:
+    with open("contracts.json", "r") as f:
         contracts = json.load(f)
-    
+
     html = """
     <!DOCTYPE html>
     <html>
@@ -31,24 +33,25 @@ def dashboard():
                 <th>Remaining $</th>
             </tr>
     """
-    
+
     for contract in contracts:
         html += f"""
             <tr>
-                <td>{contract['contract']}</td>
-                <td>${contract['ceiling']:,}</td>
-                <td>{contract['burn_percent']}%</td>
-                <td>${contract['remaining']:,}</td>
+                <td>{contract["contract"]}</td>
+                <td>${contract["ceiling"]:,}</td>
+                <td>{contract["burn_percent"]}%</td>
+                <td>${contract["remaining"]:,}</td>
             </tr>
         """
-    
+
     html += """
         </table>
     </body>
     </html>
     """
-    
+
     return html
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app.run(port=5000)

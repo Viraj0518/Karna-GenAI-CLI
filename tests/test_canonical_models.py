@@ -74,7 +74,9 @@ class TestLoad:
         models = P.canonical_models()
         assert len(models) == 3
         assert {m["id"] for m in models} == {
-            "anthropic/claude-haiku-4-5", "openai/gpt-4o", "ollama/qwen3",
+            "anthropic/claude-haiku-4-5",
+            "openai/gpt-4o",
+            "ollama/qwen3",
         }
 
     def test_caches_across_calls(self, canonical_fixture: Path) -> None:
@@ -86,7 +88,9 @@ class TestLoad:
         assert len(P.canonical_models()) == 3
 
     def test_returns_empty_when_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(P, "_CANONICAL_MODELS_PATH", tmp_path / "nope.json")
         monkeypatch.setattr(P, "_canonical_cache", None)
@@ -107,7 +111,8 @@ class TestCapabilities:
         assert caps["context_window"] == 128000
 
     def test_lookup_by_bare_model_defaults_to_openrouter(
-        self, canonical_fixture: Path,
+        self,
+        canonical_fixture: Path,
     ) -> None:
         # Bare name goes through resolve_model which defaults to openrouter;
         # lookup falls through the candidate list and matches the literal model
@@ -137,9 +142,7 @@ class TestLiveRegistry:
         P._canonical_cache = None
         P._canonical_by_id = None
         models = P.canonical_models()
-        assert len(models) >= 1000, (
-            f"expected >=1000 models in shipped registry, got {len(models)}"
-        )
+        assert len(models) >= 1000, f"expected >=1000 models in shipped registry, got {len(models)}"
 
     def test_shipped_registry_has_anthropic_haiku(self) -> None:
         P._canonical_cache = None
@@ -161,9 +164,16 @@ class TestLiveRegistry:
         P._canonical_cache = None
         P._canonical_by_id = None
         required = {
-            "id", "provider", "context_window", "max_output",
-            "supports_tools", "supports_streaming", "supports_vision",
-            "supports_thinking", "cost_per_mtok_input", "cost_per_mtok_output",
+            "id",
+            "provider",
+            "context_window",
+            "max_output",
+            "supports_tools",
+            "supports_streaming",
+            "supports_vision",
+            "supports_thinking",
+            "cost_per_mtok_input",
+            "cost_per_mtok_output",
         }
         for m in P.canonical_models():
             assert required <= set(m), f"missing fields in {m['id']}: {required - set(m)}"

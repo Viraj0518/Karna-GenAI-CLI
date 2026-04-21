@@ -40,7 +40,9 @@ def _check_results() -> dict[str, object]:
     if backend == "ansi-text" and not any((BASELINE_DIR / f"{n}.ansi").exists() for n in SCENARIOS):
         pytest.skip("no renderable backend and no ANSI baselines committed")
     # If pixel backend is active but no .png baselines exist, also skip.
-    if backend != "ansi-text" and not any((BASELINE_DIR / f"{n}.png").exists() and (BASELINE_DIR / f"{n}.png").stat().st_size > 0 for n in SCENARIOS):
+    if backend != "ansi-text" and not any(
+        (BASELINE_DIR / f"{n}.png").exists() and (BASELINE_DIR / f"{n}.png").stat().st_size > 0 for n in SCENARIOS
+    ):
         pytest.skip(f"{backend} backend detected but no committed PNG baselines")
 
     results, used_backend = run_check(THRESHOLD, backend_hint=None)
@@ -51,6 +53,6 @@ def _check_results() -> dict[str, object]:
 def test_scenario_within_threshold(_check_results: dict, scenario: str) -> None:  # type: ignore[type-arg]
     result = _check_results[scenario]  # type: ignore[assignment]
     assert result.passed, (  # type: ignore[attr-defined]
-        f"[{scenario}] visual regression exceeded {THRESHOLD*100:.2f}%: "
+        f"[{scenario}] visual regression exceeded {THRESHOLD * 100:.2f}%: "
         f"{result.message}  (see _visual_diff/REPORT.md)"  # type: ignore[attr-defined]
     )

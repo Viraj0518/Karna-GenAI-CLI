@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -87,9 +86,7 @@ def test_record_error_shorthand(isolated_log: Path, monkeypatch: pytest.MonkeyPa
     assert ev["type"] == "401"
 
 
-def test_record_swallows_disk_errors(
-    isolated_log: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_record_swallows_disk_errors(isolated_log: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A disk-full / permission error in telemetry must never crash the agent."""
     from karna import telemetry
 

@@ -33,18 +33,15 @@ from typing import Callable
 os.environ["KARNA_NERD_FONT"] = "1"
 
 from rich.console import Console
-from rich.table import Table
-from rich.text import Text
 
 from karna.config import KarnaConfig
-from karna.models import Conversation
 from karna.tui.banner import print_banner
 from karna.tui.design_tokens import SEMANTIC
-from karna.tui.icons import IconSet, icons as _default_icons
+from karna.tui.icons import IconSet
+from karna.tui.icons import icons as _default_icons
 from karna.tui.output import EventKind, OutputRenderer, StreamEvent
-from karna.tui.slash import COMMANDS, SessionCost, _cmd_help
+from karna.tui.slash import _cmd_help
 from karna.tui.themes import KARNA_THEME
-
 
 # --------------------------------------------------------------------------- #
 #  Setup
@@ -54,8 +51,20 @@ OUT = Path(__file__).parent / "after"
 OUT.mkdir(parents=True, exist_ok=True)
 
 TOOLS_LOADED = [
-    "bash", "read", "write", "edit", "grep", "glob", "git",
-    "web_fetch", "web_search", "clipboard", "image", "mcp", "task", "monitor",
+    "bash",
+    "read",
+    "write",
+    "edit",
+    "grep",
+    "glob",
+    "git",
+    "web_fetch",
+    "web_search",
+    "clipboard",
+    "image",
+    "mcp",
+    "task",
+    "monitor",
 ]
 
 # IconSet's nerd-font detection requires a TTY; we're capturing to a
@@ -97,6 +106,7 @@ def snapshot(name: str, render: Callable[[Console], None]) -> None:
 #  Scenes — mirror of capture_before.py
 # --------------------------------------------------------------------------- #
 
+
 def scene_banner(c: Console) -> None:
     """Redesigned banner via the real print_banner API."""
     cfg = KarnaConfig(
@@ -119,9 +129,7 @@ def scene_empty_prompt(c: Console) -> None:
     brand = SEMANTIC["accent.brand"]
     tert = SEMANTIC["text.tertiary"]
     c.print(
-        f"[{brand}]{icons.chevron_right}[/] "
-        f"[bold {cyan}]gpt-oss-120b[/] "
-        f"[{tert}]{icons.arrow_right}[/] ",
+        f"[{brand}]{icons.chevron_right}[/] [bold {cyan}]gpt-oss-120b[/] [{tert}]{icons.arrow_right}[/] ",
         end="",
     )
     c.print(f"[{tert}]▌[/]")
@@ -164,14 +172,16 @@ def scene_assistant_streaming(c: Console) -> None:
 def scene_tool_call(c: Console) -> None:
     """write() tool call with path + content streaming in (real API)."""
     renderer = OutputRenderer(c)
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "write", "id": "call_01"},
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "write", "id": "call_01"},
+        )
+    )
     args_chunks = [
         '{"path": "fib.py", ',
         '"content": "def fib(n):\\n    a, b = 0, 1\\n',
-        '    for _ in range(n):\\n        print(a)\\n',
+        "    for _ in range(n):\\n        print(a)\\n",
         '        a, b = b, a + b\\n\\nfib(12)\\n"}',
     ]
     for chunk in args_chunks:
@@ -183,19 +193,25 @@ def scene_tool_result(c: Console) -> None:
     """Result panel from the write tool (real API)."""
     renderer = OutputRenderer(c)
     # Need a _tool present so the result renders with the right name.
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "write", "id": "call_01"},
-    ))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_ARGS_DELTA,
-        data='{"path": "fib.py"}',
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "write", "id": "call_01"},
+        )
+    )
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_ARGS_DELTA,
+            data='{"path": "fib.py"}',
+        )
+    )
     renderer.handle(StreamEvent(kind=EventKind.TOOL_CALL_END))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_RESULT,
-        data={"content": "wrote 12 lines to fib.py", "is_error": False},
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_RESULT,
+            data={"content": "wrote 12 lines to fib.py", "is_error": False},
+        )
+    )
 
 
 def scene_thinking(c: Console) -> None:
@@ -207,10 +223,12 @@ def scene_thinking(c: Console) -> None:
     redesigned one-liner.
     """
     renderer = OutputRenderer(c)
-    renderer.handle(StreamEvent(
-        kind=EventKind.THINKING_DELTA,
-        data="planning the file write — iterative fib, O(1) space",
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.THINKING_DELTA,
+            data="planning the file write — iterative fib, O(1) space",
+        )
+    )
     renderer.finish()
 
 
@@ -235,49 +253,61 @@ def scene_multi_tool(c: Console) -> None:
     renderer = OutputRenderer(c)
 
     # read
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "read", "id": "call_02"},
-    ))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_ARGS_DELTA,
-        data='{"path": "fib.py"}',
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "read", "id": "call_02"},
+        )
+    )
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_ARGS_DELTA,
+            data='{"path": "fib.py"}',
+        )
+    )
     renderer.handle(StreamEvent(kind=EventKind.TOOL_CALL_END))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_RESULT,
-        data={
-            "content": (
-                "def fib(n):\n"
-                "    a, b = 0, 1\n"
-                "    for _ in range(n):\n"
-                "        print(a)\n"
-                "        a, b = b, a + b\n"
-                "\n"
-                "fib(12)\n"
-            ),
-            "is_error": False,
-        },
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_RESULT,
+            data={
+                "content": (
+                    "def fib(n):\n"
+                    "    a, b = 0, 1\n"
+                    "    for _ in range(n):\n"
+                    "        print(a)\n"
+                    "        a, b = b, a + b\n"
+                    "\n"
+                    "fib(12)\n"
+                ),
+                "is_error": False,
+            },
+        )
+    )
 
     # edit
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "edit", "id": "call_03"},
-    ))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_ARGS_DELTA,
-        data=(
-            '{"path": "fib.py", '
-            '"old_string": "fib(12)", '
-            '"new_string": "if __name__ == \\"__main__\\":\\n    fib(12)"}'
-        ),
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "edit", "id": "call_03"},
+        )
+    )
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_ARGS_DELTA,
+            data=(
+                '{"path": "fib.py", '
+                '"old_string": "fib(12)", '
+                '"new_string": "if __name__ == \\"__main__\\":\\n    fib(12)"}'
+            ),
+        )
+    )
     renderer.handle(StreamEvent(kind=EventKind.TOOL_CALL_END))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_RESULT,
-        data={"content": "edited fib.py (1 replacement)", "is_error": False},
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_RESULT,
+            data={"content": "edited fib.py (1 replacement)", "is_error": False},
+        )
+    )
 
 
 # --------------------------------------------------------------------------- #

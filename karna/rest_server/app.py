@@ -167,7 +167,7 @@ async def _run_turn(
 def create_app():
     """Build the FastAPI app. Imported lazily so ``karna`` works without
     FastAPI installed (it's an optional extra)."""
-    from fastapi import Body, FastAPI, HTTPException, WebSocket
+    from fastapi import Body, FastAPI, HTTPException
     from fastapi.responses import StreamingResponse
 
     # Per-app SessionManager captured in closure. Avoids FastAPI's

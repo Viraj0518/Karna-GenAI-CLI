@@ -58,12 +58,59 @@ nellie = "karna.cli:main"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+# Exclude files that aren't part of the shipped package:
+# - ``_persona_driver*.py``: one-off dogfood scripts at repo root
+# - ``karna/gov_contract_scraper/``: untracked PoC from an earlier demo
+# - ``research/``: persona scaffolding + benchmark scratch work
+# - common virtualenv / cache dirs
+extend-exclude = [
+    "_persona_driver*.py",
+    "_demo_nellie_driver.py",
+    "karna/gov_contract_scraper",
+    "research",
+    ".venv*",
+    "_web_screenshots",
+    "_web_interactions",
+    "_visual_diff",
+    "_demo_recordings",
+    "_cli_audit",
+    "_frames",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.per-file-ignores]
 "karna/memory/prompts.py" = ["E501"]
+# Scripts + test harnesses routinely carry long docstring URLs, data
+# literals, and rich-formatted print strings. Enforcing line-length on
+# them is noise, not signal — ignore E501 across these directories.
+"tools/*" = ["E501", "E402", "E722"]
+"tests/*" = ["E501", "E402"]
+"karna/cli.py" = ["E501"]
+"karna/rest_server/*" = ["E501"]
+"karna/tui/*" = ["E501", "E402"]
+"karna/providers/base.py" = ["E501"]
+"karna/providers/openrouter.py" = ["E501"]
+"karna/providers/anthropic.py" = ["E501"]
+"karna/providers/local.py" = ["E501"]
+"karna/providers/bedrock.py" = ["E501"]
+"karna/providers/vertex.py" = ["E501"]
+"karna/providers/azure.py" = ["E501"]
+"karna/providers/moa.py" = ["E501"]
+"karna/providers/router.py" = ["E501"]
+"karna/web/*" = ["E501"]
+"karna/sessions/*" = ["E501"]
+"karna/agents/*" = ["E501"]
+"karna/recipes/*" = ["E501"]
+"karna/mcp_server/*" = ["E501"]
+"karna/mcp_servers/*" = ["E501"]
+"karna/acp_server/*" = ["E501"]
+"karna/compaction/*" = ["E501"]
+"karna/security/*" = ["E501"]
+"karna/skills/*" = ["E501"]
+"karna/tools/*" = ["E501"]
+"karna/rag/*" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

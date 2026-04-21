@@ -44,25 +44,32 @@ else:
 
 _USE_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 
+
 def _c(code: str, text: str) -> str:
     if _USE_COLOR:
         return f"\033[{code}m{text}\033[0m"
     return text
 
+
 def say(msg: str) -> None:
     print(_c("34", msg))
+
 
 def ok(msg: str) -> None:
     print(_c("32", f"[ok] {msg}"))
 
+
 def warn(msg: str) -> None:
     print(_c("33", f"[warn] {msg}"))
+
 
 def err(msg: str) -> None:
     print(_c("31", f"[err] {msg}"), file=sys.stderr)
 
+
 def step(msg: str) -> None:
     print(_c("1", f"==> {msg}"))
+
 
 def banner() -> None:
     text = """
@@ -73,9 +80,11 @@ def banner() -> None:
 """
     print(_c("1", text))
 
+
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
+
 
 def run_cmd(
     cmd: list[str],
@@ -106,6 +115,7 @@ def find_binary(name: str) -> Path | None:
 # ---------------------------------------------------------------------------
 # Checks
 # ---------------------------------------------------------------------------
+
 
 def check_python_version() -> None:
     """Ensure Python >= 3.10."""
@@ -214,6 +224,7 @@ def check_existing(force: bool) -> None:
 # Installation
 # ---------------------------------------------------------------------------
 
+
 def create_venv(venv_path: Path, *, force: bool, dry_run: bool) -> str:
     """Create a venv and return the path to the Python binary inside it."""
     step(f"Creating venv at {venv_path}")
@@ -284,6 +295,7 @@ def create_symlink(venv_path: Path, *, dry_run: bool) -> None:
             return
         # Read current user PATH
         import winreg
+
         try:
             with winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
@@ -345,7 +357,7 @@ def verify_install(venv_path: Path | None, *, dry_run: bool) -> None:
         if platform.system() == "Windows":
             say("Open a new terminal for PATH changes to take effect.")
         else:
-            say(f"Add ~/.local/bin to PATH:")
+            say("Add ~/.local/bin to PATH:")
             say('  export PATH="$HOME/.local/bin:$PATH"')
             say("  (Add this to your ~/.bashrc or ~/.zshrc to make it permanent)")
         return
@@ -375,6 +387,7 @@ def verify_install(venv_path: Path | None, *, dry_run: bool) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

@@ -26,7 +26,6 @@ import sys
 
 import pytest
 
-
 # --------------------------------------------------------------------------- #
 #  Backend discovery / module-level skip
 # --------------------------------------------------------------------------- #
@@ -138,12 +137,8 @@ def test_status_bar_shows_model_and_timer(pty):
     # read_until gives up cheaply if the pattern already matches.
     pty.read_until(re.compile(r"\d+:\d{2}"), timeout=3)
     screen = pty.screen()
-    assert "openrouter/" in screen, (
-        "status bar missing provider/model slug — saw:\n" + screen[-1500:]
-    )
-    assert re.search(r"\d+:\d{2}", screen), (
-        "status bar missing m:ss timer — saw:\n" + screen[-1500:]
-    )
+    assert "openrouter/" in screen, "status bar missing provider/model slug — saw:\n" + screen[-1500:]
+    assert re.search(r"\d+:\d{2}", screen), "status bar missing m:ss timer — saw:\n" + screen[-1500:]
 
 
 # --------------------------------------------------------------------------- #

@@ -59,10 +59,7 @@ def test_web_ui_visual_audit_all_pages_pass():
     if failed:
         # Surface the first few failures with detail so CI logs are useful.
         msgs = [f"{r.slug}@{r.viewport}: status={r.status} err={r.error}" for r in failed]
-        raise AssertionError(
-            f"{len(failed)}/{len(results)} page audits failed:\n  - "
-            + "\n  - ".join(msgs)
-        )
+        raise AssertionError(f"{len(failed)}/{len(results)} page audits failed:\n  - " + "\n  - ".join(msgs))
 
 
 @pytest.mark.timeout(180)
@@ -73,7 +70,6 @@ def test_web_ui_visual_audit_no_console_errors():
 
     results, _ = run_audit(headless=True)
     noisy = [r for r in results if r.console_errors]
-    assert not noisy, (
-        f"{len(noisy)} page(s) produced JS console errors: "
-        + "; ".join(f"{r.slug}@{r.viewport}:{r.console_errors[:2]}" for r in noisy)
+    assert not noisy, f"{len(noisy)} page(s) produced JS console errors: " + "; ".join(
+        f"{r.slug}@{r.viewport}:{r.console_errors[:2]}" for r in noisy
     )

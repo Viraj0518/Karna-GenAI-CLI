@@ -21,9 +21,7 @@ def test_session_template_contains_sse_subscription() -> None:
     template = Path(__file__).resolve().parent.parent / "karna" / "web" / "templates" / "session.html"
     src = template.read_text(encoding="utf-8")
 
-    assert "EventSource" in src, (
-        "session.html is missing EventSource subscription -- transcript will not stream live."
-    )
+    assert "EventSource" in src, "session.html is missing EventSource subscription -- transcript will not stream live."
     assert "/stream" in src, "session.html EventSource must target /sessions/{id}/stream"
     assert "onmessage" in src, "session.html must handle SSE 'message' frames"
 
@@ -34,9 +32,7 @@ def test_session_template_handles_text_delta() -> None:
     src = template.read_text(encoding="utf-8")
     # These are the event kinds emitted by the REST SSE endpoint.
     for kind in ("text", "tool_call", "tool_result", "done"):
-        assert f"'{kind}'" in src or f'"{kind}"' in src, (
-            f"session.html SSE handler does not branch on kind={kind!r}"
-        )
+        assert f"'{kind}'" in src or f'"{kind}"' in src, f"session.html SSE handler does not branch on kind={kind!r}"
 
 
 def test_session_template_uses_safe_dom_for_content() -> None:
@@ -46,6 +42,4 @@ def test_session_template_uses_safe_dom_for_content() -> None:
     # textContent is the safe path; the unsafe HTML-setter on an Element
     # would bypass Jinja autoescape for anything the SSE handler appends.
     # If anyone adds such an assignment with a var on the RHS, this fails.
-    assert ".inner" + "HTML" + " =" not in src, (
-        "unsafe DOM assignment detected in session.html -- use textContent."
-    )
+    assert ".inner" + "HTML" + " =" not in src, "unsafe DOM assignment detected in session.html -- use textContent."

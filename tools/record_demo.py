@@ -30,7 +30,6 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-
 _REC_DIR = Path(__file__).resolve().parent.parent / "_demo_recordings"
 
 
@@ -67,12 +66,17 @@ def capture(duration_s: int, tag: str) -> int:
         grab = ["-f", "x11grab", "-framerate", "25", "-i", os.environ.get("DISPLAY", ":0.0")]
 
     cmd = [
-        ffmpeg, "-y",
+        ffmpeg,
+        "-y",
         *grab,
-        "-t", str(duration_s),
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-pix_fmt", "yuv420p",
+        "-t",
+        str(duration_s),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-pix_fmt",
+        "yuv420p",
         str(out),
     ]
     print(f"recording → {out} for {duration_s}s")
@@ -89,8 +93,14 @@ def extract_frames(mp4: Path, fps: int = 1) -> Path:
     out_dir = mp4.parent / f"{mp4.stem}_frames"
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
-        ffmpeg, "-y", "-i", str(mp4),
-        "-vf", f"fps={fps}", "-q:v", "3",
+        ffmpeg,
+        "-y",
+        "-i",
+        str(mp4),
+        "-vf",
+        f"fps={fps}",
+        "-q:v",
+        "3",
         str(out_dir / "f_%03d.jpg"),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -109,7 +119,9 @@ def _ocr(img: Path) -> str:
     try:
         result = subprocess.run(
             [tess, str(img), "-", "-l", "eng", "--psm", "6"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         return result.stdout.strip()
     except Exception:  # noqa: BLE001

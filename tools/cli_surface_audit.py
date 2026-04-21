@@ -26,7 +26,6 @@ import sys
 import time
 from pathlib import Path
 
-
 _OUT = Path(__file__).resolve().parent.parent / "_cli_audit"
 _MOJIBAKE = re.compile(r"[\ufffd\x00-\x08\x0b\x0c\x0e-\x1f]")
 
@@ -134,9 +133,7 @@ def main() -> int:
             failed += 1
         print(f"{flag:4} nellie {' '.join(argv):35} exit={r['exit']:3} {r['elapsed']:.2f}s")
 
-    (_OUT / "results.json").write_text(
-        json.dumps(results, indent=2, default=str), encoding="utf-8"
-    )
+    (_OUT / "results.json").write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
 
     # Markdown report
     lines = [

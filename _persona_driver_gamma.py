@@ -4,7 +4,13 @@ Research (3) + Health Comms (4) + Support/Ops (4) = 11 personas.
 """
 
 from __future__ import annotations
-import json, os, subprocess, sys, threading, time
+
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -94,10 +100,10 @@ def run_persona(persona: dict, server_proc, call_id: int) -> dict:
     slug = persona["slug"]
     ws = PARENT / slug
     ws.mkdir(parents=True, exist_ok=True)
-    prompt = f"""You are acting as: **{persona['role']}**
+    prompt = f"""You are acting as: **{persona["role"]}**
 
 Task:
-{persona['task']}
+{persona["task"]}
 
 Be concise. Produce real files in the workspace. Finish with one line
 confirming completion."""
@@ -170,10 +176,7 @@ def main():
         sys.stdout.flush()
         entry = run_persona(persona, p, i)
         scoreboard.append(entry)
-        print(
-            f"  duration={entry['duration_s']}s  isError={entry['is_error']}  "
-            f"files={entry['files_produced']}"
-        )
+        print(f"  duration={entry['duration_s']}s  isError={entry['is_error']}  files={entry['files_produced']}")
         sys.stdout.flush()
 
     send(p, {"jsonrpc": "2.0", "id": 99, "method": "shutdown", "params": {}})
@@ -192,9 +195,7 @@ def main():
     for e in scoreboard:
         flag = "\u274c" if e["is_error"] else "\u2705"
         files = ", ".join(e["files_produced"]) or "\u2014"
-        lines.append(
-            f"| {e['slug']} | {e['duration_s']}s | {flag} | {files} |"
-        )
+        lines.append(f"| {e['slug']} | {e['duration_s']}s | {flag} | {files} |")
     total = sum(e["duration_s"] for e in scoreboard)
     ok = sum(1 for e in scoreboard if not e["is_error"])
     lines += [

@@ -23,7 +23,6 @@ import sys
 
 import pytest
 
-
 # ─── Import smoke ───────────────────────────────────────────────────────────
 
 
@@ -50,12 +49,10 @@ class TestImports:
     def test_tui_entry_point_exposed(self):
         """The CLI dispatches into one of these; a rename breaks `nellie`."""
         from karna.tui import repl
+
         candidates = ("run_repl", "run_tui", "run_async_tui", "main")
         found = [c for c in candidates if hasattr(repl, c)]
-        assert found, (
-            f"karna.tui.repl must expose one of {candidates} as the CLI entry point; "
-            f"none found"
-        )
+        assert found, f"karna.tui.repl must expose one of {candidates} as the CLI entry point; none found"
 
 
 # ─── Windows-specific guards ────────────────────────────────────────────────
@@ -70,6 +67,7 @@ class TestPlatformGuards:
         blocked = {"fcntl", "termios"}
         before = set(sys.modules)
         from karna.tui import repl  # noqa: F401
+
         newly_loaded = set(sys.modules) - before
         leaked = blocked & newly_loaded
         assert not leaked, f"POSIX-only modules loaded on Windows: {leaked}"
@@ -86,6 +84,7 @@ class TestCliSmoke:
         hang the entire CI job.
         """
         import subprocess
+
         env = os.environ.copy()
         env["NO_COLOR"] = "1"  # suppress ANSI so output is diffable
         result = subprocess.run(
@@ -96,8 +95,7 @@ class TestCliSmoke:
             text=True,
         )
         assert result.returncode == 0, (
-            f"`nellie --help` exited {result.returncode}\n"
-            f"stdout: {result.stdout[:500]}\nstderr: {result.stderr[:500]}"
+            f"`nellie --help` exited {result.returncode}\nstdout: {result.stdout[:500]}\nstderr: {result.stderr[:500]}"
         )
         # Sanity: help output mentions the binary
         assert "nellie" in (result.stdout + result.stderr).lower()
@@ -105,6 +103,7 @@ class TestCliSmoke:
     def test_auth_list_exits_zero(self, tmp_path, monkeypatch):
         """`nellie auth list` against an empty credentials dir exits clean."""
         import subprocess
+
         monkeypatch.setenv("HOME", str(tmp_path))  # POSIX
         monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Windows
         result = subprocess.run(
@@ -114,6 +113,4 @@ class TestCliSmoke:
             text=True,
             env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
         )
-        assert result.returncode == 0, (
-            f"`nellie auth list` exited {result.returncode}: {result.stderr[:300]}"
-        )
+        assert result.returncode == 0, f"`nellie auth list` exited {result.returncode}: {result.stderr[:300]}"

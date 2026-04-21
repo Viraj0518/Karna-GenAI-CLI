@@ -8,6 +8,7 @@ Exercises:
 
 Unskip by removing the ``_available()`` guard when alpha lands recipes.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -28,6 +29,7 @@ def recipes_module():
     if not _recipes_available():
         pytest.skip("karna.recipes not available — blocked on alpha's recipes PR")
     import karna.recipes as rec
+
     return rec
 
 

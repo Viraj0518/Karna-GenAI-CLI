@@ -133,9 +133,7 @@ def _chromium_available() -> bool:
 @pytest.fixture(scope="module")
 def _chromium_or_skip() -> None:
     if not _chromium_available():
-        pytest.skip(
-            "chromium not installed; run `python -m playwright install chromium`"
-        )
+        pytest.skip("chromium not installed; run `python -m playwright install chromium`")
 
 
 @pytest.fixture(scope="module")
@@ -278,9 +276,7 @@ def test_send_message_hits_backend_and_updates_dom(live_server, page):
     page.locator("#message-input").fill("hello from playwright")
     _snap(page, "send_message_before_submit")
 
-    with page.expect_response(
-        lambda r: send_url_fragment in r.url, timeout=10000
-    ) as resp_info:
+    with page.expect_response(lambda r: send_url_fragment in r.url, timeout=10000) as resp_info:
         page.get_by_role("button", name="Send").click()
     resp = resp_info.value
     assert resp.status == 200, f"send endpoint returned {resp.status}"
@@ -316,16 +312,11 @@ def test_recipes_empty_state_shows_install_hint(live_server, page):
     # empty-state branch should render. If someone adds fixture recipes
     # later, this assertion will need to relax.
     if "No recipes found" not in body_text:
-        pytest.skip(
-            "recipes indexed in this environment; empty-state branch not rendered"
-        )
+        pytest.skip("recipes indexed in this environment; empty-state branch not rendered")
 
     # Install-hint paths. The template escapes tildes, so substring match
     # covers both raw and HTML-rendered output.
-    hint_hit = any(
-        token in body_text
-        for token in ("~/.karna/recipes/", ".karna/recipes/")
-    )
+    hint_hit = any(token in body_text for token in ("~/.karna/recipes/", ".karna/recipes/"))
     assert hint_hit, f"empty-state install hint missing in body: {body_text!r}"
 
 
@@ -349,8 +340,7 @@ def test_memory_create_modal_opens_submits_and_row_appears(live_server, page):
     # Modal becomes visible via .modal.active { display: flex }.
     modal = page.locator("#create-modal")
     modal.wait_for(state="visible", timeout=5000)
-    assert "active" in (modal.get_attribute("class") or ""), \
-        "create-modal did not get .active class"
+    assert "active" in (modal.get_attribute("class") or ""), "create-modal did not get .active class"
 
     # Unique name so we can assert the row shows up after redirect.
     unique_name = f"pw-test-{uuid.uuid4().hex[:8]}"
@@ -370,9 +360,7 @@ def test_memory_create_modal_opens_submits_and_row_appears(live_server, page):
     # Modal should be gone (page re-rendered from scratch, no .active).
     # The row should appear somewhere on the page.
     body_text = page.locator("body").inner_text()
-    assert unique_name in body_text, (
-        f"newly created memory {unique_name!r} not visible on /memory"
-    )
+    assert unique_name in body_text, f"newly created memory {unique_name!r} not visible on /memory"
 
 
 # --------------------------------------------------------------------------- #
@@ -401,9 +389,7 @@ def test_nav_tabs_navigate_and_apply_active_class(live_server, page):
         loc = page.get_by_role("link", name=label).first
         cls = loc.get_attribute("class") or ""
         assert "nav-link" in cls, f"{label} not a nav-link? class={cls!r}"
-        assert "active" in cls, (
-            f"expected {label} nav-link to have 'active' class, got {cls!r}"
-        )
+        assert "active" in cls, f"expected {label} nav-link to have 'active' class, got {cls!r}"
 
     _snap(page, "nav_on_index")
     _assert_active("Sessions")

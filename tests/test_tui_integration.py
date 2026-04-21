@@ -20,7 +20,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from karna.models import Conversation, Message, StreamEvent, ToolCall
+from karna.models import Conversation, Message, StreamEvent
 from karna.providers.base import BaseProvider
 from karna.tui.repl import REPLState, TUIOutputWriter
 

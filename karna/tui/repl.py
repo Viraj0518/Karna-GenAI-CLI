@@ -80,6 +80,8 @@ def _tui_log(event: str, **fields: Any) -> None:
             fh.write("  ".join(bits) + "\n")
     except Exception:  # noqa: BLE001
         pass
+
+
 from karna.config import KarnaConfig
 from karna.models import Conversation, Message
 from karna.prompts import build_system_prompt
@@ -91,9 +93,7 @@ from karna.tools import TOOLS, get_all_tools
 from karna.tui.completer import NellieCompleter
 from karna.tui.output import (
     BRAILLE_FRAMES,
-    FACES,
     LONG_RUN_CHARMS,
-    VERBS,
     EventKind,
     OutputRenderer,
     StreamEvent,
@@ -1021,6 +1021,7 @@ async def run_repl(
         if not text.startswith("/"):
             try:
                 from karna.security.prompt_injection import detect_prompt_injection
+
                 _pi_hits = detect_prompt_injection(text)
                 if _pi_hits:
                     console.print(
@@ -1059,6 +1060,7 @@ async def run_repl(
             # is being stacked onto the in-flight turn, not starting a new one.
             from rich.panel import Panel as _Panel
             from rich.text import Text as _Txt
+
             _queued = _Txt()
             _queued.append("queued — turn is still running\n", style="bold yellow")
             _queued.append(f"→ {text[:80]}", style="yellow")
@@ -1142,6 +1144,7 @@ async def run_repl(
         # emitting any event. The OutputRenderer inside _run_agent_turn
         # will skip its own divider/spinner once it sees _turn_started.
         from rich.rule import Rule as _Rule
+
         console.print()
         console.print(_Rule(style="bright_black", characters="\u2500"))
         console.print()
@@ -1159,9 +1162,7 @@ async def run_repl(
             _trace = Path.home() / ".karna" / "logs" / "turn_trace.log"
             _trace.parent.mkdir(parents=True, exist_ok=True)
             with _trace.open("a", encoding="utf-8") as _fh:
-                _fh.write(
-                    f"{time.time():.3f}  sync_thinking_printed  prompt={user_input[:40]!r}\n"
-                )
+                _fh.write(f"{time.time():.3f}  sync_thinking_printed  prompt={user_input[:40]!r}\n")
         except Exception:  # noqa: BLE001
             pass
 

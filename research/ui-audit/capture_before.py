@@ -18,9 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from karna.config import KarnaConfig
 from karna.tui.banner import print_banner
@@ -28,13 +26,24 @@ from karna.tui.output import EventKind, OutputRenderer, StreamEvent
 from karna.tui.slash import COMMANDS
 from karna.tui.themes import KARNA_THEME
 
-
 OUT = Path(__file__).parent / "before"
 OUT.mkdir(parents=True, exist_ok=True)
 
 TOOLS_LOADED = [
-    "bash", "read", "write", "edit", "grep", "glob", "git",
-    "web_fetch", "web_search", "clipboard", "image", "mcp", "task", "monitor",
+    "bash",
+    "read",
+    "write",
+    "edit",
+    "grep",
+    "glob",
+    "git",
+    "web_fetch",
+    "web_search",
+    "clipboard",
+    "image",
+    "mcp",
+    "task",
+    "monitor",
 ]
 
 
@@ -70,6 +79,7 @@ def snapshot(name: str, render: Callable[[Console], None]) -> None:
 # --------------------------------------------------------------------------- #
 # Scenes
 # --------------------------------------------------------------------------- #
+
 
 def scene_banner(c: Console) -> None:
     cfg = KarnaConfig(
@@ -120,15 +130,17 @@ def scene_assistant_streaming(c: Console) -> None:
 def scene_tool_call(c: Console) -> None:
     """write() tool call with path + content streaming in."""
     renderer = OutputRenderer(c)
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "write", "id": "call_01"},
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "write", "id": "call_01"},
+        )
+    )
     # Simulate args JSON streaming in deltas
     args_chunks = [
         '{"path": "fib.py", ',
         '"content": "def fib(n):\\n    a, b = 0, 1\\n',
-        '    for _ in range(n):\\n        print(a)\\n',
+        "    for _ in range(n):\\n        print(a)\\n",
         '        a, b = b, a + b\\n\\nfib(12)\\n"}',
     ]
     for chunk in args_chunks:
@@ -139,10 +151,12 @@ def scene_tool_call(c: Console) -> None:
 def scene_tool_result(c: Console) -> None:
     """Result panel from the write tool."""
     renderer = OutputRenderer(c)
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_RESULT,
-        data={"content": "wrote 12 lines to fib.py", "is_error": False},
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_RESULT,
+            data={"content": "wrote 12 lines to fib.py", "is_error": False},
+        )
+    )
 
 
 def scene_thinking(c: Console) -> None:
@@ -192,49 +206,61 @@ def scene_multi_tool(c: Console) -> None:
     renderer = OutputRenderer(c)
 
     # read
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "read", "id": "call_02"},
-    ))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_ARGS_DELTA,
-        data='{"path": "fib.py"}',
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "read", "id": "call_02"},
+        )
+    )
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_ARGS_DELTA,
+            data='{"path": "fib.py"}',
+        )
+    )
     renderer.handle(StreamEvent(kind=EventKind.TOOL_CALL_END))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_RESULT,
-        data={
-            "content": (
-                "def fib(n):\n"
-                "    a, b = 0, 1\n"
-                "    for _ in range(n):\n"
-                "        print(a)\n"
-                "        a, b = b, a + b\n"
-                "\n"
-                "fib(12)\n"
-            ),
-            "is_error": False,
-        },
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_RESULT,
+            data={
+                "content": (
+                    "def fib(n):\n"
+                    "    a, b = 0, 1\n"
+                    "    for _ in range(n):\n"
+                    "        print(a)\n"
+                    "        a, b = b, a + b\n"
+                    "\n"
+                    "fib(12)\n"
+                ),
+                "is_error": False,
+            },
+        )
+    )
 
     # edit
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_START,
-        data={"name": "edit", "id": "call_03"},
-    ))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_CALL_ARGS_DELTA,
-        data=(
-            '{"path": "fib.py", '
-            '"old_string": "fib(12)", '
-            '"new_string": "if __name__ == \\"__main__\\":\\n    fib(12)"}'
-        ),
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_START,
+            data={"name": "edit", "id": "call_03"},
+        )
+    )
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_CALL_ARGS_DELTA,
+            data=(
+                '{"path": "fib.py", '
+                '"old_string": "fib(12)", '
+                '"new_string": "if __name__ == \\"__main__\\":\\n    fib(12)"}'
+            ),
+        )
+    )
     renderer.handle(StreamEvent(kind=EventKind.TOOL_CALL_END))
-    renderer.handle(StreamEvent(
-        kind=EventKind.TOOL_RESULT,
-        data={"content": "edited fib.py (1 replacement)", "is_error": False},
-    ))
+    renderer.handle(
+        StreamEvent(
+            kind=EventKind.TOOL_RESULT,
+            data={"content": "edited fib.py (1 replacement)", "is_error": False},
+        )
+    )
 
 
 # --------------------------------------------------------------------------- #

@@ -9,8 +9,6 @@ model headroom up to the 32K soft ceiling.
 
 from __future__ import annotations
 
-import pytest
-
 from karna.providers.base import resolve_max_tokens
 
 

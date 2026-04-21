@@ -12,15 +12,12 @@ no cost per token for a stress run). Override with argv.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import time
-import traceback
 
 from karna.agents.loop import agent_loop
 from karna.models import Conversation, Message
 from karna.providers import get_provider, resolve_model
-
 
 PROMPTS = [
     # Conversational (1-10)
@@ -210,11 +207,7 @@ async def main() -> int:
         stats["total_out"] += usage["out"]
 
         one_line_reply = reply.replace("\n", " ")[:72]
-        print(
-            f"[{i:3d}] {flag} {_fmt_elapsed(elapsed):>7}  "
-            f"{usage['in']:>5}↓ {usage['out']:>4}↑  "
-            f"{one_line_reply}"
-        )
+        print(f"[{i:3d}] {flag} {_fmt_elapsed(elapsed):>7}  {usage['in']:>5}↓ {usage['out']:>4}↑  {one_line_reply}")
         if err:
             print(f"     └─ {err}")
 

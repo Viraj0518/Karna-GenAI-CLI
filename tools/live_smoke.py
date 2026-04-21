@@ -25,8 +25,8 @@ from karna.providers import get_provider, resolve_model
 
 async def main() -> int:
     prov_name = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("NELLIE_SMOKE_PROVIDER", "openrouter")
-    model_spec = sys.argv[2] if len(sys.argv) > 2 else os.environ.get(
-        "NELLIE_SMOKE_MODEL", "anthropic/claude-haiku-4.5"
+    model_spec = (
+        sys.argv[2] if len(sys.argv) > 2 else os.environ.get("NELLIE_SMOKE_MODEL", "anthropic/claude-haiku-4.5")
     )
     prompt = "Reply with exactly three words: Nellie is working."
 

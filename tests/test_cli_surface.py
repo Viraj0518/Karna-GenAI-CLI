@@ -21,7 +21,6 @@ from pathlib import Path
 
 import pytest
 
-
 _TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 
 
@@ -59,10 +58,6 @@ def test_cli_surface_audit_passes(tmp_path: Path) -> None:
                     f"  nellie {' '.join(f['argv'])} exit={f['exit']} "
                     f"mojibake={f.get('mojibake')} head={f['head'][:100]!r}"
                 )
-            pytest.fail(
-                "CLI surface audit reported failures:\n" + "\n".join(msg_parts)
-            )
+            pytest.fail("CLI surface audit reported failures:\n" + "\n".join(msg_parts))
 
-    assert result.returncode == 0, (
-        f"CLI audit exited {result.returncode}. Tail of stdout:\n{result.stdout[-1000:]}"
-    )
+    assert result.returncode == 0, f"CLI audit exited {result.returncode}. Tail of stdout:\n{result.stdout[-1000:]}"
