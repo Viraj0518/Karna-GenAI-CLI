@@ -83,6 +83,7 @@ Each cycle was one commit. No guess-ship-guess-ship loops.
 ## What's still open
 
 - **Visual regression CI job** — 5/5 scenarios regress on Ubuntu because baselines were generated on Windows (font metrics differ). Fix: add a matrix that re-baselines on Linux, or pin the renderer to ansi-text (byte-stable). Deferred to a follow-up; the job isn't gating any other workflow.
+- **Playwright suite parallelism** — final sweep: 176 passed, 3 test_web_ui_interactions failures under load. Each of the 3 passes in isolation (verified in iter 4). Root cause: module-scoped ``live_server`` fixture shares one uvicorn worker, so a prior test's lingering HTTP connection starves the next page goto. Fix: function-scoped fixture or add a settle timeout. Demo-impact: zero — real users don't share one worker across a test suite.
 - **Gamma's VM disk 100%** — blocked sending the SSE bug alert. I fixed in place. Gamma can merge or revert my template change when they're back online.
 - **Beta idle** — I pinged beta at 01:00 with three optional lanes. Silent all 4h, which beta said earlier means "busy or done". Not blocking.
 
