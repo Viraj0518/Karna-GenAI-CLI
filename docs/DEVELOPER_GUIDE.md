@@ -105,7 +105,10 @@ Typer CLI entry point exposed as the `nellie` console script (see `pyproject.tom
 | `nellie history delete <id>` | Delete a session |
 | `nellie resume [id]` | Resume a previous session |
 | `nellie cost` | Show cost summary (today/week/all-time/by-model) |
-| `nellie mcp add/list/remove/test` | Manage MCP servers |
+| `nellie mcp add/list/remove/test/serve` | Manage MCP servers / run Nellie as an MCP server |
+| `nellie acp serve` | Run Nellie as an ACP (Agent Client Protocol) server over stdio |
+| `nellie serve [--host --port]` | Run Nellie as a REST + SSE server (requires `karna[rest]`) |
+| `nellie run --recipe <path> [--param k=v ...] [--workspace DIR]` | Execute a YAML recipe end-to-end (requires pyyaml) |
 | `nellie cron add/list/remove/enable/disable/tick/run/daemon/show` | Manage scheduled jobs |
 | `nellie think <prompt>` | One-shot question without launching the REPL |
 | `nellie init` | Initialize KARNA.md for current project |
@@ -679,6 +682,63 @@ These sit on top of the shared primitives above — each one is called out becau
 - **Database: parameterised queries + DSN SSRF + credential scrubbing** ([tools/database.py](../karna/tools/database.py)) — the tool accepts a `params` array and never string-formats user values into SQL; the connection string hostname is validated via `is_safe_url`; exception messages are passed through `scrub_secrets()` before surfacing.
 - **Browser: per-request SSRF via `page.route()`** ([tools/browser.py](../karna/tools/browser.py)) — every network request the headless page makes (including redirect targets and subresources) is re-validated against `is_safe_url`, closing the DNS-rebinding and redirect-to-metadata holes in the one-shot `is_safe_url` check at `navigate()` time.
 - **Comms: 1 MB message body cap** ([tools/comms.py](../karna/tools/comms.py)) — `send` and `reply` reject bodies larger than `_MAX_MESSAGE_BYTES = 1_000_000` before touching disk, preventing an agent-authored size bomb from filling the inbox.
+
+### karna/rest_server/ — REST + SSE wrapper
+
+Goose-parity HTTP surface. `create_app()` builds the FastAPI app, `serve(host, port)` wraps `uvicorn.run`. Session state (conversation + per-session SSE queue) lives in `SessionManager`; the queue back-pressures by dropping the oldest event when full so a stalled client can't block the agent loop.
+
+**Run it:**
+```bash
+pip install 'karna[rest]'
+nellie serve --host 0.0.0.0 --port 3030
+# OpenAPI doc: http://127.0.0.1:3030/docs
+```
+
+**Endpoint shape:** see [docs/PARITY_SUMMARY.md](PARITY_SUMMARY.md) for the contract or the `REST-API` wiki page for full examples with the SSE event envelope.
+
+### karna/acp_server/ — Agent Client Protocol over stdio
+
+JSON-RPC 2.0 stdio server for agent↔agent communication. Distinct from MCP (which is host↔extension tool-server); ACP is peer-to-peer so a client agent can open a session, stream prompts, and consume `session/update` notifications as we produce them.
+
+**Methods:** `initialize`, `session/new`, `session/list`, `session/prompt`, `session/cancel`, `session/close`, `ping`, `shutdown`. Notifications emit `{session_id, kind: text|tool_call|tool_result|error|done|cancelled, ...}`.
+
+**Connect to it** (from another Nellie, an IDE plugin, or a test harness):
+```json
+{"command": "nellie", "args": ["acp", "serve"]}
+```
+
+Windows-safe stdin read via executor — the ProactorEventLoop can't `connect_read_pipe(sys.stdin)`, so we hand the `readline()` to a thread.
+
+### karna/recipes/ — YAML recipe engine
+
+A declarative spec for one agent run: instructions + parameter schema + tool allowlist + model pin + optional schedule.
+
+**Minimal recipe:**
+```yaml
+name: triage_ticket
+description: Summarise a CDC ticket + recommend triage
+parameters:
+  - name: ticket_id
+    type: string
+    required: true
+  - name: priority
+    type: string
+    default: normal
+extensions: [db, web_fetch]       # tool allowlist (names from karna.tools._TOOL_PATHS)
+model: openrouter:anthropic/claude-haiku-4.5
+max_iterations: 20
+instructions: |
+  Triage ticket {{ ticket_id }} at {{ priority }} priority.
+  Read it from the database, summarise in 3 bullets, flag if vaccine-safety-related.
+```
+
+**Run it:**
+```bash
+pip install 'karna[recipes]'
+nellie run --recipe triage_ticket.yaml --param ticket_id=CDC-4021 --param priority=high
+```
+
+Jinja2 with `StrictUndefined` catches missing variables at render time; if Jinja2 isn't installed, the runner falls back to a simple `{{var}}` substitution (no filters / no conditionals). `sub_recipes:` is parsed but dispatch through the `task` tool is gamma's G1 (in flight).
 
 ### karna/tui/
 
