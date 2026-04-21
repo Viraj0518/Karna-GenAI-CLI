@@ -1133,10 +1133,24 @@ async def run_repl(
         console.print(_Rule(style="bright_black", characters="\u2500"))
         console.print()
         _thinking_line = RichText()
-        _thinking_line.append("\u2726 ", style="dim")
-        _thinking_line.append("Thinking…", style="dim")
-        _thinking_line.append("  (esc to interrupt)", style="dim")
+        # Bold cyan (bright, guaranteed visible on every terminal) —
+        # ``style="dim"`` was rendering invisible on subsequent turns in
+        # Windows Terminal. Claude Code uses an obvious colour too.
+        _thinking_line.append("\u2726 ", style="bold cyan")
+        _thinking_line.append("Thinking…", style="bold cyan")
+        _thinking_line.append("  (esc to interrupt)", style="bright_black")
         console.print(_thinking_line)
+        # Unconditional trace so we can confirm this path ran on repro,
+        # independent of KARNA_DEBUG_TUI. No-op on any disk error.
+        try:
+            _trace = Path.home() / ".karna" / "logs" / "turn_trace.log"
+            _trace.parent.mkdir(parents=True, exist_ok=True)
+            with _trace.open("a", encoding="utf-8") as _fh:
+                _fh.write(
+                    f"{time.time():.3f}  sync_thinking_printed  prompt={user_input[:40]!r}\n"
+                )
+        except Exception:  # noqa: BLE001
+            pass
 
         state.agent_task = asyncio.create_task(
             _run_agent_turn(
