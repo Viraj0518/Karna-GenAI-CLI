@@ -146,7 +146,7 @@ class TestInitialize:
         assert "result" in resp
         result = resp["result"]
         assert result["serverInfo"]["name"] == "nellie-memory"
-        assert result["serverInfo"]["version"] == "0.1.0"
+        assert result["serverInfo"]["version"] == "0.1.3"
         assert result["protocolVersion"] == "2024-11-05"
 
 

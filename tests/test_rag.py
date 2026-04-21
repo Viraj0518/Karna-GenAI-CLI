@@ -25,8 +25,13 @@ from karna.rag.store import KnowledgeStore
 
 
 def _run(coro):
-    """Run an async coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """Run an async coroutine synchronously.
+
+    Python 3.10+ deprecated ``asyncio.get_event_loop()`` when no loop is
+    running — it raises ``RuntimeError`` on fresh pytest workers. Use
+    ``asyncio.run()`` which creates + tears down a loop each call.
+    """
+    return asyncio.run(coro)
 
 
 # ------------------------------------------------------------------ #

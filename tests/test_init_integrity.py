@@ -304,7 +304,7 @@ class TestSecurityGuardrails:
         # This should be flagged as dangerous
         import asyncio
 
-        proceed, warning = asyncio.get_event_loop().run_until_complete(pre_tool_check(tool, {"command": "rm -rf /"}))
+        proceed, warning = asyncio.run(pre_tool_check(tool, {"command": "rm -rf /"}))
         # Should either block or warn
         assert not proceed or warning
 
