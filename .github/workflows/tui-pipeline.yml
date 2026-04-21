@@ -47,6 +47,17 @@ jobs:
       - name: TUI renderer tests
         run: python -m pytest tests/test_tui.py -v
 
+      - name: PTY-driven TUI harness
+        # tests/test_tui_pty.py spawns the real `nellie` binary via
+        # ptyprocess (POSIX) or pywinpty (win), sends keystrokes, asserts
+        # the banner/help/queue-panel render as expected. Catches every
+        # regression that a synthetic event stream can't (e.g. the
+        # BRAILLE_FRAMES import crash was a closure-only path that slipped
+        # past unit tests for days).
+        run: |
+          python -m pip install ptyprocess>=0.7 pexpect>=4.9
+          python -m pytest tests/test_tui_pty.py -v
+
       - name: TUI screenshot smoke (synthetic events → ANSI)
         # tools/tui_screenshot.py drives OutputRenderer with scripted
         # events for all 5 turn scenarios (greeting/planning/research/

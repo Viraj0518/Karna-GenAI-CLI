@@ -107,7 +107,15 @@ def print_banner(
 
     Public signature is unchanged; only the visual output differs.
     """
-    model_label = f"{config.active_provider}/{config.active_model}"
+    # Match the status-bar de-dup logic so the banner doesn't show
+    # "openrouter/openrouter/auto" when the stored model already includes
+    # the provider prefix (OpenRouter stores "<org>/<model>", which Karna
+    # sometimes re-saves as "openrouter/openrouter/<org>/<model>").
+    _m = config.active_model or ""
+    if _m.startswith(f"{config.active_provider}/"):
+        model_label = _m
+    else:
+        model_label = f"{config.active_provider}/{_m}"
     tool_count = len(tool_names)
 
     brand = SEMANTIC.get("accent.brand", "#3C73BD")
