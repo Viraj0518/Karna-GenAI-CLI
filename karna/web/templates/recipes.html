@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Recipes{% endblock %}
+{% block nav_recipes %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Recipe Library</h1>
+</div>
+
+{% if recipes %}
+<div class="recipe-grid">
+    {% for recipe in recipes %}
+    <div class="recipe-card">
+        <div class="recipe-card-header">
+            <h3>{{ recipe.name }}</h3>
+            {% if recipe.model %}
+            <span class="recipe-model">{{ recipe.model }}</span>
+            {% endif %}
+        </div>
+        <p class="recipe-description">{{ recipe.description or "No description" }}</p>
+
+        {% if recipe.parameters %}
+        <div class="recipe-params">
+            <h4>Parameters</h4>
+            <ul>
+                {% for param in recipe.parameters %}
+                <li>
+                    <code>{{ param.name }}</code>
+                    <span class="param-type">({{ param.type | default("string") }})</span>
+                    {% if param.get("required", False) %}
+                    <span class="param-required">required</span>
+                    {% endif %}
+                    {% if param.get("description") %}
+                    <span class="param-desc">- {{ param.description }}</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if recipe.extensions %}
+        <div class="recipe-extensions">
+            <span class="label">Tools:</span>
+            {% for ext in recipe.extensions %}
+            <span class="badge">{{ ext }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post" action="/recipes/run" class="recipe-run-form">
+            <input type="hidden" name="recipe_path" value="{{ recipe.path }}">
+            <button type="submit" class="btn btn-primary btn-sm">Run</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No recipes found.</p>
+    <p class="empty-hint">
+        Add recipe YAML files to <code>~/.karna/recipes/</code> or
+        <code>.karna/recipes/</code> in your project.
+    </p>
+</div>
+{% endif %}
+{% endblock %}

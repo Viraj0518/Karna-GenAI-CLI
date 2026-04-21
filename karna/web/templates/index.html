@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Sessions{% endblock %}
+{% block nav_sessions %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Sessions</h1>
+    <form method="post" action="/sessions/new">
+        <button type="submit" class="btn btn-primary">New Session</button>
+    </form>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% if sessions %}
+<div class="session-list">
+    {% for s in sessions %}
+    <a href="/sessions/{{ s.id }}" class="session-card">
+        <div class="session-card-header">
+            <span class="session-id">{{ s.id[:8] }}...</span>
+            <span class="session-model">{{ s.model or "default" }}</span>
+        </div>
+        <div class="session-card-body">
+            <p class="session-preview">{{ s.message_preview or "No messages yet" }}</p>
+        </div>
+        <div class="session-card-footer">
+            <span class="session-messages">{{ s.message_count }} messages</span>
+            <span class="session-date">{{ s.created_at | int | default(0) }}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No active sessions.</p>
+    <p class="empty-hint">Create a new session to start chatting with Nellie.</p>
+</div>
+{% endif %}
+{% endblock %}

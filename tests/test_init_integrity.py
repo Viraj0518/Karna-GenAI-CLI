@@ -57,7 +57,7 @@ class TestDirectoryStructure:
 
     def test_karna_dir_created(self, fresh_karna_home: Path) -> None:
         """~/.karna/ must exist after load_config."""
-        cfg = load_config()
+        load_config()
         assert fresh_karna_home.exists()
         assert fresh_karna_home.is_dir()
 
@@ -323,7 +323,7 @@ class TestSessionDB:
 
         sessions_dir = fresh_karna_home / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        db = SessionDB(db_path=sessions_dir / "sessions.db")
+        SessionDB(db_path=sessions_dir / "sessions.db")
         assert (sessions_dir / "sessions.db").exists()
 
     def test_session_db_has_tables(self, fresh_karna_home: Path) -> None:
@@ -334,7 +334,7 @@ class TestSessionDB:
 
         sessions_dir = fresh_karna_home / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        db = SessionDB(db_path=sessions_dir / "sessions.db")
+        SessionDB(db_path=sessions_dir / "sessions.db")
 
         conn = sqlite3.connect(sessions_dir / "sessions.db")
         tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -461,7 +461,7 @@ class TestMemorySystem:
             content="Content",
         )
         # The index file should exist or be creatable
-        index_path = memory_dir / "MEMORY.md"
+        # The index file should exist or be creatable (memory_dir / "MEMORY.md")
         # Manager may or may not auto-create the index
         # but the directory should be valid
         assert memory_dir.exists()

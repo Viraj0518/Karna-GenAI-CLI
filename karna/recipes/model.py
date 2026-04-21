@@ -85,9 +85,7 @@ class Recipe:
         known = {p.name for p in self.parameters}
         extra = set(provided.keys()) - known
         if extra:
-            raise ValueError(
-                f"Unknown parameter(s) for recipe {self.name!r}: {sorted(extra)}"
-            )
+            raise ValueError(f"Unknown parameter(s) for recipe {self.name!r}: {sorted(extra)}")
         for p in self.parameters:
             resolved[p.name] = p.validate(provided.get(p.name))
         return resolved

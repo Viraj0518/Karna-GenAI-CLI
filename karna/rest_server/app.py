@@ -16,13 +16,12 @@ import asyncio
 import importlib
 import json
 import logging
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
 from karna.agents.loop import agent_loop
 from karna.config import load_config
-from karna.models import Conversation, Message
+from karna.models import Message
 from karna.prompts import build_system_prompt
 from karna.providers import get_provider, resolve_model
 from karna.rest_server.session_manager import Session, SessionManager
@@ -115,20 +114,24 @@ async def _run_turn(
         elif et == "tool_call_end" and event.tool_call:
             tc = event.tool_call
             call_index[tc.id] = len(events_emitted)
-            await push({
-                "kind": "tool_call",
-                "id": tc.id,
-                "name": tc.name,
-                "arguments": tc.arguments if isinstance(tc.arguments, dict) else str(tc.arguments)[:1000],
-            })
+            await push(
+                {
+                    "kind": "tool_call",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "arguments": tc.arguments if isinstance(tc.arguments, dict) else str(tc.arguments)[:1000],
+                }
+            )
         elif et == "tool_result" and event.tool_result:
             tr = event.tool_result
-            await push({
-                "kind": "tool_result",
-                "id": tr.tool_call_id,
-                "content": str(tr.content)[:2000],
-                "is_error": bool(tr.is_error),
-            })
+            await push(
+                {
+                    "kind": "tool_result",
+                    "id": tr.tool_call_id,
+                    "content": str(tr.content)[:2000],
+                    "is_error": bool(tr.is_error),
+                }
+            )
         elif et == "error":
             err = event.error or event.text
             if err:
@@ -186,11 +189,13 @@ def create_app():
         for name, (module_path, class_name) in _TOOL_PATHS.items():
             mod = importlib.import_module(module_path)
             cls = getattr(mod, class_name)
-            out.append({
-                "name": name,
-                "class": f"{module_path}:{class_name}",
-                "description": getattr(cls, "description", ""),
-            })
+            out.append(
+                {
+                    "name": name,
+                    "class": f"{module_path}:{class_name}",
+                    "description": getattr(cls, "description", ""),
+                }
+            )
         return {"tools": out}
 
     @app.post("/v1/sessions")
@@ -201,7 +206,9 @@ def create_app():
         model = payload.get("model")
         system = payload.get("system_instructions")
         session = await sm.create(
-            workspace=workspace, model=model, system_instructions=system,
+            workspace=workspace,
+            model=model,
+            system_instructions=system,
         )
         return {
             "id": session.id,
@@ -237,10 +244,7 @@ def create_app():
             "model": s.model,
             "created_at": s.created_at,
             "last_activity": s.last_activity,
-            "messages": [
-                {"role": m.role, "content": m.content}
-                for m in s.conversation.messages
-            ],
+            "messages": [{"role": m.role, "content": m.content} for m in s.conversation.messages],
         }
 
     @app.delete("/v1/sessions/{sid}")
@@ -295,10 +299,7 @@ def serve(host: str = "127.0.0.1", port: int = 3030) -> None:
     try:
         import uvicorn
     except ImportError as exc:
-        raise RuntimeError(
-            "uvicorn not installed. Install the REST server extra: "
-            "pip install 'karna[rest]'"
-        ) from exc
+        raise RuntimeError("uvicorn not installed. Install the REST server extra: pip install 'karna[rest]'") from exc
 
     logging.basicConfig(
         level=logging.INFO,

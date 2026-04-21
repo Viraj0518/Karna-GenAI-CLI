@@ -212,7 +212,7 @@ class TestToolExecution:
 
         target = tmp_path / "output.txt"
         tool = WriteTool(allowed_roots=[tmp_path])
-        result = await tool.execute(file_path=str(target), content="hello world")
+        await tool.execute(file_path=str(target), content="hello world")
         assert target.exists()
         assert target.read_text() == "hello world"
 
@@ -223,7 +223,7 @@ class TestToolExecution:
         target = tmp_path / "edit_test.txt"
         target.write_text("foo bar baz")
         tool = EditTool(allowed_roots=[tmp_path])
-        result = await tool.execute(
+        await tool.execute(
             file_path=str(target),
             old_string="bar",
             new_string="qux",

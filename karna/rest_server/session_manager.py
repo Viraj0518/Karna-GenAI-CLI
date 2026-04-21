@@ -31,9 +31,7 @@ class Session:
     last_activity: float = field(default_factory=time.time)
     # SSE subscribers read from this queue. Producer pushes dict events
     # from the agent loop; the streaming endpoint drains + emits them.
-    event_queue: asyncio.Queue[dict[str, Any]] = field(
-        default_factory=lambda: asyncio.Queue(maxsize=1000)
-    )
+    event_queue: asyncio.Queue[dict[str, Any]] = field(default_factory=lambda: asyncio.Queue(maxsize=1000))
     # Guard concurrent messages on one session — the agent loop is not
     # re-entrant against a shared Conversation.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -65,9 +63,7 @@ class SessionManager:
                 # Stored as a ``system`` role message so build_system_prompt
                 # (which composes a system prompt from tools/skills/project
                 # context) can append to this rather than replace it.
-                session.conversation.messages.append(
-                    Message(role="system", content=system_instructions)
-                )
+                session.conversation.messages.append(Message(role="system", content=system_instructions))
             self._sessions[sid] = session
             return session
 

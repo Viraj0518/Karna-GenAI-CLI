@@ -22,4 +22,12 @@ from __future__ import annotations
 
 from karna.mcp_server.server import serve
 
-__all__ = ["serve"]
+__all__ = ["serve", "run_memory_server"]
+
+
+def __getattr__(name: str):  # noqa: ANN204
+    if name == "run_memory_server":
+        from karna.mcp_server.memory_server import run_memory_server
+
+        return run_memory_server
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

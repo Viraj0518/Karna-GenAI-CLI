@@ -359,7 +359,7 @@ def _ssrf_reject_private_host(conn_str: str) -> str | None:
         # logic without its scheme whitelist, so swap the scheme for checking.
         for db_scheme in ("postgresql://", "mysql://"):
             if normalised.startswith(db_scheme):
-                probe = "http://" + normalised[len(db_scheme):]
+                probe = "http://" + normalised[len(db_scheme) :]
                 break
         else:
             return None

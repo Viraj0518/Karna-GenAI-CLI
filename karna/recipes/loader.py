@@ -46,16 +46,11 @@ def load_recipe_from_dict(raw: dict[str, Any]) -> Recipe:
     unknown = set(raw.keys()) - _KNOWN_FIELDS
     if unknown:
         raise RecipeLoadError(
-            f"Recipe contains unknown fields: {sorted(unknown)}. "
-            f"Supported fields: {sorted(_KNOWN_FIELDS)}."
+            f"Recipe contains unknown fields: {sorted(unknown)}. Supported fields: {sorted(_KNOWN_FIELDS)}."
         )
 
-    parameters = [
-        _parse_parameter(p) for p in (raw.get("parameters") or [])
-    ]
-    sub_recipes = [
-        _parse_sub_recipe(s) for s in (raw.get("sub_recipes") or [])
-    ]
+    parameters = [_parse_parameter(p) for p in (raw.get("parameters") or [])]
+    sub_recipes = [_parse_sub_recipe(s) for s in (raw.get("sub_recipes") or [])]
     extensions = raw.get("extensions") or []
     # Extensions may be listed as `[{"name": "db"}, {"name": "bash"}]` (Goose
     # shape with future fields) or `["db", "bash"]` (shorthand). Normalise.
@@ -94,8 +89,7 @@ def _parse_parameter(raw: Any) -> RecipeParameter:
     ptype = raw.get("type", "string")
     if ptype not in ("string", "integer", "number", "boolean"):
         raise RecipeLoadError(
-            f"Parameter {raw['name']!r} has unsupported type {ptype!r}. "
-            "Allowed: string, integer, number, boolean."
+            f"Parameter {raw['name']!r} has unsupported type {ptype!r}. Allowed: string, integer, number, boolean."
         )
     return RecipeParameter(
         name=str(raw["name"]),
@@ -110,9 +104,7 @@ def _parse_sub_recipe(raw: Any) -> SubRecipeRef:
     if not isinstance(raw, dict):
         raise RecipeLoadError(f"sub_recipes entry must be a mapping: {raw!r}")
     if "name" not in raw or "recipe" not in raw:
-        raise RecipeLoadError(
-            f"sub_recipes entry needs 'name' + 'recipe': {raw!r}"
-        )
+        raise RecipeLoadError(f"sub_recipes entry needs 'name' + 'recipe': {raw!r}")
     inputs = raw.get("inputs") or {}
     if not isinstance(inputs, dict):
         raise RecipeLoadError(f"sub_recipes.inputs must be a mapping: {raw!r}")

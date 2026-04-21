@@ -1141,10 +1141,7 @@ async def run_repl(
         if state.agent_running:
             state.interrupt_requested = True
             state.status_text = "interrupting..."
-            console.print(
-                "\n[bright_black]Esc — stopping at next checkpoint. "
-                "Ctrl-C to force-cancel.[/bright_black]"
-            )
+            console.print("\n[bright_black]Esc — stopping at next checkpoint. Ctrl-C to force-cancel.[/bright_black]")
 
     @kb.add("c-d")
     def _exit(event):  # type: ignore[no-untyped-def]

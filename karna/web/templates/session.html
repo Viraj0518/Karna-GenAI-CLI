@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Session {{ session.id[:8] }}{% endblock %}
+{% block nav_sessions %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="session-info">
+        <h1>Session <code>{{ session.id[:12] }}</code></h1>
+        <span class="session-model-badge">{{ session.model or "default model" }}</span>
+    </div>
+    <div class="session-actions">
+        <form method="post" action="/sessions/{{ session.id }}/cancel" class="inline-form">
+            <button type="submit" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        </form>
+        <form method="post" action="/sessions/{{ session.id }}/delete" class="inline-form">
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
+</div>
+
+<div class="transcript" id="transcript">
+    <div id="messages">
+        {% for msg in session.messages %}
+        <div class="message message-{{ msg.role }}">
+            <div class="message-role">{{ msg.role }}</div>
+            <div class="message-content">{{ msg.content }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    <div id="stream-output"></div>
+</div>
+
+<div class="input-area">
+    <form
+        hx-post="/sessions/{{ session.id }}/send"
+        hx-target="#messages"
+        hx-swap="innerHTML"
+        class="send-form"
+        id="send-form"
+    >
+        <textarea
+            name="content"
+            placeholder="Type your message..."
+            class="input-box"
+            id="message-input"
+            rows="2"
+        ></textarea>
+        <button type="submit" class="btn btn-primary send-btn">Send</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-scroll transcript
+    function scrollToBottom() {
+        const transcript = document.getElementById('transcript');
+        transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    // After htmx swap, scroll to bottom and clear input
+    document.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target.id === 'messages') {
+            scrollToBottom();
+            document.getElementById('message-input').value = '';
+        }
+    });
+
+    // Submit on Enter (Shift+Enter for newline)
+    document.getElementById('message-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            document.getElementById('send-form').requestSubmit();
+        }
+    });
+
+    // Initial scroll
+    scrollToBottom();
+</script>
+{% endblock %}
