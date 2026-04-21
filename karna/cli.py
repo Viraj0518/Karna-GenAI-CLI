@@ -149,6 +149,42 @@ def auth_logout(
     rprint(f"[green]Removed {provider} credential ({path})[/green]")
 
 
+@auth_app.command("migrate")
+def auth_migrate(
+    keep_json: bool = typer.Option(
+        False, "--keep-json", help="Don't delete the JSON files after migration",
+    ),
+) -> None:
+    """Move JSON credentials into the OS keyring.
+
+    Idempotent. Skips providers already in keyring. Prints a summary of
+    what moved, what was left behind, and any errors.
+    """
+    from karna.auth import keyring_store
+
+    if not keyring_store.is_available():
+        rprint(
+            "[red]OS keyring is not available on this system.[/red]\n"
+            "Karna will continue using JSON storage at ~/.karna/credentials/.\n"
+            "Install a Secret Service provider (Linux) or re-run on a platform "
+            "with keyring support (macOS Keychain / Windows Credential Manager)."
+        )
+        raise typer.Exit(code=1)
+
+    report = keyring_store.migrate_from_json(delete_json=not keep_json)
+    if report["migrated"]:
+        rprint(f"[green]Migrated to keyring:[/green] {', '.join(report['migrated'])}")
+    if report["skipped"]:
+        rprint(f"[yellow]Skipped:[/yellow] {', '.join(report['skipped'])}")
+    if report["errors"]:
+        rprint(f"[red]Errors:[/red]")
+        for e in report["errors"]:
+            rprint(f"  {e}")
+        raise typer.Exit(code=2)
+    if not (report["migrated"] or report["skipped"]):
+        rprint("[bright_black]No JSON credentials to migrate.[/bright_black]")
+
+
 # --------------------------------------------------------------------------- #
 #  Model commands
 # --------------------------------------------------------------------------- #
