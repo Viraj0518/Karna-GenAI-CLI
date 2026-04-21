@@ -3,10 +3,15 @@ name: security
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  # PR coverage lives in audit.yml — this workflow is intentionally
+  # the main-branch + weekly gate, to avoid duplicating pip-audit and
+  # bandit on every PR run.
   schedule:
     - cron: "0 6 * * 1"  # weekly, Mondays 06:00 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pip-audit:
