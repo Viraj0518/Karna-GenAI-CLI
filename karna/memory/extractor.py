@@ -9,7 +9,7 @@ Scans user messages for patterns that indicate information worth persisting:
 Uses regex + keyword matching (no LLM calls) to keep per-turn cost at zero.
 Deduplicates against existing memories and rate-limits saves.
 
-Adapted from cc-src memoryScan.ts patterns.  See NOTICES.md for attribution.
+Adapted from upstream memoryScan.ts patterns.  See NOTICES.md for attribution.
 """
 
 from __future__ import annotations

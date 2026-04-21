@@ -1,9 +1,9 @@
-"""CC-ported UI components — skinned for Nellie.
+"""upstream-ported UI components — skinned for Nellie.
 
-Mirrors Claude Code's TUI chrome: the one-line status bar, context progress
+Mirrors upstream TUI chrome: the one-line status bar, context progress
 bar, token-warning panel, effort indicator, PR badge, cost-threshold alert,
 and memory-usage indicator. Source files live under
-`/c/cc-src/src/components/` — this package is a library-only port, no
+`the upstream project/components/` — this package is a library-only port, no
 runtime wiring.
 """
 

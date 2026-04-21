@@ -1,4 +1,4 @@
-"""Tests for the CC-ported permission + trust dialog module.
+"""Tests for the upstream-ported permission + trust dialog module.
 
 The module is library-only — every prompt function awaits a helper that
 reads a keystroke. We monkeypatch ``_read_keystroke`` to simulate user
@@ -38,7 +38,7 @@ def _patch_input(monkeypatch: pytest.MonkeyPatch, response: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  1. Response classifier — every CC keystroke maps to the right enum.
+#  1. Response classifier — every upstream keystroke maps to the right enum.
 # --------------------------------------------------------------------------- #
 
 
@@ -109,7 +109,7 @@ def test_prompt_mcp_server_approval_yes_and_default_no(
         is True
     )
 
-    # Empty response → defaults to No (matches CC's `onCancel → no`).
+    # Empty response → defaults to No (matches upstream's `onCancel → no`).
     _patch_input(monkeypatch, "")
     assert (
         asyncio.run(
@@ -137,7 +137,7 @@ def test_prompt_mcp_server_approval_yes_and_default_no(
 
 
 # --------------------------------------------------------------------------- #
-#  4. prompt_api_key_trust — defaults to no (CC marks No as *recommended*).
+#  4. prompt_api_key_trust — defaults to no (upstream marks No as *recommended*).
 # --------------------------------------------------------------------------- #
 
 

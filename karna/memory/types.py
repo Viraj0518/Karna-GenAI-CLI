@@ -5,7 +5,6 @@ from the current project state. Code patterns, architecture, git history,
 and file structure are derivable (via grep/git/KARNA.md) and should NOT
 be saved as memories.
 
-Ported from cc-src memoryTypes.ts.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ This is the most critical module in Karna.  It assembles the system
 prompt from identity, tool docs, behavioral guidelines, and context
 sections, then optionally adapts it for the target model/provider.
 
-Design principles (learned from cc-src):
+Design principles (learned from upstream):
 - The base prompt works for ANY model — no provider lock-in.
 - Per-model adaptations are additive tweaks, not rewrites.
 - Context sections are injected in priority order so we can trim
@@ -12,8 +12,6 @@ Design principles (learned from cc-src):
 - Tool documentation is auto-generated from the tool registry so
   new tools get prompt coverage for free.
 
-Ported from cc-src system prompt patterns with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-"""Input primitives ported from Claude Code's TUI.
+"""Input primitives ported from upstream TUI.
 
-Mirrors the behaviour of CC's ``VimTextInput.tsx`` (mode state machine, key
+Mirrors the behaviour of upstream's ``VimTextInput.tsx`` (mode state machine, key
 tables), ``ScrollKeybindingHandler.tsx`` (PgUp/PgDn/Home/End on a scrollable
 view), ``ConfigurableShortcutHint.tsx`` (the "<shortcut> to <action>" chip
 that sits above the input), and ``ClickableImageRef.tsx`` (OSC-8 hyperlinked
@@ -18,8 +18,8 @@ Design notes
   :mod:`karna.tui.vim`. This class exists so unit tests (and embedded text
   widgets that don't use a full ``PromptSession``) can still get mode
   tracking.
-* The configurable-shortcut-hint follows CC's format: ``<kbd> <action>``
-  with an optional parens wrapper and bolding. CC pulls the actual
+* The configurable-shortcut-hint follows upstream's format: ``<kbd> <action>``
+  with an optional parens wrapper and bolding. upstream pulls the actual
   keybinding string from the user's keybindings.json via
   ``useShortcutDisplay`` — we accept the resolved string directly.
 * Clickable image refs emit OSC-8 hyperlinks (``\\x1b]8;;<url>\\x07...\\x1b]8;;\\x07``).
@@ -28,7 +28,7 @@ Design notes
 
 Runtime gaps
 ------------
-* CC's ``useVimInput`` hook is a ~900-line state machine implementing
+* upstream's ``useVimInput`` hook is a ~900-line state machine implementing
   counted motions (``5dd``), text objects (``diw``, ``da"``), marks, and
   registers. The Python port intentionally stops at mode tracking +
   insert/normal/visual transitions — prompt_toolkit's vi implementation
@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
 
 
 class VimMode(str, Enum):
-    """Vim mode names, matching CC's ``VimInputMode`` type (INSERT/NORMAL/VISUAL)."""
+    """Vim mode names, matching upstream's ``VimInputMode`` type (INSERT/NORMAL/VISUAL)."""
 
     INSERT = "insert"
     NORMAL = "normal"
@@ -74,7 +74,7 @@ class VimMode(str, Enum):
 
 
 # The printable ASCII keys that trigger a mode change out of normal mode.
-# Matches the bindings in CC's ``useVimInput.ts`` normal-mode table.
+# Matches the bindings in upstream's ``useVimInput.ts`` normal-mode table.
 _NORMAL_TO_INSERT_KEYS: frozenset[str] = frozenset(
     {
         "i",  # insert before cursor
@@ -85,7 +85,7 @@ _NORMAL_TO_INSERT_KEYS: frozenset[str] = frozenset(
         "O",  # open line above
         "s",  # substitute char
         "S",  # substitute line
-        "c",  # change (enters insert after motion — handled as prefix in CC)
+        "c",  # change (enters insert after motion — handled as prefix in upstream)
         "C",  # change to end of line
     }
 )
@@ -94,7 +94,7 @@ _NORMAL_TO_VISUAL_KEYS: frozenset[str] = frozenset({"v", "V"})
 
 
 class VimTextInput:
-    """prompt_toolkit ``Buffer`` wrapper exposing CC-compatible vim mode state.
+    """prompt_toolkit ``Buffer`` wrapper exposing upstream-compatible vim mode state.
 
     This class does *not* try to re-implement prompt_toolkit's vi engine. It
     tracks ``mode`` (INSERT / NORMAL / VISUAL) and exposes a small transition
@@ -107,10 +107,10 @@ class VimTextInput:
         Underlying prompt_toolkit ``Buffer``. Optional at construction time so
         the class can be instantiated in tests without prompt_toolkit.
     initial_mode:
-        Starting mode. CC defaults to INSERT.
+        Starting mode. upstream defaults to INSERT.
     on_mode_change:
         Callback invoked with the new :class:`VimMode` whenever the mode
-        transitions. Mirrors CC's ``onModeChange`` prop.
+        transitions. Mirrors upstream's ``onModeChange`` prop.
     """
 
     def __init__(
@@ -142,7 +142,7 @@ class VimTextInput:
         if self._on_mode_change is not None:
             self._on_mode_change(new_mode)
 
-    # -- transition helpers mapped to CC's useVimInput table ------------- #
+    # -- transition helpers mapped to upstream's useVimInput table ------------- #
 
     def handle_key(self, key: str) -> bool:
         """Process a single printable key in the current mode.
@@ -176,7 +176,7 @@ class VimTextInput:
         return False  # pragma: no cover - exhaustive
 
     def handle_escape(self) -> None:
-        """``Esc`` in CC returns INSERT/VISUAL -> NORMAL; no-op in NORMAL."""
+        """``Esc`` in upstream returns INSERT/VISUAL -> NORMAL; no-op in NORMAL."""
         if self._mode in (VimMode.INSERT, VimMode.VISUAL):
             self.set_mode(VimMode.NORMAL)
 
@@ -207,7 +207,7 @@ class VimTextInput:
 class ScrollKeybindings:
     """Install scroll shortcuts on a prompt_toolkit ``BufferControl`` / ``Buffer``.
 
-    Matches the shortcuts handled by CC's ``ScrollKeybindingHandler.tsx``:
+    Matches the shortcuts handled by upstream's ``ScrollKeybindingHandler.tsx``:
 
     ============  ===================================
     Key           Effect
@@ -231,7 +231,7 @@ class ScrollKeybindings:
         """``on_scroll(delta_lines)`` fires after each scroll action.
 
         Positive delta = down, negative = up, ``float('inf')`` / ``-inf``
-        for Home/End jumps (matching how CC encodes "jump to edge" events).
+        for Home/End jumps (matching how upstream encodes "jump to edge" events).
         """
         self._on_scroll = on_scroll
 
@@ -295,11 +295,11 @@ def _format_shortcut_hint(
     bold: bool = False,
     separator: str = "  \u00b7  ",
 ) -> Text:
-    """Build a Rich ``Text`` matching CC's ``KeyboardShortcutHint`` rendering.
+    """Build a Rich ``Text`` matching upstream's ``KeyboardShortcutHint`` rendering.
 
     Each hint is rendered as ``<kbd> <action>`` with the keybinding in the
     cyan accent and the action text dim. Hints are joined by ``separator``
-    (defaults to CC's centered-dot).
+    (defaults to upstream's centered-dot).
     """
     txt = Text()
     for i, (key, action) in enumerate(hints):
@@ -379,12 +379,12 @@ def render_clickable_image_ref(
 ) -> Text:
     """Render a ``[Image #N]`` clickable reference (OSC-8 hyperlink).
 
-    Mirrors CC's ``ClickableImageRef.tsx``:
+    Mirrors upstream's ``ClickableImageRef.tsx``:
 
     * Text is ``[Image #<id>]`` — ``id`` defaults to a hash of the path so
       the label is stable across runs.
     * The link target is the local ``file://`` URL for ``path``.
-    * ``selected=True`` reverses colors (CC's ``inverse=isSelected``) and
+    * ``selected=True`` reverses colors (upstream's ``inverse=isSelected``) and
       bolds the label.
 
     Rich renders OSC-8 natively via the ``link`` style; terminals that don't

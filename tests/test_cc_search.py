@@ -1,4 +1,4 @@
-"""Tests for the CC-ported search / history / quick-open dialogs.
+"""Tests for the upstream-ported search / history / quick-open dialogs.
 
 Covers the pure helpers (fuzzy ranker, ``render_search_box``, ``TagTabs``)
 and the SessionDB-backed ``global_search`` backend. We don't drive the

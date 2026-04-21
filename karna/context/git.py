@@ -4,7 +4,7 @@ Runs lightweight git commands to build a concise summary of the
 repository state (branch, status, recent commits, uncommitted changes)
 that is injected into the system context for every provider call.
 
-Adapted from cc-src ``context.ts`` / ``utils/git.ts``.  See NOTICES.md.
+Adapted from upstream ``context.ts`` / ``utils/git.ts``.  See NOTICES.md.
 """
 
 from __future__ import annotations

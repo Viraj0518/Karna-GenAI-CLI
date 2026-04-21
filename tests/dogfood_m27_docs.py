@@ -81,7 +81,6 @@ def read_codebase_summary() -> str:
 {files_section}
 """
 
-
 async def generate_doc(provider: OpenRouterProvider, doc_type: str, context: str) -> str:
     """Call M2.7 to generate one documentation file."""
 

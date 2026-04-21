@@ -1,8 +1,8 @@
-"""Picker dialogs, ported from Claude Code and skinned for Nellie.
+"""Picker dialogs, ported from upstream reference and skinned for Nellie.
 
-Mirrors the visuals of CC's ``ModelPicker.tsx``, ``ThemePicker.tsx``,
+Mirrors the visuals of upstream's ``ModelPicker.tsx``, ``ThemePicker.tsx``,
 ``OutputStylePicker.tsx``, ``LanguagePicker.tsx`` and the shared
-``CustomSelect/`` widget. Source under ``/c/cc-src/src/components/``.
+``CustomSelect/`` widget. Source under ``the upstream project/components/``.
 
 Library only — no wiring into the REPL. Callers `await` one of the
 ``pick_*`` coroutines (or instantiate :class:`Picker` directly) and get
@@ -15,7 +15,7 @@ Design
   terminal's scrollback keeps working — same pattern as
   :mod:`karna.tui.hermes_repl` (see its ``patch_stdout``/``run_async``
   usage). Nothing is printed outside the prompt_toolkit render cycle.
-* Visual chrome matches CC:
+* Visual chrome matches upstream:
     - boxed dialog with a title line on top,
     - options rendered as ``  label`` with an inline ``▸`` cursor,
     - current selection highlighted with Nellie's brand ``#3C73BD``,
@@ -25,22 +25,22 @@ Design
 * Accepts options as ``list[tuple[id, label, description]]`` — any
   hashable id works. The picker returns the id (or ``None``).
 
-CC behaviours intentionally omitted (see the report at the bottom of
+upstream behaviours intentionally omitted (see the report at the bottom of
 this file's docstring in the commit message):
 
-* **Live theme preview** — CC's ``ThemePicker`` previews the theme via
+* **Live theme preview** — upstream's ``ThemePicker`` previews the theme via
   ``setPreviewTheme`` on focus change and reverts on cancel. Nellie has
   no reactive theme system yet, so selection is final; no preview.
-* **Fast-mode banner + effort cycling** — CC's ``ModelPicker`` shows a
+* **Fast-mode banner + effort cycling** — upstream's ``ModelPicker`` shows a
   Fast-Mode notice and lets ``Shift-Tab``/``Tab`` cycle effort levels.
   Nellie's providers don't plumb effort through yet, so the model
   picker shows provider/context/max-output columns only.
 * **External-editor `ctrl+g` on input options** and **image-paste on
-  input rows** — CC's `select.tsx` supports these for composition-style
+  input rows** — upstream's `select.tsx` supports these for composition-style
   inputs; our pickers are read-only selects, so they're not applicable.
-* **Search/filter typing** — CC's ``/model`` picker supports free-text
+* **Search/filter typing** — upstream's ``/model`` picker supports free-text
   filtering. The legacy :mod:`karna.tui.model_picker` already provides
-  that; this port mirrors CC's *dialog* flavour (keyboard navigation
+  that; this port mirrors upstream's *dialog* flavour (keyboard navigation
   only). Search is a natural extension and is deliberately out of
   scope here.
 """
@@ -67,7 +67,7 @@ except Exception:  # pragma: no cover - import is optional at module load
 
 
 # --------------------------------------------------------------------------- #
-#  Palette — single source of truth, matches CC's Dialog/Select palette
+#  Palette — single source of truth, matches upstream's Dialog/Select palette
 # --------------------------------------------------------------------------- #
 
 BRAND = COLORS.accent.brand  # #3C73BD — Nellie blue
@@ -77,10 +77,10 @@ TEXT = COLORS.text.primary
 MUTED = COLORS.text.secondary
 
 
-# Box-drawing glyphs (match CC's design-system `Dialog` chrome).
+# Box-drawing glyphs (match upstream's design-system `Dialog` chrome).
 _BOX_TL, _BOX_TR, _BOX_BL, _BOX_BR = "\u256d", "\u256e", "\u2570", "\u256f"  # ╭ ╮ ╰ ╯
 _BOX_H, _BOX_V = "\u2500", "\u2502"  # ─ │
-# Pointer — CC uses `figures.pointer` which resolves to "❯" on modern
+# Pointer — upstream uses `figures.pointer` which resolves to "❯" on modern
 # terminals (same Unicode char used by inquirer.js).
 _POINTER = "\u276f"  # ❯
 
@@ -121,7 +121,7 @@ def _coerce_options(options: Iterable[Any]) -> list[Option]:
 
 
 class Picker:
-    """Inline select-from-list widget. CC's ``<Select>`` + ``<Dialog>``.
+    """Inline select-from-list widget. upstream's ``<Select>`` + ``<Dialog>``.
 
     Call :meth:`prompt` (it's async) to show the picker and await the
     selected option id. Returns ``None`` if the user presses Esc or
@@ -231,7 +231,7 @@ def _render_dialog(
 ) -> FormattedText:
     """Render the whole boxed dialog as ``FormattedText`` fragments.
 
-    CC's ``design-system/Dialog`` draws a rounded-corner box around its
+    upstream's ``design-system/Dialog`` draws a rounded-corner box around its
     children. We emulate that chrome with Unicode box-drawing glyphs.
     """
     # Compute a scroll window so the focused option is always visible.
@@ -259,7 +259,7 @@ def _render_dialog(
     frags.append(("", " " * max(title_pad, 0)))
     frags.append(("class:picker.border", _BOX_V + "\n"))
 
-    # Separator under title — CC's Dialog uses a thin rule.
+    # Separator under title — upstream's Dialog uses a thin rule.
     frags.append(("class:picker.border", _BOX_V))
     frags.append(("class:picker.border", _BOX_H * (body_width - 2)))
     frags.append(("class:picker.border", _BOX_V + "\n"))
@@ -406,7 +406,7 @@ def _model_rows(available: Sequence[Any]) -> list[Option]:
 
     Labels pad the model id to the widest provider column so the
     context-window + max-output columns line up visually — same as
-    CC's ``ModelPicker`` table.
+    upstream's ``ModelPicker`` table.
     """
     # Group-sort by provider, preserving intra-provider order.
     buckets: dict[str, list[Any]] = {}
@@ -432,7 +432,7 @@ def _model_rows(available: Sequence[Any]) -> list[Option]:
 async def pick_model(current: str, available: Sequence[Any]) -> Optional[str]:
     """Specialised picker: model selection grouped by provider.
 
-    CC analogue: ``ModelPicker.tsx``. Shows context-window + output-cap
+    upstream analogue: ``ModelPicker.tsx``. Shows context-window + output-cap
     columns. Fast-mode / effort controls omitted (see module docstring).
     """
     rows = _model_rows(available)
@@ -440,7 +440,7 @@ async def pick_model(current: str, available: Sequence[Any]) -> Optional[str]:
 
 
 async def pick_theme(current: str) -> Optional[str]:
-    """Pick a Rich theme. CC analogue: ``ThemePicker.tsx``."""
+    """Pick a Rich theme. upstream analogue: ``ThemePicker.tsx``."""
     options: list[Option] = [
         ("dark", "Dark mode", "High-contrast dark — Nellie's default"),
         ("light", "Light mode", "Light background with brand accents"),
@@ -453,7 +453,7 @@ async def pick_theme(current: str) -> Optional[str]:
 
 
 async def pick_output_style(current: str) -> Optional[str]:
-    """Pick an output presentation style. CC analogue: ``OutputStylePicker.tsx``."""
+    """Pick an output presentation style. upstream analogue: ``OutputStylePicker.tsx``."""
     try:
         from karna.tui.output_style import BUILTIN_STYLES
     except Exception:  # pragma: no cover
@@ -473,9 +473,9 @@ async def pick_output_style(current: str) -> Optional[str]:
 
 
 async def pick_language(current: str, available: Sequence[str]) -> Optional[str]:
-    """Pick a syntax-highlight language override. CC analogue: ``LanguagePicker.tsx``.
+    """Pick a syntax-highlight language override. upstream analogue: ``LanguagePicker.tsx``.
 
-    CC's component is a free-text input; Nellie already exposes text
+    upstream's component is a free-text input; Nellie already exposes text
     input via the main prompt, so the dialog form here is a simple list
     pick. Pass an empty-string option to represent "auto/default".
     """

@@ -1,7 +1,5 @@
 """Edit tool -- performs exact string replacements in files.
 
-Full implementation ported from cc-src FileEditTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - ``old_string`` / ``new_string`` exact replacement

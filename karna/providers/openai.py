@@ -9,7 +9,7 @@ Supports:
 
 API key from ``~/.karna/credentials/openai.token.json`` or ``$OPENAI_API_KEY``.
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 

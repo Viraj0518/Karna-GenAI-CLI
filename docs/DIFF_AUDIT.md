@@ -1,10 +1,10 @@
-# Diff Audit: Nellie vs Claude Code vs OpenClaw vs Hermes Agent
+# Diff Audit: Nellie vs Nellie vs OpenClaw vs Hermes Agent
 
 > Generated 2026-04-17 by gamma from source-level reading of all four codebases.
 >
 > **Status — 2026-04-20 [alpha]:** portions of this audit are now stale. Several
 > items marked P0 / P1 gaps against Nellie have since landed on `dev`. The
-> comparison against Claude Code / OpenClaw / Hermes was valid at time of
+> comparison against Nellie / OpenClaw / Hermes was valid at time of
 > writing; the "Karna/Nellie" column is the part that has drifted.
 >
 > **What has landed since this audit** (do not trust the matching rows below):
@@ -41,7 +41,7 @@
 
 ### A. Provider Support
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Anthropic (native) | ✅ Primary & only | ❌ Gateway-mediated | ✅ Full adapter + OAuth | ✅ `providers/anthropic.py` | -- |
 | OpenAI | ❌ | ❌ | ✅ Direct + compatible | ✅ `providers/openai.py` | -- |
@@ -59,7 +59,7 @@
 
 ### B. Tools
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Bash/shell execution | ✅ BashTool + sandboxing | ✅ Via gateway | ✅ `terminal_tool.py` | ✅ `tools/bash.py` | -- |
 | File read (line numbers) | ✅ FileReadTool | ✅ | ✅ `file_tools.py` | ✅ `tools/read.py` | -- |
@@ -87,7 +87,7 @@
 
 ### C. Agent Loop
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Tool-use loop (call->exec->re-prompt) | ✅ Coordinator | ✅ Gateway loop | ✅ `run_agent.py` | ✅ `agents/loop.py` | -- |
 | Streaming with tool calls | ✅ Ink SSE | ✅ WebSocket | ✅ SSE | ✅ SSE parsing | -- |
@@ -102,7 +102,7 @@
 
 ### D. UI/UX
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Terminal UI framework | ✅ Ink (React-like) | ❌ Gateway+mobile | ✅ Rich + raw ANSI | ✅ Rich | -- |
 | Multiline input | ✅ useTextInput | ❌ | ✅ prompt_toolkit | ✅ prompt_toolkit | -- |
@@ -121,7 +121,7 @@
 
 ### E. Context Management
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | System prompt builder | ✅ Sectioned + priority | ❌ | ✅ `prompt_builder.py` | ✅ `prompts/system.py` | -- |
 | Project context (CLAUDE.md) | ✅ claudemd + hierarchy | ❌ | ✅ AGENTS.md | ✅ KARNA.md + CLAUDE.md | -- |
@@ -135,7 +135,7 @@
 
 ### F. Memory + Persistence
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Auto-memory (typed) | ✅ memdir with types | ❌ | ✅ Builtin + plugins | ❌ Stub only | P0 gap |
 | MEMORY.md index | ✅ `memdir.ts` | ❌ | ✅ Markdown index | ❌ | P0 gap |
@@ -148,7 +148,7 @@
 
 ### G. Skills / Plugins
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Skill loader (.md files) | ✅ SkillTool | ❌ | ✅ `skills_tool.py` | ❌ Stub | P1 gap |
 | Plugin system (Python modules) | ❌ (JS-only) | ✅ Hooks/plugins | ✅ Plugin tools | ❌ Stub | P1 gap |
@@ -159,7 +159,7 @@
 
 ### H. Security
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Permission system (ask/allow/deny) | ✅ PermissionContext | ❌ | ✅ `approval.py` | ❌ (safe_mode flag only) | P0 gap |
 | Credential management | ✅ OS keychain | ✅ Keychain | ✅ File-based + pool | ✅ `~/.karna/credentials/` | Partial -- no keychain |
@@ -173,7 +173,7 @@
 
 ### I. Advanced
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | Subagent spawn + isolation | ✅ AgentTool | ❌ | ✅ Spawn subagents | ❌ | P0 gap |
 | Git worktree isolation | ✅ EnterWorktreeTool | ❌ | ❌ | ❌ | P2 gap |
@@ -187,7 +187,7 @@
 
 ### J. Deployment
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | pip installable | ❌ | ❌ | ✅ `pip install` | ✅ `pyproject.toml` | -- |
 | npm installable | ✅ `npm i -g @anthropic-ai/claude-code` | ✅ npm | ❌ | ❌ N/A | -- |
@@ -202,7 +202,7 @@
 
 ### K. Ecosystem
 
-| Feature | Claude Code | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
+| Feature | Nellie | OpenClaw | Hermes Agent | Karna/Nellie | Gap |
 |---|---|---|---|---|---|
 | MCP server (expose tools) | ✅ `entrypoints/mcp.ts` | ❌ | ✅ ACP adapter | ❌ Stub | P1 gap |
 | MCP client (consume servers) | ✅ | ❌ | ✅ | ✅ `tools/mcp.py` | -- |
@@ -213,13 +213,13 @@
 
 ---
 
-## Section 2: What Claude Code Has That We Don't (Yet)
+## Section 2: What Nellie Has That We Don't (Yet)
 
 Ranked by impact (user value x frequency of need):
 
 ### P0 -- Must Have
 
-| # | Feature | How CC Implements It | Effort (hrs) | Priority |
+| # | Feature | How upstream Implements It | Effort (hrs) | Priority |
 |---|---|---|---|---|
 | 1 | **Auto-compaction (LLM summarization)** | `commands/compact/compact.ts` sends middle turns to the model with a structured summary template, protects head (system) and tail (recent) messages. Triggers automatically when context exceeds 80% of window. | 12 | P0 |
 | 2 | **Subagent spawn + isolation** | `AgentTool` creates a child agent with its own conversation context, tool subset (no nesting beyond depth), and isolated working directory. Results are returned to the parent as tool output. | 16 | P0 |
@@ -228,7 +228,7 @@ Ranked by impact (user value x frequency of need):
 
 ### P1 -- Important
 
-| # | Feature | How CC Implements It | Effort (hrs) | Priority |
+| # | Feature | How upstream Implements It | Effort (hrs) | Priority |
 |---|---|---|---|---|
 | 5 | **Parallel tool execution** | Agent loop collects all tool_calls from a single assistant turn and executes them concurrently via `Promise.all`, then sends all results in a single tool message. | 4 | P1 |
 | 6 | **Hooks system (pre/post tool)** | `hooks/` directory with `settings.json` configuration. Hooks run shell commands before/after tool execution, on errors, and at session start/end. | 8 | P1 |
@@ -238,59 +238,59 @@ Ranked by impact (user value x frequency of need):
 | 10 | **Background task monitoring** | Tracks background processes, allows streaming stdout, and notifies when tasks complete. Used for long-running builds and tests. | 8 | P1 |
 | 11 | **Reasoning effort control** | `/effort` command sets `budget_tokens` for extended thinking. Adaptive effort levels map to different thinking budgets. | 4 | P1 |
 | 12 | **Cron/scheduled tasks** | `ScheduleCronTool` with create/list/delete operations. Jobs persist across sessions and execute on schedule. | 10 | P1 |
-| 13 | **MCP server mode** | `entrypoints/mcp.ts` exposes CC's tools as an MCP server so other agents can call them. | 8 | P1 |
+| 13 | **MCP server mode** | `entrypoints/mcp.ts` exposes upstream's tools as an MCP server so other agents can call them. | 8 | P1 |
 
 ### P2 -- Nice to Have
 
-| # | Feature | How CC Implements It | Effort (hrs) | Priority |
+| # | Feature | How upstream Implements It | Effort (hrs) | Priority |
 |---|---|---|---|---|
 | 14 | **Notebook (Jupyter) editing** | `NotebookEditTool` parses `.ipynb` JSON, modifies cells, and writes back. | 8 | P2 |
 | 15 | **Git worktree isolation** | `EnterWorktreeTool` creates a git worktree for isolated changes, `ExitWorktreeTool` merges back. | 10 | P2 |
 | 16 | **Plan mode** | `EnterPlanModeTool` switches the agent into a read-only thinking mode where it plans before acting. | 6 | P2 |
 | 17 | **Vim mode** | `/vim` command enables vim-style keybindings in the input area. | 4 | P2 |
 | 18 | **Voice input/output** | `/voice` command enables voice interaction via microphone input and TTS output. | 16 | P2 |
-| 19 | **IDE integration (VS Code)** | Full VS Code extension with Claude Code panel, inline suggestions, and terminal integration. | 40+ | P2 |
+| 19 | **IDE integration (VS Code)** | Full VS Code extension with Nellie panel, inline suggestions, and terminal integration. | 40+ | P2 |
 | 20 | **Keybinding customization** | `~/.claude/keybindings.json` for user-defined key mappings. | 4 | P2 |
 | 21 | **TodoWrite tool** | Structured todo/task tracking within the agent context. | 4 | P2 |
 | 22 | **ToolSearch (deferred loading)** | Loads tool schemas on demand to reduce initial context size. | 6 | P2 |
 
 ---
 
-## Section 3: What Nellie Has That Claude Code Doesn't
+## Section 3: What Nellie Has That Nellie Doesn't
 
 These are our **differentiators** -- features where Nellie is ahead or serves a different niche:
 
 ### 1. Model-Agnostic Architecture
-CC is locked to Anthropic's API. Nellie supports **6 providers** out of the box (Anthropic, OpenAI, Azure, OpenRouter, Local, and any OpenAI-compatible endpoint). Users can switch models mid-conversation with `/model`. This is the single biggest differentiator.
+upstream is locked to Anthropic's API. Nellie supports **6 providers** out of the box (Anthropic, OpenAI, Azure, OpenRouter, Local, and any OpenAI-compatible endpoint). Users can switch models mid-conversation with `/model`. This is the single biggest differentiator.
 
 ### 2. Azure OpenAI First-Class Support
-CC has zero Azure support. Nellie has a full `AzureOpenAIProvider` with deployment-based routing, `api-key` header auth, and Azure-specific endpoint construction. Critical for enterprise users.
+upstream has zero Azure support. Nellie has a full `AzureOpenAIProvider` with deployment-based routing, `api-key` header auth, and Azure-specific endpoint construction. Critical for enterprise users.
 
 ### 3. Web Search Built-In (No MCP Required)
-CC requires an MCP server for web search. Nellie has `WebSearchTool` with a cascading backend (DuckDuckGo -> Brave -> SearXNG) that works out of the box with zero configuration and zero API keys.
+upstream requires an MCP server for web search. Nellie has `WebSearchTool` with a cascading backend (DuckDuckGo -> Brave -> SearXNG) that works out of the box with zero configuration and zero API keys.
 
 ### 4. Web Fetch with robots.txt Respect
-Nellie's `WebFetchTool` checks `robots.txt` before fetching, which CC does not. This is both more ethical and reduces the chance of IP blocks.
+Nellie's `WebFetchTool` checks `robots.txt` before fetching, which upstream does not. This is both more ethical and reduces the chance of IP blocks.
 
 ### 5. Self-Hosted / Privacy-First
-- **Zero telemetry**: Nellie sends nothing to any developer service. CC has analytics (`logEvent` calls throughout).
-- **Local credential storage**: All credentials in `~/.karna/credentials/` with 0600 permissions. CC uses Anthropic's auth flow.
-- **No account required**: Bring your own API key. CC requires an Anthropic account.
+- **Zero telemetry**: Nellie sends nothing to any developer service. upstream has analytics (`logEvent` calls throughout).
+- **Local credential storage**: All credentials in `~/.karna/credentials/` with 0600 permissions. upstream uses Anthropic's auth flow.
+- **No account required**: Bring your own API key. upstream requires an Anthropic account.
 
 ### 6. Proprietary Internal Tool
-CC is proprietary (Anthropic copyright, source-available but not OSS). Nellie is an internal Karna tool.
+upstream is proprietary (Anthropic copyright, source-available but not OSS). Nellie is an internal Karna tool.
 
 ### 7. Clipboard Tool Built-In
-CC has no native clipboard support (requires MCP). Nellie has a cross-platform `ClipboardTool` (macOS pbcopy/pbpaste, Linux xclip/wl-copy, WSL) with `/paste` and `/copy` slash commands.
+upstream has no native clipboard support (requires MCP). Nellie has a cross-platform `ClipboardTool` (macOS pbcopy/pbpaste, Linux xclip/wl-copy, WSL) with `/paste` and `/copy` slash commands.
 
 ### 8. Cost-Aware Routing (Planned)
-CC has no concept of budget limits or cost-aware model selection. Nellie's architecture (multi-provider + pricing table in `sessions/cost.py`) enables routing queries to cheaper models when budget is tight -- a planned feature with the infrastructure already in place.
+upstream has no concept of budget limits or cost-aware model selection. Nellie's architecture (multi-provider + pricing table in `sessions/cost.py`) enables routing queries to cheaper models when budget is tight -- a planned feature with the infrastructure already in place.
 
 ### 9. Python-Native
-Written in Python, installable via `pip`, extensible via Python modules. CC is TypeScript/Node.js. For the Python ecosystem (data science, ML, DevOps), a Python agent is a natural fit.
+Written in Python, installable via `pip`, extensible via Python modules. upstream is TypeScript/Node.js. For the Python ecosystem (data science, ML, DevOps), a Python agent is a natural fit.
 
 ### 10. Per-Model Prompt Adaptation
-`prompts/system.py` automatically adapts the system prompt based on the model (Claude vs GPT vs weak local models), adding model-specific instructions. CC has a single Anthropic-optimized prompt.
+`prompts/system.py` automatically adapts the system prompt based on the model (Claude vs GPT vs weak local models), adding model-specific instructions. upstream has a single Anthropic-optimized prompt.
 
 ---
 
@@ -407,13 +407,13 @@ Ranked by (user value x feasibility / effort):
 
 | Rank | Feature | Source | Value | Effort | Score | Notes |
 |---|---|---|---|---|---|---|
-| 1 | **LLM auto-compaction** | CC + Hermes | 10 | 12 hrs | 10 | Blocking for long sessions. Port Hermes's structured summary approach. |
-| 2 | **Permission system** | CC | 9 | 12 hrs | 9 | Security requirement. Three-tier: global/project/session allow/deny rules. |
-| 3 | **Memory system (MEMORY.md)** | CC | 9 | 16 hrs | 8.5 | Typed memories with index file. Critical for multi-session continuity. |
-| 4 | **Parallel tool execution** | CC | 8 | 4 hrs | 8 | Low effort, high impact. `asyncio.gather` the tool calls. |
-| 5 | **Subagent spawn** | CC | 8 | 16 hrs | 7.5 | Enables complex multi-step tasks. Child agent with isolated context. |
-| 6 | **Diff display for file edits** | CC + Hermes | 7 | 6 hrs | 7 | UX improvement. Show before/after when edit tool runs. |
-| 7 | **Hooks system** | CC + OpenClaw | 7 | 8 hrs | 7 | Extensibility. Pre/post tool hooks configured in settings. |
-| 8 | **Prompt caching (Anthropic)** | CC | 7 | 4 hrs | 7 | Cost reduction. Mark system prompt + early turns with cache_control. |
-| 9 | **Skill loader (.md files)** | CC + Hermes | 6 | 8 hrs | 6 | Reusable task-specific instructions loaded on demand. |
+| 1 | **LLM auto-compaction** | upstream + Hermes | 10 | 12 hrs | 10 | Blocking for long sessions. Port Hermes's structured summary approach. |
+| 2 | **Permission system** | upstream | 9 | 12 hrs | 9 | Security requirement. Three-tier: global/project/session allow/deny rules. |
+| 3 | **Memory system (MEMORY.md)** | upstream | 9 | 16 hrs | 8.5 | Typed memories with index file. Critical for multi-session continuity. |
+| 4 | **Parallel tool execution** | upstream | 8 | 4 hrs | 8 | Low effort, high impact. `asyncio.gather` the tool calls. |
+| 5 | **Subagent spawn** | upstream | 8 | 16 hrs | 7.5 | Enables complex multi-step tasks. Child agent with isolated context. |
+| 6 | **Diff display for file edits** | upstream + Hermes | 7 | 6 hrs | 7 | UX improvement. Show before/after when edit tool runs. |
+| 7 | **Hooks system** | upstream + OpenClaw | 7 | 8 hrs | 7 | Extensibility. Pre/post tool hooks configured in settings. |
+| 8 | **Prompt caching (Anthropic)** | upstream | 7 | 4 hrs | 7 | Cost reduction. Mark system prompt + early turns with cache_control. |
+| 9 | **Skill loader (.md files)** | upstream + Hermes | 6 | 8 hrs | 6 | Reusable task-specific instructions loaded on demand. |
 | 10 | **Google/Vertex AI provider** | Hermes | 6 | 8 hrs | 6 | Gemini 2.5 Pro is competitive. OpenAI-compat adapter via AI Studio API. |

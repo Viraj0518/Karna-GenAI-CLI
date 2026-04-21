@@ -1,4 +1,4 @@
-"""Tests for the CC-ported spinner + tool-use loader module.
+"""Tests for the upstream-ported spinner + tool-use loader module.
 
 Covers the `karna.tui.cc_components.spinners` library surface:
   * frame tables (BRAILLE_FRAMES, SPINNER_FRAMES)
@@ -42,7 +42,7 @@ def test_braille_frames_shape() -> None:
 
 
 def test_spinner_frames_are_mirrored_and_nonempty() -> None:
-    """CC's SPINNER_FRAMES = [...chars, ...reversed(chars)] — even length."""
+    """upstream's SPINNER_FRAMES = [...chars, ...reversed(chars)] — even length."""
     assert len(SPINNER_FRAMES) > 0
     assert len(SPINNER_FRAMES) % 2 == 0
     half = len(SPINNER_FRAMES) // 2
@@ -72,8 +72,8 @@ def test_tool_messages_cover_core_nellie_tools() -> None:
     assert required.issubset(TOOL_MESSAGES.keys())
     for key, bucket in TOOL_MESSAGES.items():
         assert isinstance(bucket, list) and bucket, f"{key} has empty bucket"
-        # Every curated verb must come from CC's master list (no invented words).
-        assert all(v in ALL_SPINNER_VERBS for v in bucket), f"{key} contains words not in CC's SPINNER_VERBS"
+        # Every curated verb must come from upstream's master list (no invented words).
+        assert all(v in ALL_SPINNER_VERBS for v in bucket), f"{key} contains words not in upstream's SPINNER_VERBS"
 
 
 def test_pick_tool_message_is_deterministic_with_seed() -> None:
@@ -107,7 +107,7 @@ def test_render_thinking_line_shape_and_glyph() -> None:
     assert "2.1k tok" in plain
     assert "↑" in plain
     assert "esc" in plain
-    # CC's middot separator
+    # upstream's middot separator
     assert "·" in plain
 
     # No token_count, no esc hint

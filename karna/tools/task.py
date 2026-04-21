@@ -13,8 +13,6 @@ returns immediately with an agent ID (background). Background
 completion notifications are injected into the parent conversation
 by the agent loop.
 
-Ported from cc-src AgentTool / in-process teammate patterns with
-attribution to the Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations

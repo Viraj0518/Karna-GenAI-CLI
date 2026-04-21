@@ -1,4 +1,4 @@
-"""Output presentation styles for Nellie (CC's ``/output-style`` analogue).
+"""Output presentation styles for Nellie (upstream's ``/output-style`` analogue).
 
 Five built-in styles are provided:
 

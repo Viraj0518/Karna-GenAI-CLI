@@ -1,16 +1,16 @@
-"""Verbatim tool-prompt text ported from Claude Code.
+"""Verbatim tool-prompt text ported from upstream reference.
 
-Upstream source: ``/c/cc-src/src/tools/<Tool>/prompt.ts``. Each entry is
-what CC's own prompt-builder would render for its tool registry. CC's
+Upstream source: ``the upstream project/tools/<Tool>/prompt.ts``. Each entry is
+what upstream's own prompt-builder would render for its tool registry. upstream's
 runtime-dynamic parts (sandbox mode selection, undercover-mode text,
 git-instructions env gating) are flattened to the defaults Nellie ships.
 
-Tool-name references are rewritten from CC's capitalised names (``Read``,
+Tool-name references are rewritten from upstream's capitalised names (``Read``,
 ``Bash``, etc.) to Nellie's lowercase registry names (``read``, ``bash``)
 so the text matches what the model sees in tool-call schemas.
 
 Consumed by ``karna/tools/base.py`` (via the ``cc_prompt`` class field)
-and ``karna/prompts/tool_descriptions.py``. When a tool has no CC
+and ``karna/prompts/tool_descriptions.py``. When a tool has no upstream
 equivalent, leave its ``cc_prompt`` empty and the fallback guidance in
 ``tool_descriptions.py`` takes over.
 """
@@ -182,11 +182,10 @@ IMPORTANT - Use the correct year in search queries:
   - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
 """
 
-
 def _build_web_search_prompt() -> str:
     """Render the WebSearch prompt with the current month/year injected.
 
-    Mirrors CC's ``getWebSearchPrompt()`` which calls ``getLocalMonthYear()``
+    Mirrors upstream's ``getWebSearchPrompt()`` which calls ``getLocalMonthYear()``
     at render time — the model benefits from an explicit current-date anchor
     when reasoning about "latest" queries.
     """
@@ -248,7 +247,6 @@ All tasks are created with status `pending`.
 - New tasks are created with status 'pending' and no owner - use TaskUpdate with the `owner` parameter to assign them
 - Check TaskList first to avoid creating duplicate tasks
 """
-
 
 # ---------------------------------------------------------------------------
 # Registry — keyed by Nellie tool name

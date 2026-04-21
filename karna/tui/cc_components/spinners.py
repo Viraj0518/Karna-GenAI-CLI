@@ -1,10 +1,10 @@
-"""Spinners + tool-use loaders, ported verbatim-in-spirit from Claude Code.
+"""Spinners + tool-use loaders, ported verbatim-in-spirit from upstream reference.
 
-Mirrors CC's spinner glyph, status-bar thinking row, `ToolUseLoader`,
+Mirrors upstream's spinner glyph, status-bar thinking row, `ToolUseLoader`,
 `BashModeProgress`, `AgentProgressLine`, and the `CoordinatorAgentStatus`
 panel — all skinned for Nellie's palette (`#3C73BD` brand + design tokens).
 
-Source files (`/c/cc-src/src/components/`):
+Source files (`the upstream project/components/`):
     * Spinner.tsx                 -> thinking status line, `✦ verb · Ns · ↑ Ntok`
     * Spinner/SpinnerGlyph.tsx    -> DEFAULT_CHARACTERS, the mirrored frame set
     * Spinner/utils.ts            -> `getDefaultCharacters()` (platform-aware)
@@ -20,21 +20,21 @@ Design notes
   renderer returns either an ANSI string or a Rich renderable; callers
   drive the frame/time updates themselves.
 * Brand accent is the Karna blue (`#3C73BD` from `design_tokens.Accent.brand`).
-* `✦` is CC's ANT-only thinking sparkle (`TEARDROP_ASTERISK` in
-  `constants/figures.js`). CC switches the thinking-row leading glyph
+* `✦` is upstream's ANT-only thinking sparkle (`TEARDROP_ASTERISK` in
+  `constants/figures.js`). upstream switches the thinking-row leading glyph
   between `*` (external) and `✦` (internal); Nellie uses `✦`.
 * `BRAILLE_FRAMES` is re-exported for callers that want a braille spinner;
-  the CC port itself uses `SPINNER_FRAMES` (the mirrored
+  the upstream port itself uses `SPINNER_FRAMES` (the mirrored
   `· ✢ ✳ ✶ ✻ ✽` set from `getDefaultCharacters()`).
 
-CC's per-tool "cute messages" dict
+upstream's per-tool "cute messages" dict
 ----------------------------------
-CC does not ship a per-tool cute-message dictionary: each tool call shows
+upstream does not ship a per-tool cute-message dictionary: each tool call shows
 a single random verb from `SPINNER_VERBS` (173 entries), and the
 tool's own `renderToolUseProgressMessage()` renders the arg context on
 the same line. Ported faithfully — `TOOL_MESSAGES` keys each Nellie tool
-to a curated subset of CC's verb list so callers can pick one
-deterministically per tool while still matching CC's feel.
+to a curated subset of upstream's verb list so callers can pick one
+deterministically per tool while still matching upstream's feel.
 """
 
 from __future__ import annotations
@@ -63,16 +63,16 @@ _WARNING = COLORS.accent.warning
 _DANGER = COLORS.accent.danger
 _THINKING = COLORS.accent.thinking
 
-#: CC's thinking sparkle (`TEARDROP_ASTERISK` in constants/figures.js).
+#: upstream's thinking sparkle (`TEARDROP_ASTERISK` in constants/figures.js).
 THINKING_GLYPH = "✦"
 
 
 # --------------------------------------------------------------------------- #
-#  Frame sets — ported from CC's Spinner/utils.ts + SpinnerGlyph.tsx
+#  Frame sets — ported from upstream's Spinner/utils.ts + SpinnerGlyph.tsx
 # --------------------------------------------------------------------------- #
 
 #: Braille dot-spinner frames (already present in `karna.tui.output`).
-#: Re-exported here so consumers of the CC-port module don't have to reach
+#: Re-exported here so consumers of the upstream-port module don't have to reach
 #: back into `output.py` and accidentally import the REPL.
 BRAILLE_FRAMES: list[str] = [
     "⠋",
@@ -91,7 +91,7 @@ BRAILLE_FRAMES: list[str] = [
 def _get_default_characters() -> list[str]:
     """Platform-aware frame picker, ported from `Spinner/utils.ts`.
 
-    CC's mapping:
+    upstream's mapping:
         * `TERM=xterm-ghostty` -> ['·', '✢', '✳', '✶', '✻', '*']
         * `process.platform === 'darwin'` -> ['·', '✢', '✳', '✶', '✻', '✽']
         * else (Windows / Linux) -> ['·', '✢', '*', '✶', '✻', '✽']
@@ -105,7 +105,7 @@ def _get_default_characters() -> list[str]:
     return ["·", "✢", "*", "✶", "✻", "✽"]
 
 
-#: Full CC frame list — forward then reversed, same construction CC uses in
+#: Full upstream frame list — forward then reversed, same construction upstream uses in
 #: `SpinnerGlyph.tsx` and `Spinner.tsx` (`SPINNER_FRAMES = [...chars,
 #: ...[...chars].reverse()]`).
 _DEFAULT_CHARACTERS = _get_default_characters()
@@ -113,18 +113,18 @@ SPINNER_FRAMES: list[str] = list(_DEFAULT_CHARACTERS) + list(reversed(_DEFAULT_C
 
 
 # --------------------------------------------------------------------------- #
-#  Tool message dictionary — curated slice of CC's SPINNER_VERBS
+#  Tool message dictionary — curated slice of upstream's SPINNER_VERBS
 # --------------------------------------------------------------------------- #
 #
-#  CC's `constants/spinnerVerbs.ts` exports 173 gerunds. Any of them may
-#  surface for any tool — CC picks one with `sample(getSpinnerVerbs())`
+#  upstream's `constants/spinnerVerbs.ts` exports 173 gerunds. Any of them may
+#  surface for any tool — upstream picks one with `sample(getSpinnerVerbs())`
 #  per mount. For a Nellie port we want deterministic "tool → vocabulary"
 #  mappings so the ui feels curated rather than random. The values below
-#  are pulled directly from CC's list; no words are invented.
+#  are pulled directly from upstream's list; no words are invented.
 # --------------------------------------------------------------------------- #
 
-#: Master list — every gerund from CC's `SPINNER_VERBS` (173 entries,
-#: verbatim). Callers that want CC's exact "pick any" behaviour can do
+#: Master list — every gerund from upstream's `SPINNER_VERBS` (173 entries,
+#: verbatim). Callers that want upstream's exact "pick any" behaviour can do
 #: ``random.choice(ALL_SPINNER_VERBS)``.
 ALL_SPINNER_VERBS: list[str] = [
     "Accomplishing",
@@ -371,7 +371,7 @@ def pick_tool_message(tool_name: str, seed: int | None = None) -> str:
 
 
 def _format_tokens(count: int) -> str:
-    """CC's `formatTokens`: compact notation with lowercase suffix.
+    """upstream's `formatTokens`: compact notation with lowercase suffix.
 
     Mirrors `formatNumber` → ``1321`` → ``"1.3k"``, ``900`` → ``"900"``.
     """
@@ -379,7 +379,7 @@ def _format_tokens(count: int) -> str:
         return str(count)
     if count < 1_000_000:
         thousands = count / 1000
-        # one decimal, strip trailing ".0" (CC's `.replace('.0', '')`)
+        # one decimal, strip trailing ".0" (upstream's `.replace('.0', '')`)
         s = f"{thousands:.1f}"
         if s.endswith(".0"):
             s = s[:-2]
@@ -392,7 +392,7 @@ def _format_tokens(count: int) -> str:
 
 
 def _format_seconds(seconds: float) -> str:
-    """CC's `formatSecondsShort`: integer seconds, `"4s"` shape."""
+    """upstream's `formatSecondsShort`: integer seconds, `"4s"` shape."""
     if seconds < 60:
         return f"{int(seconds)}s"
     minutes = int(seconds // 60)
@@ -437,11 +437,11 @@ def render_thinking_line(
     verb: str = "Thinking",
     show_esc_hint: bool = True,
 ) -> str:
-    """Render CC's one-line thinking status: `"✦ Thinking · 4s · ↑ 2.1k tok · esc"`.
+    """Render upstream's one-line thinking status: `"✦ Thinking · 4s · ↑ 2.1k tok · esc"`.
 
     Mirrors the shape produced by `BriefSpinner` + `SpinnerAnimationRow` in
-    CC's `Spinner.tsx`: leading sparkle (`✦`), verb, elapsed time, optional
-    token counter (with the upward arrow CC uses for output tokens), then
+    upstream's `Spinner.tsx`: leading sparkle (`✦`), verb, elapsed time, optional
+    token counter (with the upward arrow upstream uses for output tokens), then
     the dim `esc` interrupt hint.
 
     Returns a raw ANSI string — callers can `print()` it directly. Use this
@@ -473,7 +473,7 @@ def render_thinking_line(
 def _pick_frame(elapsed_s: float, frames: list[str], fps: int = 20) -> str:
     """Pick a frame deterministically based on elapsed time.
 
-    CC's `SpinnerAnimationRow` ticks on a ~50 ms animation clock — we
+    upstream's `SpinnerAnimationRow` ticks on a ~50 ms animation clock — we
     default to the same cadence (20 fps ≈ 50 ms/frame).
     """
     if not frames:
@@ -491,9 +491,9 @@ def render_tool_loader(
     is_error: bool = False,
     is_done: bool = False,
 ) -> RenderableType:
-    """Render CC's inline "running <tool>..." block.
+    """Render upstream's inline "running <tool>..." block.
 
-    Shape (from CC's `ToolUseLoader.tsx` + `AssistantToolUseMessage.tsx`)::
+    Shape (from upstream's `ToolUseLoader.tsx` + `AssistantToolUseMessage.tsx`)::
 
         ● ToolName(context)   <spinner-frame>
           ⎿ <cute-message>…
@@ -533,7 +533,7 @@ def render_tool_loader(
         header.append(f"  {_format_seconds(elapsed_s)}", style=_TEXT_TERTIARY)
 
     detail = Text()
-    # CC's tree-branch joiner (⎿) comes from `constants/figures.js`.
+    # upstream's tree-branch joiner (⎿) comes from `constants/figures.js`.
     detail.append("  ⎿ ", style=_TEXT_TERTIARY)
     detail.append(f"{message}…", style=_TEXT_SECONDARY)
 
@@ -550,14 +550,14 @@ def render_bash_progress(
     elapsed_s: float,
     output_lines: int,
 ) -> RenderableType:
-    """Render CC's `BashModeProgress` block.
+    """Render upstream's `BashModeProgress` block.
 
-    Shape (from CC's `BashModeProgress.tsx` + `ShellProgressMessage`):
+    Shape (from upstream's `BashModeProgress.tsx` + `ShellProgressMessage`):
 
         $ <command>
         ⎿ running · 12s · 42 lines so far
 
-    The actual CC component wraps a streaming `ShellProgressMessage` that
+    The actual upstream component wraps a streaming `ShellProgressMessage` that
     renders live stdout. The Nellie port is a pure renderer — callers feed
     the (already-captured) `output_lines` count.
     """
@@ -593,15 +593,15 @@ def render_agent_progress_line(
     tool_use_count: int = 0,
     tokens: int | None = None,
 ) -> Text:
-    """Render CC's `AgentProgressLine` tree row.
+    """Render upstream's `AgentProgressLine` tree row.
 
     Shape (from `AgentProgressLine.tsx`)::
 
         ├─ agent-id · 3 tool uses · 2.1k tokens
            ⎿ Reading src/main.py
 
-    * ``is_last`` swaps `├─` for `└─` (CC's ``isLast ? '└─' : '├─'``).
-    * ``status`` is the status string CC shows when unresolved — e.g.
+    * ``is_last`` swaps `├─` for `└─` (upstream's ``isLast ? '└─' : '├─'``).
+    * ``status`` is the status string upstream shows when unresolved — e.g.
       `"Running"`, `"Initializing…"`, `"Done"`.
     """
     tree_char = "└─" if is_last else "├─"
@@ -617,7 +617,7 @@ def render_agent_progress_line(
         line.append(f"{_format_tokens(tokens)} tokens", style=_TEXT_SECONDARY)
     line.append("\n", style="")
 
-    # Sub-status line (CC's ⎿ branch).
+    # Sub-status line (upstream's ⎿ branch).
     joiner = "   " if is_last else "│  "
     line.append(f"   {joiner}⎿  ", style=_TEXT_TERTIARY)
     if current_tool:
@@ -635,7 +635,7 @@ def render_agent_progress_line(
 
 
 def render_coordinator_status(agents: list[dict[str, Any]]) -> RenderableType:
-    """Render CC's `CoordinatorAgentStatus` panel.
+    """Render upstream's `CoordinatorAgentStatus` panel.
 
     Shape (from `CoordinatorAgentStatus.tsx`)::
 

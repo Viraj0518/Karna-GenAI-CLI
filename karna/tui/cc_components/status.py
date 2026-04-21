@@ -1,6 +1,6 @@
-"""Status-line + context indicators, ported verbatim-in-spirit from Claude Code.
+"""Status-line + context indicators, ported verbatim-in-spirit from upstream reference.
 
-Mirrors the visuals of CC's `StatusLine.tsx`, `ContextVisualization.tsx`,
+Mirrors the visuals of upstream's `StatusLine.tsx`, `ContextVisualization.tsx`,
 `TokenWarning.tsx`, `EffortCallout.tsx` / `EffortIndicator.ts`, `PrBadge.tsx`,
 `CostThresholdDialog.tsx`, `MemoryUsageIndicator.tsx`, and
 `IdeStatusIndicator.tsx` — but skinned to Nellie's palette (`#3C73BD` brand,
@@ -12,18 +12,18 @@ Design notes
   returns either an ANSI string (for the one-line status bar that agents may
   print directly) or a Rich renderable (for components that integrate into
   the existing REPL output pipeline).
-* CC's glyph vocabulary is preserved: `●` for online/model dot, `⎿` for
+* upstream's glyph vocabulary is preserved: `●` for online/model dot, `⎿` for
   tree-branch joiners, `✦` for "thinking/effort sparkle", `⧉` for IDE
   selection, `◐ ◑ ◒` for effort levels (low/medium/high/max — matches
-  `EffortIndicator.ts`'s `EFFORT_*` figures from CC's `constants/figures.js`).
-* CC's threshold colors for context usage live in `TokenWarning.tsx` via
+  `EffortIndicator.ts`'s `EFFORT_*` figures from upstream's `constants/figures.js`).
+* upstream's threshold colors for context usage live in `TokenWarning.tsx` via
   `calculateTokenWarningState`: warning at 80 %, error at 95 %. We expose
   the same three-band system plus an additional "quiet/green" band below
-  50 % for a visible progress bar that matches CC's `ContextVisualization`.
+  50 % for a visible progress bar that matches upstream's `ContextVisualization`.
 
 Runtime gaps
 ------------
-Several CC patterns rely on subsystems Nellie doesn't have yet:
+Several upstream patterns rely on subsystems Nellie doesn't have yet:
 
 * `IdeStatusIndicator` polls `useIdeConnectionStatus(mcpClients)` — needs an
   IDE-MCP bridge. Not ported.
@@ -49,18 +49,18 @@ from rich.text import Text
 from karna.tui.design_tokens import COLORS
 
 # --------------------------------------------------------------------------- #
-#  Glyph vocabulary (CC-compatible)
+#  Glyph vocabulary (upstream-compatible)
 # --------------------------------------------------------------------------- #
 
-# Model dot (CC uses a filled circle in the status bar)
+# Model dot (upstream uses a filled circle in the status bar)
 GLYPH_MODEL_DOT = "\u25cf"  # ●
-# Tree-branch joiner (CC's `⎿` appears in tool-call call-outs)
+# Tree-branch joiner (upstream's `⎿` appears in tool-call call-outs)
 GLYPH_BRANCH = "\u23bf"  # ⎿
-# Sparkle — thinking / effort indicator (matches CC's ✦)
+# Sparkle — thinking / effort indicator (matches upstream's ✦)
 GLYPH_SPARKLE = "\u2726"  # ✦
 # IDE selection marker (matches `IdeStatusIndicator.tsx`'s `⧉`)
 GLYPH_IDE_SELECT = "\u29c9"  # ⧉
-# Effort-level symbols — CC's `EffortIndicator.ts` emits these from
+# Effort-level symbols — upstream's `EffortIndicator.ts` emits these from
 # `constants/figures.js` (EFFORT_LOW/MEDIUM/HIGH/MAX). The exact private
 # glyphs aren't exported, so we use the closest generic half-circle trio
 # that renders consistently across mono terminals.
@@ -68,7 +68,7 @@ GLYPH_EFFORT_LOW = "\u25d0"  # ◐ — low
 GLYPH_EFFORT_MEDIUM = "\u25d1"  # ◑ — medium
 GLYPH_EFFORT_HIGH = "\u25d2"  # ◒ — high
 GLYPH_EFFORT_MAX = "\u25c6"  # ◆ — max
-# Divider used between status-bar segments (CC's centered dot)
+# Divider used between status-bar segments (upstream's centered dot)
 GLYPH_SEP = "\u00b7"  # ·
 
 
@@ -86,7 +86,7 @@ CYAN = COLORS.accent.cyan
 
 
 # --------------------------------------------------------------------------- #
-#  Threshold bands — mirrors CC's TokenWarning logic:
+#  Threshold bands — mirrors upstream's TokenWarning logic:
 #      < 50 %  : quiet/green
 #      50-80 % : neutral/brand (the "heads-up" band)
 #      80-95 % : warning
@@ -116,11 +116,11 @@ def _pct(used: int, total: int) -> float:
 
 
 def _format_tokens(n: int) -> str:
-    """CC's `formatTokens()` — '12.3k', '1.2M', etc."""
+    """upstream's `formatTokens()` — '12.3k', '1.2M', etc."""
     if n < 1_000:
         return str(n)
     if n < 1_000_000:
-        # Match CC: one decimal place, drop trailing .0
+        # Match upstream: one decimal place, drop trailing .0
         v = n / 1_000.0
         s = f"{v:.1f}".rstrip("0").rstrip(".")
         return f"{s}k"
@@ -130,7 +130,7 @@ def _format_tokens(n: int) -> str:
 
 
 def _format_bytes(n: int) -> str:
-    """CC's `formatFileSize()` — 'KB'/'MB'/'GB'."""
+    """upstream's `formatFileSize()` — 'KB'/'MB'/'GB'."""
     if n < 1024:
         return f"{n} B"
     kb = n / 1024.0
@@ -186,9 +186,9 @@ def render_status_line(
     agent_running: bool,
     queued: int = 0,
 ) -> str:
-    """One-line status bar, ANSI-colored, matching CC's visual density.
+    """One-line status bar, ANSI-colored, matching upstream's visual density.
 
-    Layout (CC-style, left to right, separated by `·`):
+    Layout (upstream-style, left to right, separated by `·`):
 
         ● model · ⏱ 12m34s · ctx 42% (12.3k/200k) · $0.42 · ▶ running (2 queued)
 
@@ -230,7 +230,7 @@ def render_status_line(
 def render_context_bar(tokens_used: int, context_window: int) -> Text:
     """Colored progress bar for context usage.
 
-    Matches the feel of CC's `ContextVisualization.tsx` header — one-line
+    Matches the feel of upstream's `ContextVisualization.tsx` header — one-line
     summary with a unicode block bar and the "{model} · tokens/max (pct%)"
     caption pattern. Color transitions green -> brand -> yellow -> red at
     the 50/80/95 thresholds.
@@ -259,7 +259,7 @@ def render_context_bar(tokens_used: int, context_window: int) -> Text:
 def render_token_warning(tokens_used: int, context_window: int) -> Optional[RenderableType]:
     """Return a `Panel` only when we've crossed the warning/error threshold.
 
-    Mirrors CC's `TokenWarning.tsx` — silent under 80 %, muted warning at
+    Mirrors upstream's `TokenWarning.tsx` — silent under 80 %, muted warning at
     80 %, errory red at 95 %. Returns `None` otherwise so the caller can
     skip rendering.
     """
@@ -299,7 +299,7 @@ def render_effort_indicator(thinking_enabled: bool, thinking_budget: Optional[in
     """Inline effort-level pill (low/medium/high/max + ✦ sparkle).
 
     Mirrors `EffortIndicator.ts`'s `effortLevelToSymbol` + `EffortCallout.tsx`
-    ordering: `low < medium < high < max`. Budget thresholds match CC's
+    ordering: `low < medium < high < max`. Budget thresholds match upstream's
     default schedule (<=1024 low, <=4096 medium, <=16384 high, >16384 max).
     """
     t = Text()
@@ -359,7 +359,7 @@ def render_pr_badge(pr_number: int, status: str) -> Text:
 def render_cost_threshold_alert(current_usd: float, threshold_usd: float) -> RenderableType:
     """Panel shown when session cost crosses a user-configured threshold.
 
-    Mirrors CC's `CostThresholdDialog.tsx` (pure renderer — no Select/Link
+    Mirrors upstream's `CostThresholdDialog.tsx` (pure renderer — no Select/Link
     affordances; those belong to a future dialog shell).
 
     requires cost-hook integration to fire at the right moment.
@@ -397,7 +397,7 @@ def render_memory_usage(used_bytes: int, limit_bytes: Optional[int]) -> Text:
     Mirrors `MemoryUsageIndicator.tsx` which hides under 'normal' status
     and shifts color between `warning` and `error`. Without a `limit_bytes`
     we can't compute a ratio, so we fall back to absolute thresholds
-    (500 MB warn, 1 GB crit) that match CC's `/heapdump` heuristic.
+    (500 MB warn, 1 GB crit) that match upstream's `/heapdump` heuristic.
 
     requires a process-resource sampler integration (caller supplies
     `used_bytes`).
@@ -410,7 +410,7 @@ def render_memory_usage(used_bytes: int, limit_bytes: Optional[int]) -> Text:
         elif ratio >= 0.75:
             color, level = WARNING, "high"
         else:
-            # CC hides the component entirely when status == 'normal'.
+            # upstream hides the component entirely when status == 'normal'.
             # We return a dim one-liner so the caller can decide.
             t.append(
                 f"mem {_format_bytes(used_bytes)}/{_format_bytes(limit_bytes)}",

@@ -12,7 +12,7 @@ Or environment variables:
 - ``$LOCAL_API_KEY``
 - ``$LOCAL_BASE_URL``
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 

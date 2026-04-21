@@ -1,6 +1,6 @@
-"""Task list + compact summary + session chrome, ported from Claude Code.
+"""Task list + compact summary + session chrome, ported from upstream reference.
 
-Mirrors the visuals of CC's `TaskListV2.tsx`, `CompactSummary.tsx`,
+Mirrors the visuals of upstream's `TaskListV2.tsx`, `CompactSummary.tsx`,
 `ResumeTask.tsx`, `SessionPreview.tsx`, `SessionBackgroundHint.tsx` and
 the `agents/` cluster — but skinned to Nellie's palette. Brand color is
 `#3C73BD`; status glyphs match the spec:
@@ -15,12 +15,12 @@ Design notes
 * Library only. No Rich `Live`, no polling, no side effects. Every
   renderer returns a Rich `RenderableType` (or `Text | None`) that the
   caller can pipe into an existing console.
-* CC's `TaskListV2` sorts by recently-completed + in-progress + pending +
+* upstream's `TaskListV2` sorts by recently-completed + in-progress + pending +
   older-completed. We preserve that priority here so the rendered list
-  matches CC byte-for-byte up to the glyph mapping (CC uses figures.tick
+  matches upstream byte-for-byte up to the glyph mapping (upstream uses figures.tick
   / squareSmallFilled; we use the spec's ○ / ◐ / ● / ×).
-* Owner tags render as `@owner` (CC uses `(@owner)`). We keep the `@`
-  prefix but drop the parens — CC only shows the parens inside a larger
+* Owner tags render as `@owner` (upstream uses `(@owner)`). We keep the `@`
+  prefix but drop the parens — upstream only shows the parens inside a larger
   status line, which we don't reproduce since our rows are standalone.
 * Subtitle (dim per-task) captures `blockedBy` (ids) or any extra
   freeform `subtitle` field callers may set on the dict.
@@ -32,19 +32,19 @@ the main REPL loop:
 
 * `render_compact_summary` needs Nellie's compaction subsystem to supply
   `before_tokens` / `after_tokens` / `messages_removed` / `summary_text`.
-  CC computes these inside `CompactSummary.tsx` from a
+  upstream computes these inside `CompactSummary.tsx` from a
   `NormalizedUserMessage.summarizeMetadata` blob. -> requires
   integration with Nellie's `auto_compact` pipeline
 * `render_session_preview` expects a list of already-materialised
-  message dicts. CC calls `loadFullLog(log)` to fetch lite logs on
+  message dicts. upstream calls `loadFullLog(log)` to fetch lite logs on
   demand; the equivalent in Nellie is `session_picker.load_session` but
   we don't call it from this library. -> requires session-storage
   integration in the caller
 * `render_session_background_hint` is a pure renderer — the actual
   background-task plumbing (Ctrl+B double-press, `hasForegroundTasks`)
-  lives elsewhere. CC keys this off `AppState`. -> requires a task
+  lives elsewhere. upstream keys this off `AppState`. -> requires a task
   manager to surface the `active_count`
-* `render_agent_list` renders a snapshot; CC's real-time updates flow
+* `render_agent_list` renders a snapshot; upstream's real-time updates flow
   through `useAppState(s => s.agents)`. -> requires agent-registry
   integration
 """
@@ -68,11 +68,11 @@ GLYPH_IN_PROGRESS = "\u25d0"  # ◐
 GLYPH_COMPLETED = "\u25cf"  # ●
 GLYPH_DELETED = "\u00d7"  # ×
 
-# CC parity glyphs (re-used from status.py's vocabulary).
+# upstream parity glyphs (re-used from status.py's vocabulary).
 GLYPH_SEP = "\u00b7"  # ·  — between header segments
 GLYPH_SPARKLE = "\u2726"  # ✦ — compact-summary "thinking" marker
 GLYPH_ARROW = "\u2192"  # → — "before → after" in compact summary
-GLYPH_BRANCH = "\u23bf"  # ⎿ — dim subtitle joiner (matches CC's tree)
+GLYPH_BRANCH = "\u23bf"  # ⎿ — dim subtitle joiner (matches upstream's tree)
 GLYPH_DOT = "\u2022"  # • — agent-list bullet
 # Default in_progress marker for agents without an explicit status
 GLYPH_AGENT_ACTIVE = "\u25c9"  # ◉
@@ -84,7 +84,7 @@ STATUS_GLYPHS: Mapping[str, str] = {
     "deleted": GLYPH_DELETED,
 }
 
-# Sort priority — CC's TaskListV2 prefers in-progress then pending then
+# Sort priority — upstream's TaskListV2 prefers in-progress then pending then
 # completed. "deleted" sinks below everything.
 _STATUS_ORDER: Mapping[str, int] = {
     "in_progress": 0,
@@ -139,7 +139,7 @@ def _status_color(status: str) -> str:
 
 
 def _sort_tasks(tasks: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
-    """CC priority: in_progress > pending > completed > deleted, stable by id."""
+    """upstream priority: in_progress > pending > completed > deleted, stable by id."""
 
     def key(t: Mapping[str, Any]) -> tuple[int, Any]:
         status = t.get("status", "pending")
@@ -160,7 +160,7 @@ def _sort_tasks(tasks: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
 
 
 def render_task_list(tasks: list[dict]) -> RenderableType:
-    """Checkbox-style task list, matching CC's TaskListV2.
+    """Checkbox-style task list, matching upstream's TaskListV2.
 
     Each task dict supports::
 
@@ -178,7 +178,7 @@ def render_task_list(tasks: list[dict]) -> RenderableType:
         ◐ Wire up auto-compact pipeline  @alpha
           ⎿ blocked by #42
 
-    Returns a Rich `Group` of `Text` rows (never a Panel — CC renders the
+    Returns a Rich `Group` of `Text` rows (never a Panel — upstream renders the
     list inline). Empty lists return a dim placeholder so callers can
     still safely print the result.
     """
@@ -206,7 +206,7 @@ def render_task_list(tasks: list[dict]) -> RenderableType:
             line.append(f"{glyph} ", style=color)
 
         # Subject — bold for in_progress, strikethrough for completed/deleted,
-        # dim for completed/deleted/blocked. CC's exact formula.
+        # dim for completed/deleted/blocked. upstream's exact formula.
         is_completed = status == "completed"
         is_in_progress = status == "in_progress"
         is_deleted = status == "deleted"
@@ -260,7 +260,7 @@ def render_compact_summary(
     messages_removed: int,
     summary_text: str,
 ) -> RenderableType:
-    """Panel shown after auto-compact — CC's `CompactSummary.tsx`.
+    """Panel shown after auto-compact — upstream's `CompactSummary.tsx`.
 
     Visual layout::
 
@@ -268,12 +268,12 @@ def render_compact_summary(
         │ <summary_text, dim>
         └─
 
-    Matches CC's bold "Compact summary" heading plus a dim body. Token
+    Matches upstream's bold "Compact summary" heading plus a dim body. Token
     counts formatted with the same `formatTokens` heuristic as the
     status line.
 
     requires integration with Nellie's compaction pipeline so that the
-    caller can supply `summary_text` (CC pulls this from
+    caller can supply `summary_text` (upstream pulls this from
     `NormalizedUserMessage.summarizeMetadata.userContext`).
     """
     before = _format_tokens(max(0, before_tokens))
@@ -308,7 +308,7 @@ def render_compact_summary(
 
 
 def render_resume_task_prompt(last_task: dict) -> RenderableType:
-    """`Resume <task>? [y/N]` — CC's ResumeTask confirmation row.
+    """`Resume <task>? [y/N]` — upstream's ResumeTask confirmation row.
 
     Renders as a single-line `Text` so the caller can drop it straight
     into the prompt area. Status glyph + truncated subject + inline
@@ -346,7 +346,7 @@ def render_session_preview(
 ) -> RenderableType:
     """One-line-per-message preview of the last N turns.
 
-    Matches CC's session-switcher row (`SessionPreview.tsx`): a header
+    Matches upstream's session-switcher row (`SessionPreview.tsx`): a header
     with the session id, then up to `max_messages` trimmed message rows,
     oldest-first. Each message is rendered on a single line as
     ``<role-glyph> <role>: <preview>``.
@@ -384,7 +384,7 @@ def render_session_preview(
         row = Text()
         row.append(f"  {role_glyph} ", style=role_color)
         row.append(f"{role}: ", style=f"bold {role_color}")
-        # Truncate to a reasonable width — 80 chars feels like CC's feel.
+        # Truncate to a reasonable width — 80 chars feels like upstream's feel.
         if len(text) > 80:
             text = text[:77] + "..."
         row.append(text, style=MUTED)
@@ -443,12 +443,12 @@ def _role_style(role: str) -> tuple[str, str]:
 def render_session_background_hint(active_count: int) -> Optional[Text]:
     """Tiny "N sessions running in background" marker above the input.
 
-    CC's `SessionBackgroundHint.tsx` only renders when there's a reason
+    upstream's `SessionBackgroundHint.tsx` only renders when there's a reason
     to — we mirror that: `active_count <= 0` returns `None` so the
     caller can skip rendering entirely.
 
     requires integration with Nellie's task manager to supply the live
-    `active_count` (CC pulls it from `useAppState(hasForegroundTasks)`).
+    `active_count` (upstream pulls it from `useAppState(hasForegroundTasks)`).
     """
     if active_count <= 0:
         return None

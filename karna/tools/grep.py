@@ -1,7 +1,5 @@
 """Grep tool — regex content search across files.
 
-Full implementation ported from cc-src GrepTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Uses ``rg`` (ripgrep) when available, falls back to ``grep -rn``

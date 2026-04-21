@@ -41,18 +41,14 @@ MAX_SUB_RECIPE_DEPTH = 3
 class SubRecipeError(RuntimeError):
     """Raised when sub-recipe execution fails."""
 
-
 class MaxDepthExceededError(SubRecipeError):
     """Raised when sub-recipe nesting exceeds the maximum allowed depth."""
-
 
 class SubRecipeNotFoundError(SubRecipeError, FileNotFoundError):
     """Raised when a sub-recipe YAML file cannot be found."""
 
-
 class SubRecipeParameterError(SubRecipeError, ValueError):
     """Raised when parameter substitution or validation fails for a sub-recipe."""
-
 
 def _resolve_sub_recipe_path(
     parent_recipe_path: Path | None,

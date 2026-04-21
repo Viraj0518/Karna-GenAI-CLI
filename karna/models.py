@@ -4,7 +4,7 @@ Contains Pydantic models for messages, tool interactions, conversations,
 streaming events, usage tracking, and the ``Provider`` protocol that
 every backend must satisfy.
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 

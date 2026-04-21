@@ -1174,7 +1174,7 @@ async def run_repl(
         _thinking_line = RichText()
         # Bold cyan (bright, guaranteed visible on every terminal) —
         # ``style="dim"`` was rendering invisible on subsequent turns in
-        # Windows Terminal. Claude Code uses an obvious colour too.
+        # Windows Terminal. upstream reference uses an obvious colour too.
         _thinking_line.append("\u2726 ", style="bold cyan")
         _thinking_line.append("Thinking…", style="bold cyan")
         _thinking_line.append("  (esc to interrupt)", style="bright_black")

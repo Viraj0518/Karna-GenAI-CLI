@@ -2,7 +2,7 @@
 
 Renders assistant text deltas, reasoning/thinking, tool calls with live
 status, tool results, errors, and per-turn cost with a cohesive visual
-rhythm inspired by Claude Code Ink, Warp, and bubbletea.
+rhythm inspired by upstream reference Ink, Warp, and bubbletea.
 
 Key design moves:
 
@@ -116,7 +116,7 @@ _ICON_SETS = {
     "nerd": {
         "user": "\uf061",  # nf-fa-arrow_right
         "assistant": "\uf005",  # nf-fa-star
-        "thinking": "\u2726",  # ✦ black four-pointed star — same as Claude Code
+        "thinking": "\u2726",  # ✦ black four-pointed star — same as upstream reference
         "tool": "\uf085",  # nf-fa-cogs
         "success": "\uf00c",  # nf-fa-check
         "failure": "\uf00d",  # nf-fa-times
@@ -673,7 +673,7 @@ class OutputRenderer:
         # NO ``style=`` override on the Markdown — that flattens Rich's
         # built-in code-theme + link styling. Set code_theme explicitly so
         # fenced blocks render with Python/JS/etc. syntax colors like
-        # Claude Code does.
+        # upstream reference does.
         self.console.print(Markdown(full, code_theme="ansi_dark"))
 
     # ── thinking / reasoning ───────────────────────────────────────────

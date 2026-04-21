@@ -17,7 +17,7 @@ Or environment variables:
 - ``$AZURE_OPENAI_API_VERSION``
 - ``$AZURE_OPENAI_DEPLOYMENT``
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 

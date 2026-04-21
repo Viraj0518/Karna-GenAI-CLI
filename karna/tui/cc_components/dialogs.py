@@ -1,6 +1,6 @@
-"""Small modal dialogs ported from Claude Code's TUI.
+"""Small modal dialogs ported from upstream TUI.
 
-Mirrors the one-shot confirmation widgets CC exposes:
+Mirrors the one-shot confirmation widgets upstream exposes:
 
 * ``PressEnterToContinue.tsx``  -> :func:`press_enter_to_continue`
 * ``ExitFlow.tsx`` + ``WorktreeExitDialog`` -> :func:`exit_flow`
@@ -44,7 +44,7 @@ from karna.tui.design_tokens import COLORS
 
 
 class IdleReturnAction(str, Enum):
-    """CC's IdleReturnDialog possible outcomes."""
+    """upstream's IdleReturnDialog possible outcomes."""
 
     CONTINUE = "continue"
     CLEAR = "clear"
@@ -85,7 +85,7 @@ async def confirm(message: str, *, default: bool = False) -> bool:
     """Prompt ``message`` with ``[Y/n]`` or ``[y/N]`` suffix.
 
     * Returns ``default`` on empty input.
-    * Accepts y/yes/Y/YES as True and n/no/N/NO as False (matches CC's
+    * Accepts y/yes/Y/YES as True and n/no/N/NO as False (matches upstream's
       ``Confirm.tsx`` parser).
     """
     suffix = "[Y/n]" if default else "[y/N]"
@@ -98,7 +98,7 @@ async def confirm(message: str, *, default: bool = False) -> bool:
             return True
         if raw in ("n", "no"):
             return False
-        # Invalid input — re-prompt. CC shows an inline error; we just loop.
+        # Invalid input — re-prompt. upstream shows an inline error; we just loop.
 
 
 # --------------------------------------------------------------------------- #
@@ -109,7 +109,7 @@ async def confirm(message: str, *, default: bool = False) -> bool:
 async def press_enter_to_continue(
     message: str = "Press Enter to continue\u2026",
 ) -> None:
-    """Block until the user presses Enter (CC's ``PressEnterToContinue``)."""
+    """Block until the user presses Enter (upstream's ``PressEnterToContinue``)."""
     await _prompt(message + " ")
 
 
@@ -154,7 +154,7 @@ async def exit_flow(*, unsaved: bool = False) -> bool:
 
 
 def random_goodbye() -> str:
-    """CC's ``getRandomGoodbyeMessage`` — pick one of the goodbye lines."""
+    """upstream's ``getRandomGoodbyeMessage`` — pick one of the goodbye lines."""
     import random
 
     return random.choice(_GOODBYE_MESSAGES)
@@ -166,7 +166,7 @@ def random_goodbye() -> str:
 
 
 def _format_idle_duration(minutes: int) -> str:
-    """CC's ``formatIdleDuration`` — "< 1m", "42m", "3h", "3h 12m"."""
+    """upstream's ``formatIdleDuration`` — "< 1m", "42m", "3h", "3h 12m"."""
     if minutes < 1:
         return "< 1m"
     if minutes < 60:
@@ -179,7 +179,7 @@ def _format_idle_duration(minutes: int) -> str:
 async def idle_return(*, idle_minutes: int) -> bool:
     """Prompt after idle period. ``True`` to continue, ``False`` to clear/reset.
 
-    Simplified from CC's 4-way dialog (continue / clear / dismiss / never)
+    Simplified from upstream's 4-way dialog (continue / clear / dismiss / never)
     down to a boolean — if you need the full enum, call the underlying
     ``_idle_return_4way`` helper.
     """
@@ -228,8 +228,8 @@ async def _idle_return_4way(*, idle_minutes: int, total_input_tokens: int = 0) -
 def render_thinking_toggle(enabled: bool) -> Text:
     """Small pill: ``\u2726 thinking on`` (success) or ``\u2726 thinking off`` (dim).
 
-    Matches the "Extended thinking" indicator CC renders in
-    ``ThinkingToggle.tsx`` — CC uses the brand/warning palette depending on
+    Matches the "Extended thinking" indicator upstream renders in
+    ``ThinkingToggle.tsx`` — upstream uses the brand/warning palette depending on
     state; we use success/dim.
     """
     glyph = "\u2726"  # ✦
@@ -250,7 +250,7 @@ def render_thinking_toggle(enabled: bool) -> Text:
 
 
 def render_ctrl_o_to_expand(shortcut: str = "Ctrl-O") -> Text:
-    """Dim ``(Ctrl-O to expand)`` chip matching CC's ``CtrlOToExpand``."""
+    """Dim ``(Ctrl-O to expand)`` chip matching upstream's ``CtrlOToExpand``."""
     t = Text()
     t.append("(", style=COLORS.text.tertiary)
     t.append(shortcut, style=COLORS.accent.cyan)
@@ -282,7 +282,7 @@ async def run_wizard(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
     The return value is ``{step["key"]: value, ...}`` in the order steps
     were answered. Matches the "collect data, complete, emit" shape of
-    CC's ``WizardContextValue.wizardData``.
+    upstream's ``WizardContextValue.wizardData``.
     """
     data: dict[str, Any] = {}
     history: list[int] = []
@@ -353,7 +353,7 @@ def render_keybinding_warnings(conflicts: list[str]) -> RenderableType:
     strings; callers building structured warnings should format them first.
     """
     if not conflicts:
-        # CC returns null; we return an empty Text so callers can print()
+        # upstream returns null; we return an empty Text so callers can print()
         # without a None-check.
         return Text("")
 

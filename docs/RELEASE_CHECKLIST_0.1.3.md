@@ -124,15 +124,15 @@ python tools/cli_surface_audit.py
 
 ## 9. Third-party attribution + licenses
 
-- [ ] `NOTICES.md` lists Hermes (MIT), any OpenClaw code, any CC-derived code
-- [ ] Claude Code derivation (cc_components + cc_tool_prompts) noted as "shape/text port, not code-copy, Anthropic proprietary source not redistributed"
+- [ ] `NOTICES.md` lists Hermes (MIT), any OpenClaw code, any upstream-derived code
+- [ ] Nellie derivation (cc_components + cc_tool_prompts) noted as "shape/text port, not code-copy, Anthropic proprietary source not redistributed"
 - [ ] `LICENSE.md` is the authoritative terms file, `pyproject.toml` points at it
 - [ ] No stray MIT `LICENSE` file conflicting with proprietary terms
 - [ ] Every `requirements`/`pyproject` dep has a compatible license — no GPL surprises
 
 **Verify:**
 ```bash
-grep -l "Anthropic\|Claude Code\|Hermes\|OpenClaw\|MIT\|Apache" LICENSE.md NOTICES.md
+grep -l "Anthropic\|Nellie\|Hermes\|OpenClaw\|MIT\|Apache" LICENSE.md NOTICES.md
 pip-licenses 2>/dev/null || pip install pip-licenses && pip-licenses --format=markdown
 ```
 
@@ -141,11 +141,11 @@ pip-licenses 2>/dev/null || pip install pip-licenses && pip-licenses --format=ma
 ## 10. Docs sync
 
 - [ ] `README.md` architecture tree references `karna/tui/hermes_repl.py`, `hermes_display.py`, `cc_components/`
-- [ ] `README.md` Documentation table links to `docs/CC_COMPONENT_LIBRARY.md`, `docs/TEST_PIPELINE.md`, `docs/DEMO_RUNBOOK.md`
-- [ ] `docs/CC_COMPONENT_LIBRARY.md` module-map matches reality (11 modules, 132 tests — or current count)
+- [ ] `README.md` Documentation table links to `docs/TUI_COMPONENTS.md`, `docs/TEST_PIPELINE.md`, `docs/DEMO_RUNBOOK.md`
+- [ ] `docs/TUI_COMPONENTS.md` module-map matches reality (11 modules, 132 tests — or current count)
 - [ ] `docs/DEMO_RUNBOOK.md` runbook steps work against the `hermes_repl` path, not the legacy `repl.py`
 - [ ] `GETTING_STARTED.md` tool list matches the 19 runtime tools
-- [ ] Wiki `Home.md`, `_Sidebar.md`, `TUI-Guide.md`, `CC-Component-Library.md` reflect current state
+- [ ] Wiki `Home.md`, `_Sidebar.md`, `TUI-Guide.md`, `upstream-Component-Library.md` reflect current state
 - [ ] No "coming soon" / "TBD" / "TODO" in user-facing docs
 
 **Verify:**
@@ -225,7 +225,7 @@ gh pr create --base main --head dev --title "Release 0.1.3" --body-file docs/REL
 
 After merge lands on main:
 
-- [ ] `git tag -a v0.1.3 -m "nellie 0.1.3 — TUI rewrite, CC prompt port, hardening"` from `main` tip
+- [ ] `git tag -a v0.1.3 -m "nellie 0.1.3 — TUI rewrite, upstream prompt port, hardening"` from `main` tip
 - [ ] `git push origin v0.1.3`
 - [ ] `gh release create v0.1.3 --title "Nellie 0.1.3" --notes-file CHANGELOG.md` (or paste the 0.1.3 section)
 - [ ] Wheel artifact attached to the release: `python -m build && gh release upload v0.1.3 dist/karna-0.1.3-py3-none-any.whl`

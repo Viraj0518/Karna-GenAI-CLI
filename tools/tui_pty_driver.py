@@ -49,7 +49,6 @@ from typing import Iterable
 class PtySupportUnavailable(RuntimeError):
     """Raised when no PTY backend is importable on this platform."""
 
-
 _BACKEND: str | None = None  # "winpty" | "ptyprocess" | None
 _WINPTY = None
 _PTYPROCESS = None

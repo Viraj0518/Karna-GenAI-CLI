@@ -1,24 +1,24 @@
-"""Chat-rendering components ported from Claude Code.
+"""Chat-rendering components ported from upstream reference.
 
 Upstream sources mirrored (verbatim behaviour where practical):
 
-* ``cc-src/src/components/Message.tsx``          — role dispatch per block
-* ``cc-src/src/components/MessageRow.tsx``       — row-level wrapper (margin,
+* ``upstream/src/components/Message.tsx``          — role dispatch per block
+* ``upstream/src/components/MessageRow.tsx``       — row-level wrapper (margin,
   transcript-mode timestamp / model label)
-* ``cc-src/src/components/Messages.tsx``         — the list container
-* ``cc-src/src/components/MessageResponse.tsx``  — the ``⎿`` continuation-
+* ``upstream/src/components/Messages.tsx``         — the list container
+* ``upstream/src/components/MessageResponse.tsx``  — the ``⎿`` continuation-
   marker wrapper for tool results
-* ``cc-src/src/components/MessageModel.tsx``     — dim model-name label
-* ``cc-src/src/components/MessageTimestamp.tsx`` — dim ``HH:MM AM/PM``
-* ``cc-src/src/components/messageActions.tsx``   — copy/rewind/branch menu
+* ``upstream/src/components/MessageModel.tsx``     — dim model-name label
+* ``upstream/src/components/MessageTimestamp.tsx`` — dim ``HH:MM AM/PM``
+* ``upstream/src/components/messageActions.tsx``   — copy/rewind/branch menu
   (**shape only** — the keybinding handler is integration work)
-* ``cc-src/src/components/MessageSelector.tsx``  — cursor over a past user
+* ``upstream/src/components/MessageSelector.tsx``  — cursor over a past user
   message (the "pick a point to rewind to" picker)
-* ``cc-src/src/components/InterruptedByUser.tsx``— the grey "Interrupted ·
+* ``upstream/src/components/InterruptedByUser.tsx``— the grey "Interrupted ·
   What should Claude do instead?" line
-* ``cc-src/src/components/messages/*``           — per-role ``UserTextMessage``,
+* ``upstream/src/components/messages/*``           — per-role ``UserTextMessage``,
   ``AssistantTextMessage``, ``SystemTextMessage``, ``UserToolResultMessage``
-* ``cc-src/src/components/VirtualMessageList.tsx`` — windowed rendering
+* ``upstream/src/components/VirtualMessageList.tsx`` — windowed rendering
   (here simplified to a "show last N + overflow summary" pager, no IME
   scroll anchoring — see `render_messages`)
 
@@ -29,7 +29,7 @@ Nellie branding deltas:
 * Role taxonomy collapsed to ``user`` / ``assistant`` / ``tool`` / ``system``
   — Nellie's ``karna.models.Message`` shape, one text block per message.
 
-CC semantics NOT ported (with fallback):
+upstream semantics NOT ported (with fallback):
 
 * **React reconciler / Ratchet "lock offscreen"** — we render directly to Rich
   renderables. ``MessageResponse``'s nested-suppression context is preserved
@@ -64,21 +64,21 @@ from karna.tui.hermes_display import (
 )
 
 # =========================================================================
-#  Constants mirrored from CC
+#  Constants mirrored from upstream
 # =========================================================================
 
-# ``BLACK_CIRCLE`` in cc-src/src/constants/figures.js is the ``●`` dot used
+# ``BLACK_CIRCLE`` in upstream/src/constants/figures.js is the ``●`` dot used
 # as the assistant-turn marker.  Nellie reuses ``NELLIE_TOOL_CALL_GLYPH``
 # (also ``●``) — keep the single source.
 _ASSISTANT_DOT = NELLIE_TOOL_CALL_GLYPH  # "●"
 _TOOL_RESULT_GLYPH = NELLIE_TOOL_RESULT_GLYPH  # "⎿"
 _USER_PROMPT_GLYPH = "\u276f"  # "❯" — matches VirtualMessageList sticky prompt
 
-# CC's ``MAX_VISIBLE_MESSAGES`` from MessageSelector.tsx.  Reused by
+# upstream's ``MAX_VISIBLE_MESSAGES`` from MessageSelector.tsx.  Reused by
 # ``render_message_selector``.
 MAX_VISIBLE_MESSAGES = 7
 
-# CC's INTERRUPT_MESSAGE constants from utils/messages.js.  Callers may
+# upstream's INTERRUPT_MESSAGE constants from utils/messages.js.  Callers may
 # compare raw strings against these when deciding to render the
 # ``InterruptedByUser`` line.
 INTERRUPT_MESSAGE = "[Request interrupted by user]"
@@ -121,10 +121,10 @@ class ChatMessage:
 
 
 def format_timestamp(ts: str | datetime | None) -> str | None:
-    """Mirror CC's ``new Date(ts).toLocaleTimeString('en-US', {hour12:true})``.
+    """Mirror upstream's ``new Date(ts).toLocaleTimeString('en-US', {hour12:true})``.
 
     Returns ``None`` if *ts* is falsy or unparseable — callers suppress
-    the column in that case, same as ``shouldShowTimestamp`` in CC.
+    the column in that case, same as ``shouldShowTimestamp`` in upstream.
     """
     if not ts:
         return None
@@ -178,7 +178,7 @@ def render_interrupted_by_user() -> Text:
 
 # =========================================================================
 #  MessageResponse.tsx — the ``⎿`` continuation-marker wrapper used by
-#  tool-result rows.  CC uses a React Context to suppress nested markers;
+#  tool-result rows.  upstream uses a React Context to suppress nested markers;
 #  we expose a flag argument instead.
 # =========================================================================
 
@@ -187,7 +187,7 @@ def wrap_response(body: RenderableType, *, nested: bool = False) -> RenderableTy
     """Prefix ``body`` with the dim ``⎿`` continuation marker.
 
     When ``nested=True`` the caller is already inside another response
-    block — we skip the marker to match CC's ``MessageResponseContext``
+    block — we skip the marker to match upstream's ``MessageResponseContext``
     de-duplication rule.
     """
     if nested:
@@ -229,7 +229,7 @@ def render_assistant_message(msg: ChatMessage) -> RenderableType:
     """Assistant-turn row — ``◆ nellie`` label + body text.
 
     Mirrors ``AssistantTextMessage``: the ``BLACK_CIRCLE`` (``●``) glyph in
-    CC is rebranded here to Nellie's diamond label (``NELLIE_ASSISTANT_LABEL``)
+    upstream is rebranded here to Nellie's diamond label (``NELLIE_ASSISTANT_LABEL``)
     per the hermes_display spec.  Body text renders in the brand-accent
     cyan role colour.
     """
@@ -238,7 +238,7 @@ def render_assistant_message(msg: ChatMessage) -> RenderableType:
     header = Text(f"{NELLIE_ASSISTANT_LABEL}  ", style=f"bold {BRAND}")
     body = Text(msg.content, style=COLORS.accent.cyan)
     # Transcript-mode extras (model label + timestamp) render on the
-    # same row in CC — we place them after the body for Rich since
+    # same row in upstream — we place them after the body for Rich since
     # Group doesn't give us horizontal layout without a Table.  Callers
     # wanting the exact column layout should use ``render_message_row``.
     return Group(header + body)
@@ -261,7 +261,7 @@ def render_tool_message(msg: ChatMessage) -> RenderableType:
 def render_system_message(msg: ChatMessage) -> RenderableType:
     """System-notice row — mirrors ``SystemTextMessage``.
 
-    A single dim line prefixed with the assistant dot glyph.  CC has
+    A single dim line prefixed with the assistant dot glyph.  upstream has
     many subtypes (``turn_duration``, ``memory_saved``, ``away_summary``,
     …) — we collapse them to the common case because Nellie's ``Message``
     model doesn't carry the subtype.
@@ -290,11 +290,11 @@ def render_message(msg: ChatMessage) -> RenderableType:
 
     Mirrors the ``switch (message.type)`` in ``Message.tsx``.  Unknown
     roles fall through to the system renderer with a warning-colour tint,
-    matching CC's ``logError`` fallback.
+    matching upstream's ``logError`` fallback.
     """
     renderer = _RENDERERS.get(msg.role)
     if renderer is None:
-        # Equivalent to CC's `logError(new Error(\`Unable to render…\`))`
+        # Equivalent to upstream's `logError(new Error(\`Unable to render…\`))`
         unknown = Text()
         unknown.append(f"{_ASSISTANT_DOT} ", style=COLORS.accent.warning)
         unknown.append(
@@ -318,7 +318,7 @@ def render_message_row(
 ) -> RenderableType:
     """Mirror ``MessageRow``: body + (optional) dim gutter columns.
 
-    CC places the timestamp / model in a left-of-body Box via Ink flex;
+    upstream places the timestamp / model in a left-of-body Box via Ink flex;
     Rich doesn't have flex so we prepend the gutter as an inline Text
     segment instead.  Only renders the gutter for assistant messages,
     matching ``MessageModel`` / ``MessageTimestamp``'s own guards.
@@ -358,7 +358,7 @@ class MessageAction:
 
 
 # Keys mirror MESSAGE_ACTIONS in messageActions.tsx.  Labels are static
-# (CC's are functions of state); callers can build a custom list.
+# (upstream's are functions of state); callers can build a custom list.
 DEFAULT_ACTIONS: tuple[MessageAction, ...] = (
     MessageAction("enter", "edit"),
     MessageAction("c", "copy"),
@@ -375,7 +375,7 @@ def render_actions_menu(
 ) -> Panel:
     """Bordered panel listing ``key · label`` rows.
 
-    CC's actual menu is inline keybinding hints in the footer; Nellie's
+    upstream's actual menu is inline keybinding hints in the footer; Nellie's
     REPL can call this to show a discoverability popup.  Returns a
     ``rich.panel.Panel`` so callers ``console.print(render_actions_menu())``.
     """
@@ -410,7 +410,7 @@ def render_message_selector(
 ) -> Panel:
     """Mirror ``MessageSelector``'s visible-window logic.
 
-    CC orients the selected message at the middle of the visible
+    upstream orients the selected message at the middle of the visible
     window (``firstVisibleIndex = clamp(selected - floor(max/2),
     0, len-max)``).  We replicate the math and render the row for the
     selection with a ``▸`` cursor marker.

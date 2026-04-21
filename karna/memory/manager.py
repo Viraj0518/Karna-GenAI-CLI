@@ -1,6 +1,5 @@
 """MemoryManager -- persistent file-based memory with YAML frontmatter.
 
-Ported from cc-src memoryScan.ts + memoryAge.ts.
 
 Each memory is a ``.md`` file with YAML frontmatter (name, description,
 type).  A ``MEMORY.md`` index lives alongside the files with one-line

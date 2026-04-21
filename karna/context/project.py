@@ -13,7 +13,7 @@ any project that already has AI-assistant configuration.
 Global KARNA.md is used only if no project-level KARNA.md is found.
 CLAUDE.md and .cursorrules are loaded with lower priority for compatibility.
 
-Adapted from cc-src ``utils/claudemd.ts``.  See NOTICES.md.
+Adapted from upstream ``utils/claudemd.ts``.  See NOTICES.md.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ _SEARCH_FILES: list[tuple[str, str, int]] = [
     # (relative_path, label, priority)  — lower number = higher priority
     ("KARNA.md", "karna project instructions", 1),
     (".karna/KARNA.md", "karna project instructions (.karna/)", 2),
-    ("CLAUDE.md", "project instructions (Claude Code compatible)", 5),
+    ("CLAUDE.md", "project instructions (upstream reference compatible)", 5),
     (".karna/project.toml", "karna project config", 6),
     (".cursorrules", "project instructions (Cursor compatible)", 7),
     (".github/copilot-instructions.md", "project instructions (Copilot compatible)", 8),

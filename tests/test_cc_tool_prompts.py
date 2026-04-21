@@ -1,6 +1,6 @@
-"""Regression guards for the CC tool-prompt port.
+"""Regression guards for the upstream tool-prompt port.
 
-Guarantees that the verbatim Claude Code prompts from
+Guarantees that the verbatim upstream prompts from
 ``karna/prompts/cc_tool_prompts.py`` are wired into the 10 Nellie tools
 and that they flow through the model-facing surfaces (API schemas +
 system prompt).
@@ -41,14 +41,14 @@ def all_cc_tools():
 
 
 def test_every_cc_tool_has_a_cc_prompt(all_cc_tools):
-    """Each CC-mapped tool exposes the verbatim CC prompt."""
+    """Each upstream-mapped tool exposes the verbatim upstream prompt."""
     for tool in all_cc_tools:
         assert tool.cc_prompt, f"{tool.name}: cc_prompt is empty"
         assert tool.cc_prompt == CC_TOOL_PROMPTS[tool.name], f"{tool.name}: cc_prompt doesn't match central registry"
 
 
 def test_model_facing_description_prefers_cc_prompt(all_cc_tools):
-    """The model-facing surface returns the rich CC prompt, not the short description."""
+    """The model-facing surface returns the rich upstream prompt, not the short description."""
     for tool in all_cc_tools:
         assert tool.model_facing_description == tool.cc_prompt, (
             f"{tool.name}: model_facing_description should return cc_prompt when set"
@@ -57,7 +57,7 @@ def test_model_facing_description_prefers_cc_prompt(all_cc_tools):
 
 
 def test_api_schemas_ship_cc_prompt_to_the_model(all_cc_tools):
-    """OpenAI and Anthropic tool schemas both carry the CC prompt verbatim."""
+    """OpenAI and Anthropic tool schemas both carry the upstream prompt verbatim."""
     for tool in all_cc_tools:
         openai_schema = tool.to_openai_tool()
         anthropic_schema = tool.to_anthropic_tool()
@@ -86,16 +86,16 @@ def test_short_description_still_populated_for_ui(all_cc_tools):
 
 
 def test_scraping_framing_reaches_model_via_web_fetch_cc_prompt():
-    """Web-fetch CC prompt contains the capability language that blocks scraping refusals."""
+    """Web-fetch upstream prompt contains the capability language that blocks scraping refusals."""
     tool = WebFetchTool()
     prompt = tool.model_facing_description
-    # CC's verbatim wording
+    # upstream's verbatim wording
     assert "Fetches content from a specified URL" in prompt
     assert "retrieve and analyze web content" in prompt
 
 
 def test_web_search_cc_prompt_interpolates_current_month_year():
-    """The runtime-rendered CC WebSearch prompt carries an anchor date."""
+    """The runtime-rendered upstream WebSearch prompt carries an anchor date."""
     tool = WebSearchTool()
     prompt = tool.model_facing_description
     # The template embeds `getLocalMonthYear()`-style output, e.g. "April 2026"
@@ -104,7 +104,7 @@ def test_web_search_cc_prompt_interpolates_current_month_year():
 
 
 def test_nellie_tool_names_are_lowercase_in_cc_prompts():
-    """CC uses 'Read' / 'Bash'; we rewrite to Nellie's lowercase registry names."""
+    """upstream uses 'Read' / 'Bash'; we rewrite to Nellie's lowercase registry names."""
     # Spot-check a few that reference other tools
     assert "Use glob (NOT find or ls)" in CC_TOOL_PROMPTS["bash"]
     assert "Use read (NOT cat/head/tail)" in CC_TOOL_PROMPTS["bash"]
@@ -113,6 +113,6 @@ def test_nellie_tool_names_are_lowercase_in_cc_prompts():
     assert "must use your `read` tool" in CC_TOOL_PROMPTS["edit"]
     assert "ALWAYS use grep" in CC_TOOL_PROMPTS["grep"]
     assert "Use the task tool" in CC_TOOL_PROMPTS["grep"]
-    # Capitalised CC tool names should NOT appear
+    # Capitalised upstream tool names should NOT appear
     assert "use the Bash tool" not in CC_TOOL_PROMPTS["grep"]
     assert "Use Read" not in CC_TOOL_PROMPTS["bash"]

@@ -1,15 +1,15 @@
-"""Markdown + code-highlighting renderers, ported from Claude Code.
+"""Markdown + code-highlighting renderers, ported from upstream reference.
 
 Mirrors the semantics of:
-    /c/cc-src/src/components/Markdown.tsx
-    /c/cc-src/src/components/MarkdownTable.tsx
-    /c/cc-src/src/components/HighlightedCode.tsx
-    /c/cc-src/src/components/HighlightedCode/Fallback.tsx
-    /c/cc-src/src/utils/markdown.ts        (formatToken, configureMarked)
-    /c/cc-src/src/utils/cliHighlight.ts    (language detection by extension)
-    /c/cc-src/src/utils/hyperlink.ts       (OSC-8 hyperlinks)
+    upstream reference component
+    upstream reference component
+    upstream reference component
+    upstream reference component
+    upstream reference        (formatToken, configureMarked)
+    upstream reference    (language detection by extension)
+    upstream reference       (OSC-8 hyperlinks)
 
-CC uses ``marked`` + ``cli-highlight`` (highlight.js) under Ink. We re-skin
+upstream uses ``marked`` + ``cli-highlight`` (highlight.js) under Ink. We re-skin
 the same behavior on top of ``rich``: fenced code blocks get ``Syntax``,
 tables get ``Table`` with bold headers + alternating row tint, links
 preserve OSC-8 hyperlinks when the terminal supports them, and inline
@@ -32,18 +32,18 @@ from rich.table import Table
 from rich.text import Text
 
 # ---------------------------------------------------------------------------
-# Language detection — mirrors CC's `extname(filePath).slice(1)` + cli-highlight
+# Language detection — mirrors upstream's `extname(filePath).slice(1)` + cli-highlight
 # alias lookup. highlight.js (which cli-highlight wraps) carries its own
 # extension→language aliases (e.g. "py"→python, "rs"→rust, "ts"→typescript).
 # Pygments does the same internally via `get_lexer_by_name`, so in most cases
 # we just pass the extension through. For extensions that highlight.js
 # recognizes but Pygments doesn't (or vice versa), we keep a small override
-# table below — matches CC's behavior of falling back to a plain lexer on
+# table below — matches upstream's behavior of falling back to a plain lexer on
 # "Unknown language" rather than failing the render.
 # ---------------------------------------------------------------------------
 
-# Explicit CC/highlight.js-style aliases that Pygments handles differently
-# or where CC's expectation is unambiguous. Keys are lowercased.
+# Explicit upstream/highlight.js-style aliases that Pygments handles differently
+# or where upstream's expectation is unambiguous. Keys are lowercased.
 _LANGUAGE_ALIASES: dict[str, str] = {
     # shells
     "sh": "bash",
@@ -157,10 +157,10 @@ _FILENAME_LANGUAGES: dict[str, str] = {
 def detect_language_from_path(path: str) -> str:
     """Infer a language name from a file path.
 
-    Mirrors CC's ``extname(filePath).slice(1)`` + highlight.js alias lookup.
+    Mirrors upstream's ``extname(filePath).slice(1)`` + highlight.js alias lookup.
     Returns a language name suitable for ``rich.syntax.Syntax`` (i.e. a
     Pygments-accepted lexer name/alias), falling back to ``"text"`` when the
-    extension is unknown — same spirit as CC's "falling back to markdown".
+    extension is unknown — same spirit as upstream's "falling back to markdown".
     """
     if not path:
         return "text"
@@ -197,7 +197,7 @@ def highlight_code(
 ) -> Syntax:
     """Syntax-highlight ``source`` as ``language``.
 
-    CC's ``HighlightedCode`` path: try the requested language, fall back to
+    upstream's ``HighlightedCode`` path: try the requested language, fall back to
     a plain lexer on "Unknown language" rather than raising. We replicate
     that by catching ``ClassNotFound`` from Pygments and re-issuing with
     ``"text"``.
@@ -209,7 +209,7 @@ def highlight_code(
     # Resolve the lexer up front so we can fall back on "Unknown language".
     # Rich's `Syntax(...)` silently sets `lexer=None` for unknown names and
     # then renders the source as plain text — functional, but it hides the
-    # fallback and makes the return value ambiguous. Mirror CC's explicit
+    # fallback and makes the return value ambiguous. Mirror upstream's explicit
     # "log + fall back to markdown/plaintext" path from Fallback.tsx.
     try:
         from pygments.lexers import get_lexer_by_name
@@ -247,13 +247,13 @@ def render_table(
     title: str | None = None,
     zebra: bool = True,
 ) -> Table:
-    """Build a Rich ``Table`` that mirrors CC's MarkdownTable look.
+    """Build a Rich ``Table`` that mirrors upstream's MarkdownTable look.
 
     - Header cells are bold.
-    - Borders use the ``heavy_head`` box — same visual weight as CC's
+    - Borders use the ``heavy_head`` box — same visual weight as upstream's
       ``┌┬┐ ├┼┤ └┴┘`` borders for the header row.
     - Data rows alternate a dim-background tint when ``zebra`` is true.
-    - Cell content is wrapped rather than truncated (CC does the same via
+    - Cell content is wrapped rather than truncated (upstream does the same via
       ``wrapAnsi`` — see MarkdownTable.tsx's ``wrapText``).
     """
     from rich import box
@@ -299,11 +299,11 @@ _TABLE_RE = re.compile(
 
 
 def _osc8(url: str, text: str | None = None) -> str:
-    """OSC-8 hyperlink. Mirrors /c/cc-src/src/utils/hyperlink.ts.
+    """OSC-8 hyperlink. Mirrors upstream reference.
 
     Terminals that don't understand OSC-8 will strip it silently on most
     modern emulators; rich additionally guards with ``Console.is_terminal``.
-    We emit the escape unconditionally — matching CC, which guards on
+    We emit the escape unconditionally — matching upstream, which guards on
     ``supportsHyperlinks()`` at the ink layer. Callers who need that guard
     can wrap the returned Markdown renderable themselves.
     """
@@ -357,7 +357,7 @@ def _parse_table_block(block: str) -> tuple[list[str], list[list[str]]]:
 
     headers = _cells(lines[0])
     rows = [_cells(ln) for ln in lines[2:]]
-    # Pad short rows so column count matches header (CC tolerates this too)
+    # Pad short rows so column count matches header (upstream tolerates this too)
     for r in rows:
         while len(r) < len(headers):
             r.append("")
@@ -372,7 +372,7 @@ def render_markdown(
 ) -> RenderableType:
     """Render Markdown ``text`` as a Rich renderable.
 
-    Semantics mirror CC's ``<Markdown>`` component:
+    Semantics mirror upstream's ``<Markdown>`` component:
 
     - Fenced code blocks become ``Syntax`` with the requested language
       (falling back to ``text`` on unknown languages — same as
@@ -433,7 +433,7 @@ def render_markdown(
 def _detect_hyperlink_support() -> bool:
     """Best-effort OSC-8 support probe.
 
-    Mirrors /c/cc-src/src/ink/supports-hyperlinks.ts's logic at a high
+    Mirrors the upstream project/ink/supports-hyperlinks.ts's logic at a high
     level: honor ``FORCE_HYPERLINK`` / ``NO_COLOR``, require a TTY, and
     allow an opt-in for known-good terminals via ``TERM_PROGRAM``.
     """

@@ -1,6 +1,6 @@
-"""Search, history, and quick-open pickers — ported from Claude Code.
+"""Search, history, and quick-open pickers — ported from upstream reference.
 
-Mirrors the UX of Claude Code's ``HistorySearchDialog.tsx``,
+Mirrors the UX of upstream reference's ``HistorySearchDialog.tsx``,
 ``GlobalSearchDialog.tsx``, ``QuickOpenDialog.tsx``, ``SearchBox.tsx``, and
 ``TagTabs.tsx`` — but rewritten for Nellie's prompt_toolkit stack.
 
@@ -17,7 +17,7 @@ Design notes
 * **Keyboard hints.** Each dialog renders a one-line hint bar at the
   bottom (e.g. ``enter  select   esc  cancel``).
 * **Fuzzy match.** :func:`history_search` ranks exact-substring hits
-  first, then subsequence (character-order) hits — identical to CC's
+  first, then subsequence (character-order) hits — identical to upstream's
   ``isSubsequence`` fallback. :func:`quick_open_file` prefers
   ``rapidfuzz`` when available (faster + scored) and falls back to a
   pure-Python substring-and-subsequence ranker with the same ordering.
@@ -78,7 +78,7 @@ _MAX_VISIBLE_ROWS = 10
 def _is_subsequence(text: str, query: str) -> bool:
     """Return True if every char of *query* appears in *text* in order.
 
-    Mirrors CC's ``isSubsequence`` tail in
+    Mirrors upstream's ``isSubsequence`` tail in
     ``HistorySearchDialog.tsx`` / ``QuickOpenDialog.tsx``.
     """
     j = 0
@@ -131,7 +131,7 @@ def _rank_strings(items: Sequence[str], query: str) -> list[tuple[int, str]]:
 def render_search_box(placeholder: str, value: str) -> FormattedText:
     """Return prompt_toolkit ``FormattedText`` for the search input line.
 
-    Matches CC's ``SearchBox.tsx`` visual: a `⌕` prefix, dimmed placeholder
+    Matches upstream's ``SearchBox.tsx`` visual: a `⌕` prefix, dimmed placeholder
     when empty, bright text when filled. The value is rendered with a
     brand-colored caret suffix.
     """
@@ -147,7 +147,7 @@ def render_search_box(placeholder: str, value: str) -> FormattedText:
 class TagTabs:
     """Horizontal tab bar for filtering results by category/tag.
 
-    Render-only — the caller drives selection. Mirrors CC's ``TagTabs.tsx``
+    Render-only — the caller drives selection. Mirrors upstream's ``TagTabs.tsx``
     but emits prompt_toolkit ``FormattedText`` instead of Ink ``Text``.
 
     Example::
@@ -194,7 +194,7 @@ class TagTabs:
         """Return a single-line ``FormattedText`` for the tab bar.
 
         Truncates the visible window around ``selected_index`` to fit
-        ``available_width`` — matching CC's windowing behavior.
+        ``available_width`` — matching upstream's windowing behavior.
         """
         resume_label = "Resume (All Projects)" if self.show_all_projects else "Resume"
         hint = "(tab to cycle)"
@@ -404,14 +404,14 @@ async def history_search(
 ) -> Message | None:
     """Ctrl-R-style search across messages in the current session.
 
-    Mirrors CC's ``HistorySearchDialog.tsx``:
+    Mirrors upstream's ``HistorySearchDialog.tsx``:
 
     * Filters *session_messages* as the user types (exact substring first,
       subsequence fallback).
     * Returns the selected :class:`Message` on enter, or ``None`` on esc.
 
     Only user messages with textual content are surfaced — assistant
-    responses and tool results are skipped, same as CC's prompt history.
+    responses and tool results are skipped, same as upstream's prompt history.
     """
     # Pre-filter to user prompts with content. Preserve chronological order.
     candidates: list[Message] = [m for m in session_messages if m.role == "user" and (m.content or "").strip()]

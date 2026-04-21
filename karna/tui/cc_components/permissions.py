@@ -1,19 +1,19 @@
-"""CC-ported permission + trust dialogs — skinned for Nellie.
+"""upstream-ported permission + trust dialogs — skinned for Nellie.
 
-Mirrors the visuals and decision-shapes of Claude Code's permission UX:
+Mirrors the visuals and decision-shapes of upstream reference's permission UX:
 
 * ``components/permissions/PermissionDialog.tsx`` — the bordered outer chrome
   (rounded border, title, inner padding).
 * ``components/permissions/PermissionPrompt.tsx`` and
   ``components/permissions/BashPermissionRequest/bashToolUseOptions.tsx`` —
   the four-way choice surface (yes / yes-always / no / no-always) presented
-  to the user when a tool requires approval. CC's exact option labels are
+  to the user when a tool requires approval. upstream's exact option labels are
   preserved.
 * ``components/MCPServerApprovalDialog.tsx`` — the three-way MCP-server
   trust prompt (``yes_all`` / ``yes`` / ``no``).
 * ``components/ApproveApiKey.tsx`` — the first-use API-key trust prompt
   (masked ``sk-ant-...XXXX`` preview + default-no).
-* ``components/BypassPermissionsModeDialog.tsx`` — CC's red-banner "are you
+* ``components/BypassPermissionsModeDialog.tsx`` — upstream's red-banner "are you
   sure you want to bypass permissions" confirmation.
 * ``components/TrustDialog/TrustDialog.tsx`` — the summary table of
   surfaced rules shown when a workspace is first opened.
@@ -27,13 +27,13 @@ to prompt, it calls :func:`prompt_tool_permission` (or one of its
 siblings) and applies the returned enum to its session-allow / persistent-
 allow sets the same way it does today.
 
-The return value is a ``Literal[...]`` that matches CC's four-way
+The return value is a ``Literal[...]`` that matches upstream's four-way
 ``BashToolUseOption`` shape (``yes`` / ``yes_always`` / ``no`` /
 ``no_always``) — this is richer than Nellie's current boolean
 ``request_approval`` result. Follow-up: the resolver's
 ``request_approval`` signature could widen to this four-state return so
 ``no_always`` adds to ``session_denies`` without re-prompting. That would
-mirror CC exactly but requires touching the resolver, which is explicitly
+mirror upstream exactly but requires touching the resolver, which is explicitly
 out of scope here.
 
 Rendering
@@ -71,7 +71,7 @@ WARNING = COLORS.accent.warning
 DANGER = COLORS.accent.danger
 SUCCESS = COLORS.accent.success
 
-# Border colors by decision tier — mirrors CC's
+# Border colors by decision tier — mirrors upstream's
 # `color="warning"` / `color="error"` / `color="permission"` props on
 # `Dialog` / `PermissionDialog`.
 BORDER_ASK = WARNING  # yellow — default prompt tier
@@ -79,12 +79,12 @@ BORDER_DENY_DEFAULT = DANGER  # red — deny-by-default / destructive
 BORDER_ALLOW = SUCCESS  # green — info / current allowlist
 
 # --------------------------------------------------------------------------- #
-#  Return-value aliases (match CC's BashToolUseOption shape).
+#  Return-value aliases (match upstream's BashToolUseOption shape).
 # --------------------------------------------------------------------------- #
 
 ToolPermissionChoice = Literal["allow_once", "allow_always", "deny_once", "deny_always"]
 
-# The canonical keystrokes — case-sensitive, same shape CC uses:
+# The canonical keystrokes — case-sensitive, same shape upstream uses:
 #   lowercase = "this call only", uppercase = "always / never ask again".
 # Mirrors the existing ``[y]es / [Y]es always / [n]o / [N]o always`` prompt
 # in ``karna.permissions.manager.PermissionManager.request_approval`` so the
@@ -119,9 +119,9 @@ def _permission_panel(
     *,
     border: str,
 ) -> Panel:
-    """Mirror of CC's ``PermissionDialog`` outer chrome.
+    """Mirror of upstream's ``PermissionDialog`` outer chrome.
 
-    CC uses ``borderStyle="round"`` with only the top border rendered
+    upstream uses ``borderStyle="round"`` with only the top border rendered
     (``borderLeft=false`` / ``borderRight=false`` / ``borderBottom=false``).
     Rich's panel always draws four sides, so we use a full rounded border
     tinted by tier — it reads the same in a mono terminal.
@@ -168,7 +168,7 @@ def _tool_request_body(
     """The body of a per-tool permission request — tool-name row, args
     preview, and (optionally) the list of currently-allowed rules.
 
-    Layout mirrors CC's ``BashPermissionRequest`` / ``FallbackPermission
+    Layout mirrors upstream's ``BashPermissionRequest`` / ``FallbackPermission
     Request`` inner table: one-line header, then the input preview inside a
     subtle-bordered box, then any context footers.
     """
@@ -194,7 +194,7 @@ def _tool_request_body(
 def render_permission_allowlist(rules: Sequence[str]) -> RenderableType:
     """Render the current session allowlist as a Rich table.
 
-    Mirrors CC's ``PermissionRuleExplanation`` + ``TrustDialog`` rule-row
+    Mirrors upstream's ``PermissionRuleExplanation`` + ``TrustDialog`` rule-row
     layout: a left-aligned bullet column and a rule-text column. Pure —
     no IO. Callers pass the rule strings from
     ``PermissionManager.session_allows`` / the persistent-allow set.
@@ -272,14 +272,14 @@ async def prompt_tool_permission(
 ) -> ToolPermissionChoice:
     """Ask the user whether a tool invocation may proceed.
 
-    Mirrors CC's ``BashPermissionRequest`` / ``FallbackPermissionRequest``
+    Mirrors upstream's ``BashPermissionRequest`` / ``FallbackPermissionRequest``
     four-way choice surface: ``yes`` / ``yes-always`` (adds a rule) /
     ``no`` / ``no-always`` (session-deny). Returns the canonical
     ``ToolPermissionChoice`` enum; the caller is responsible for pushing
     the decision into ``PermissionManager.session_allows`` /
     ``session_denies`` / the persistent-allow store.
 
-    The prompt string matches the inline shape CC shows in terminals
+    The prompt string matches the inline shape upstream shows in terminals
     without TTY (the ``[a/A/d/D]`` fallback): lowercase = this call only,
     uppercase = remember.
     """
@@ -312,7 +312,7 @@ async def prompt_mcp_server_approval(
     no.
 
     The body lists every tool the server plans to expose — this is the
-    same surface CC uses to avoid surprise tool-installation.
+    same surface upstream uses to avoid surprise tool-installation.
     """
     cons = console or Console()
     tbl = Table.grid(padding=(0, 1))
@@ -351,7 +351,7 @@ async def prompt_api_key_trust(
 
     Mirrors ``ApproveApiKey.tsx``: masks everything except the last four
     characters (the caller should pre-mask — this function prints the
-    preview as-is) and defaults to **no** (CC labels the "No" option
+    preview as-is) and defaults to **no** (upstream labels the "No" option
     *recommended*).
     """
     cons = console or Console()
@@ -383,7 +383,7 @@ async def prompt_bypass_permissions(console: Console | None = None) -> bool:
 
     Mirrors ``BypassPermissionsModeDialog.tsx``: red banner, explicit
     "yes, I accept" / "no, exit" choices, defaults to decline. The
-    warning copy is a verbatim port of CC's phrasing.
+    warning copy is a verbatim port of upstream's phrasing.
     """
     cons = console or Console()
     body = Group(

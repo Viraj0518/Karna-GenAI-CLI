@@ -1,4 +1,4 @@
-"""Tests for karna.tui.cc_components.diffs — CC visual port.
+"""Tests for karna.tui.cc_components.diffs — upstream visual port.
 
 Six tests exercising the six public renderables in that module.
 """
@@ -39,7 +39,7 @@ def _render(obj) -> str:
 
 
 def test_structured_diff_shows_added_and_removed_payload() -> None:
-    """CC's StructuredDiffFallback emits ``+payload`` and ``-payload`` lines."""
+    """upstream's StructuredDiffFallback emits ``+payload`` and ``-payload`` lines."""
     out = _render(render_structured_diff("alpha\nbeta\n", "alpha\ngamma\n", path="src/x.py"))
     assert "src/x.py" in out
     assert "-beta" in out
@@ -49,7 +49,7 @@ def test_structured_diff_shows_added_and_removed_payload() -> None:
 
 
 def test_structured_diff_emits_ansi_colour() -> None:
-    """Confirm we actually colour the lines (CC's theme tokens)."""
+    """Confirm we actually colour the lines (upstream's theme tokens)."""
     out = _render(render_structured_diff("a\n", "b\n"))
     assert "\x1b[" in out  # ANSI escape present
     # Both markers must survive the colour wrapping.
@@ -76,7 +76,7 @@ def test_file_edit_accepted_wraps_diff_with_path_header() -> None:
 
 
 def test_file_edit_rejected_mentions_rejection_and_shows_diff() -> None:
-    """Mirrors CC's FileEditToolUseRejectedMessage body."""
+    """Mirrors upstream's FileEditToolUseRejectedMessage body."""
     out = _render(render_file_edit_rejected("pkg/mod.py", "foo\n", "bar\n"))
     assert "User rejected" in out
     assert "pkg/mod.py" in out

@@ -10,7 +10,7 @@ Supports:
 - SSE streaming with message_start, content_block_delta, message_delta
 - Cost tracking per call
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 

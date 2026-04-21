@@ -5,8 +5,6 @@ a section suitable for inclusion in the system prompt.  The output is
 model-agnostic — template-level formatting (XML vs markdown) is handled
 by the caller.
 
-Ported from cc-src tool prompt patterns with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations
@@ -58,8 +56,8 @@ _TOOL_GUIDANCE: dict[str, tuple[str, str]] = {
 def _format_tool_section(tool: "BaseTool") -> str:
     """Format a single tool into a documentation block.
 
-    When the tool ships a verbatim Claude Code prompt (``cc_prompt``),
-    we emit that alone — CC's prompt already contains usage notes,
+    When the tool ships a verbatim upstream prompt (``cc_prompt``),
+    we emit that alone — upstream's prompt already contains usage notes,
     constraints, and do/don't lists, so our legacy ``_TOOL_GUIDANCE``
     hints would duplicate content.
     """

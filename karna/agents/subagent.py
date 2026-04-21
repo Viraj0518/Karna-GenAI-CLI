@@ -17,8 +17,6 @@ Enhanced (E4/E5) with:
 - Result persistence for context-compaction survival
 - Message queuing for in-flight agents
 
-Ported from cc-src teammate/agent patterns with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations

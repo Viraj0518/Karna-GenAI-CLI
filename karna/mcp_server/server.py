@@ -337,7 +337,7 @@ def _render_transcript(events: list[dict[str, Any]], text: str, halt: str) -> st
 def _tool_arg_summary(tool_name: str, args: Any) -> str:
     """One-line summary of a tool's args for the transcript header.
 
-    Mirrors Claude Code's ``Bash(command)`` / ``Write(file_path)`` format.
+    Mirrors upstream reference's ``Bash(command)`` / ``Write(file_path)`` format.
     """
     if not isinstance(args, dict):
         return str(args)[:80]

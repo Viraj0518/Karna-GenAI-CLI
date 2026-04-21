@@ -1,4 +1,4 @@
-"""Tests for ``karna.tui.cc_components.markdown`` — the CC-ported markdown
+"""Tests for ``karna.tui.cc_components.markdown`` — the upstream-ported markdown
 and code-highlighting renderers.
 
 One test per exposed function, plus a couple of integration checks for the
@@ -64,7 +64,7 @@ class TestDetectLanguageFromPath:
         assert detect_language_from_path(path) == expected
 
     def test_unknown_extension_passes_through_lowered(self):
-        # CC's behavior: hand the raw ext to highlight.js; on unknown it
+        # upstream's behavior: hand the raw ext to highlight.js; on unknown it
         # falls back. We keep the ext for Pygments to attempt a match.
         assert detect_language_from_path("weird.madeupext") == "madeupext"
 
@@ -93,7 +93,7 @@ class TestHighlightCode:
         assert "typescript" in s.lexer.name.lower()
 
     def test_unknown_language_falls_back_to_text(self):
-        # Mirrors CC's "Unknown language" catch — must not raise.
+        # Mirrors upstream's "Unknown language" catch — must not raise.
         s = highlight_code("whatever", "definitely-not-a-language")
         assert isinstance(s, Syntax)
         # Pygments' text lexer is called "Text only"
@@ -168,7 +168,7 @@ class TestRenderMarkdown:
         assert "body" in out
 
     def test_inline_code_is_styled(self):
-        # CC uses a color('permission') wrap on codespan — we delegate to
+        # upstream uses a color('permission') wrap on codespan — we delegate to
         # rich.markdown which applies a dim-background style. Render with
         # force_terminal so the ANSI style escapes are emitted.
         out = _render(render_markdown("use `foo()` please"), force_terminal=True)
@@ -203,7 +203,7 @@ class TestRenderMarkdown:
             force_terminal=True,
         )
         # OSC-8 sequence opens with ESC ] 8 ; ;  — rich emits this when
-        # hyperlinks=True. Matches /c/cc-src/src/utils/hyperlink.ts.
+        # hyperlinks=True. Matches upstream reference.
         assert "\x1b]8;" in out
         assert "example.com/docs" in out
 

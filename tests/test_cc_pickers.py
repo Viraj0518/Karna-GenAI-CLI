@@ -1,4 +1,4 @@
-"""Tests for the CC-ported picker dialogs.
+"""Tests for the upstream-ported picker dialogs.
 
 The pickers are built on ``prompt_toolkit.Application`` with
 ``full_screen=False``. We drive them via a pipe input + ``DummyOutput``
@@ -117,9 +117,9 @@ def test_model_rows_group_by_provider_and_show_columns() -> None:
     assert len(rows) == 2
     ids = {r[0] for r in rows}
     assert ids == {"claude-opus-4-20250514", "gpt-4o"}
-    # Label shows the ctx / max columns ported from CC's ModelPicker.
+    # Label shows the ctx / max columns ported from upstream's ModelPicker.
     assert any("ctx" in r[1] and "max" in r[1] for r in rows)
-    # Description carries the provider name — used for grouping in CC.
+    # Description carries the provider name — used for grouping in upstream.
     providers = {r[2].split()[0] for r in rows}
     assert providers == {"anthropic", "openai"}
 

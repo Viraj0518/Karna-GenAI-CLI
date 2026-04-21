@@ -1,4 +1,4 @@
-"""Tests for the CC-ported input primitives.
+"""Tests for the upstream-ported input primitives.
 
 The module is a library (no REPL wiring), so these are pure unit tests:
 
@@ -39,7 +39,7 @@ def test_vim_text_input_mode_transitions_mirror_cc_key_table() -> None:
     observed: list[VimMode] = []
     vim = VimTextInput(on_mode_change=observed.append)
 
-    # Default mode is INSERT (matches CC's default).
+    # Default mode is INSERT (matches upstream's default).
     assert vim.mode == VimMode.INSERT
 
     # INSERT -> NORMAL via Esc.
@@ -82,7 +82,7 @@ def test_vim_text_input_mode_transitions_mirror_cc_key_table() -> None:
 def test_scroll_keybindings_dispatch_table() -> None:
     scroll = ScrollKeybindings()
 
-    # PAGE_LINES matches CC's default paging (20 lines).
+    # PAGE_LINES matches upstream's default paging (20 lines).
     assert scroll.PAGE_LINES == 20
 
     # Dispatch returns signed delta for paging keys.
@@ -118,7 +118,7 @@ def test_attach_configurable_shortcut_hint_joins_with_dot_separator() -> None:
     assert "Ctrl-O" in plain and "expand" in plain
     assert "Esc" in plain and "interrupt" in plain
     assert "Ctrl-C" in plain and "exit" in plain
-    # CC-compatible centered-dot separator.
+    # upstream-compatible centered-dot separator.
     assert "\u00b7" in plain
 
     # With parens=True, each chip gets wrapped.

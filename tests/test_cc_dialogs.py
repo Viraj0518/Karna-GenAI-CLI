@@ -1,4 +1,4 @@
-"""Tests for the CC-ported small-dialogs module.
+"""Tests for the upstream-ported small-dialogs module.
 
 Async IO-backed dialogs (confirm, press-enter, exit-flow, idle-return,
 run-wizard) are driven by monkey-patching the module-level ``_prompt``
@@ -104,7 +104,7 @@ def test_press_enter_and_flow_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  3. idle-duration formatter (ported from CC)
+#  3. idle-duration formatter (ported from upstream)
 # --------------------------------------------------------------------------- #
 
 
@@ -154,7 +154,7 @@ def test_render_helpers_produce_expected_text() -> None:
     off = render_thinking_toggle(False)
     assert "thinking on" in _render(on)
     assert "thinking off" in _render(off)
-    # Both should include the sparkle glyph from CC's vocabulary.
+    # Both should include the sparkle glyph from upstream's vocabulary.
     assert "\u2726" in _render(on) and "\u2726" in _render(off)
 
     chip = render_ctrl_o_to_expand()
@@ -175,12 +175,12 @@ def test_render_helpers_produce_expected_text() -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  6. IdleReturnAction enum — parity with CC
+#  6. IdleReturnAction enum — parity with upstream
 # --------------------------------------------------------------------------- #
 
 
 def test_idle_return_action_enum_parity() -> None:
-    # CC exposes: continue / clear / dismiss / never
+    # upstream exposes: continue / clear / dismiss / never
     assert {a.value for a in IdleReturnAction} == {
         "continue",
         "clear",

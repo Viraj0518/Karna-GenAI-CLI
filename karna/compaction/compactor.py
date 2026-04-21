@@ -25,7 +25,7 @@ Strategy
 Secret scrubbing happens **before** the provider call, not after, so
 leaked credentials never leave the host.
 
-Portions adapted from cc-src ``autoCompact.ts`` and hermes-agent
+Portions adapted from upstream ``autoCompact.ts`` and hermes-agent
 ``trajectory_compressor.py``. See NOTICES.md.
 """
 
@@ -57,7 +57,6 @@ class CompactionError(RuntimeError):
     context-overflow cycle where every subsequent provider call fails
     the same way.
     """
-
 
 # ---------------------------------------------------------------------- #
 #  Token accounting

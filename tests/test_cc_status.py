@@ -1,4 +1,4 @@
-"""Tests for the CC-ported status-line + context indicators.
+"""Tests for the upstream-ported status-line + context indicators.
 
 One test per exposed function, plus threshold-color sanity checks. The
 module is pure (no IO, no polling) so these are straight unit tests.
@@ -82,7 +82,7 @@ def test_context_color_thresholds_match_cc() -> None:
     assert cc_status._context_color(94.9) == cc_status.WARNING
     assert cc_status._context_color(95) == cc_status.DANGER
     assert cc_status._context_color(100) == cc_status.DANGER
-    # And the constants line up with CC's TokenWarning.tsx
+    # And the constants line up with upstream's TokenWarning.tsx
     assert cc_status.CTX_WARNING_THRESHOLD == 80
     assert cc_status.CTX_ERROR_THRESHOLD == 95
 
@@ -93,7 +93,7 @@ def test_context_color_thresholds_match_cc() -> None:
 
 
 def test_render_token_warning_silent_and_loud() -> None:
-    # Below 80 % → no panel (CC's TokenWarning returns null)
+    # Below 80 % → no panel (upstream's TokenWarning returns null)
     assert cc_status.render_token_warning(10_000, 200_000) is None
     assert cc_status.render_token_warning(159_000, 200_000) is None  # 79.5 %
     # 85 % → warning panel

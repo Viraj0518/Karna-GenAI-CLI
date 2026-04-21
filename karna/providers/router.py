@@ -49,7 +49,6 @@ _ESCALATE_STATUS_CODES = frozenset({408, 413, 429, 500, 502, 503, 504})
 class AllTiersExhaustedError(RuntimeError):
     """Raised when every tier has been tried and all failed."""
 
-
 class CostAwareRouterProvider(BaseProvider):
     """Route each request to the cheapest tier that can handle it."""
 

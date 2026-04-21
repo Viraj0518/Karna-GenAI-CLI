@@ -8,8 +8,6 @@ confirmation, or is unconditionally blocked.  Supports:
 - Session-scoped "always allow" grants
 - Named profiles: safe, standard, yolo
 
-Ported from cc-src permission patterns with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations

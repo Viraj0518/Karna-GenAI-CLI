@@ -7,7 +7,7 @@ disabled in config.  They cover:
 - Git dirty-tree warning on session start
 - Auto-save memory after assistant responses (stub)
 
-Adapted from cc-src hook patterns.  See NOTICES.md for attribution.
+Adapted from upstream hook patterns.  See NOTICES.md for attribution.
 """
 
 from __future__ import annotations

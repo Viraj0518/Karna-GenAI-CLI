@@ -6,7 +6,7 @@ prefer importing the semantic roles here (or the Rich styles derived in
 themes.py) rather than raw hex codes.
 
 Design intent: dark-first, quiet, generous whitespace, brand accent used
-sparingly. Inspired by Claude Code's Ink TUI, Warp, and Charm bubbletea.
+sparingly. Inspired by upstream reference's Ink TUI, Warp, and Charm bubbletea.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Summarization prompt templates for conversation compaction.
 
-Adapted from cc-src compact/prompt.ts with simplified structure
+Adapted from upstream compact/prompt.ts with simplified structure
 for Karna's interactive agent use case.
 
 See NOTICES.md for attribution.

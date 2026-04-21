@@ -1,6 +1,5 @@
 """Memory-specific system prompt section.
 
-Ported from cc-src teamMemPrompts.ts (INDIVIDUAL-ONLY mode).
 """
 
 from __future__ import annotations

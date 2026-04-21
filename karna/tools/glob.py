@@ -1,7 +1,5 @@
 """Glob tool — file pattern matching.
 
-Full implementation ported from cc-src GlobTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - File pattern matching via ``pathlib.Path.glob()``

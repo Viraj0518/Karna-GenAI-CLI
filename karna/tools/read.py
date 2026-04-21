@@ -1,7 +1,5 @@
 """Read tool -- reads file contents from disk with line numbers.
 
-Full implementation ported from cc-src FileReadTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Line-numbered output (``cat -n`` style)

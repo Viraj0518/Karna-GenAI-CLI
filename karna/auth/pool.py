@@ -65,7 +65,6 @@ class KeyEntry:
 class AllKeysExhaustedError(Exception):
     """Raised when every key in the pool is in cooldown or removed."""
 
-
 class CredentialPool:
     """Multi-key pool with automatic failover on rate-limit or auth errors.
 

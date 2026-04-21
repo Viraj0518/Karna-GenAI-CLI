@@ -157,7 +157,6 @@ class _Fake401(Exception):
     """Stand-in for a 401 auth error. The agent loop should surface it
     as a user-visible message rather than crashing the process."""
 
-
 @pytest.mark.asyncio
 async def test_401_error_surfaced_to_user(mock_karna_home: Path) -> None:
     """Provider raises a 401-like error -- user sees a readable fallback.

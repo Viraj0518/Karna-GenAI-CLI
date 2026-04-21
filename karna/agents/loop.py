@@ -21,8 +21,6 @@ Supports both streaming (``stream``) and non-streaming (``complete``)
 providers.  Works with any provider that follows the
 ``BaseProvider`` interface and any tools that follow ``BaseTool``.
 
-Ported from the cc-src coordinator pattern with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations

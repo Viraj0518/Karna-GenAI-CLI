@@ -64,7 +64,6 @@ _MONTH_NAMES = {
 class CronParseError(ValueError):
     """Raised when a cron expression cannot be parsed."""
 
-
 @dataclass
 class CronSpec:
     """Parsed cron expression as 5 sets of allowed values."""

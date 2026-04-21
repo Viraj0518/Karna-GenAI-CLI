@@ -257,7 +257,7 @@ Test suite in [tests/](../tests/). Notable files landed on dev:
 - [Dockerfile](../Dockerfile) — Container build.
 - [Makefile](../Makefile) — Convenience targets.
 - [LICENSE.md](../LICENSE.md) — MIT license.
-- [NOTICES.md](../NOTICES.md) — Attribution notices for ported code (cc-src, hermes-agent).
+- [NOTICES.md](../NOTICES.md) — Attribution notices for ported code (upstream, hermes-agent).
 - [README.md](../README.md) — Project overview.
 - [GETTING_STARTED.md](../GETTING_STARTED.md) — First-run guide.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — Contributor guide.

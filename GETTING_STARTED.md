@@ -368,7 +368,7 @@ Nellie loads instruction files in priority order and merges them:
 1. {project_root}/KARNA.md          -- highest priority (team conventions)
 2. {project_root}/.karna/KARNA.md   -- alternate location
 3. ~/.karna/KARNA.md                -- global personal preferences
-4. CLAUDE.md                        -- Claude Code compatibility
+4. CLAUDE.md                        -- Nellie compatibility
 5. .cursorrules                     -- Cursor compatibility
 6. .github/copilot-instructions.md  -- Copilot compatibility
 ```

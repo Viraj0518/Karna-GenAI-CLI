@@ -1,7 +1,5 @@
 """Write tool -- writes content to a file on disk.
 
-Full implementation ported from cc-src FileWriteTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Write content to an absolute file path

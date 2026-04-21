@@ -38,7 +38,7 @@ Send three prompts in order:
 |---|---|
 | `hey!` | "Greeting. Watch the `✦ Thinking…` spinner appear the instant I press Enter, then the `◆ nellie` label streams in." |
 | `plan a refactor of our auth middleware` | "Structured planning. Headers, nested bullets, numbered steps — rendered live as tokens arrive." |
-| `read karna/tui/output.py and summarise in one sentence` | "Tool use. Watch the `● Read(karna/tui/output.py)` bullet, then `  ⎿  962 lines  ✓ 0.3s` result branch. Same glyph vocabulary as Claude Code." |
+| `read karna/tui/output.py and summarise in one sentence` | "Tool use. Watch the `● Read(karna/tui/output.py)` bullet, then `  ⎿  962 lines  ✓ 0.3s` result branch. Same glyph vocabulary as Nellie." |
 
 Bottom status bar: live `⠙ Thinking · 4s · ↑ 2.1k tok · esc` counter during each turn.
 
@@ -155,7 +155,7 @@ Expected: `98 ok · 0 empty · 2 rate-limited-then-retried · ~340s total`.
 | Electron won't launch | `cd electron && npm install && npm run dev` — `dev` mode shows logs |
 | MCP/ACP server exits immediately | `nellie mcp serve 2>&1 \| head` — check for missing provider creds |
 
-## Demo-risk flags (from beta's CC-testing)
+## Demo-risk flags (from beta's upstream-testing)
 
 - **Wayland**: pyautogui (computer_controller MCP) fails on pure Wayland. Demo on X11/Windows/macOS only.
 - **macOS a11y**: first keyboard/mouse call triggers permission prompt. Answer it pre-demo.

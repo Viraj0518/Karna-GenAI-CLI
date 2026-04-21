@@ -1,7 +1,5 @@
 """Bash tool -- executes shell commands via asyncio subprocess.
 
-Full implementation ported from cc-src BashTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Async subprocess execution via ``asyncio.create_subprocess_shell``

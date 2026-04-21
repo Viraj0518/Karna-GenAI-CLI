@@ -1,4 +1,4 @@
-"""Tests for the CC-ported task / compact / session / agent renderers.
+"""Tests for the upstream-ported task / compact / session / agent renderers.
 
 Happy-path + edge cases for each of the six renderers in
 `karna.tui.cc_components.tasks`. Pure module, no IO — straight unit
@@ -56,7 +56,7 @@ def test_render_task_list_empty_and_all_statuses() -> None:
 
 
 def test_render_task_list_sort_priority_matches_cc() -> None:
-    """CC prefers in_progress > pending > completed > deleted."""
+    """upstream prefers in_progress > pending > completed > deleted."""
     tasks = [
         {"id": "10", "subject": "completed-10", "status": "completed"},
         {"id": "20", "subject": "deleted-20", "status": "deleted"},
@@ -135,7 +135,7 @@ def test_render_session_preview_tail_and_empty() -> None:
     messages = [
         {"role": "user", "content": "Hi"},
         {"role": "assistant", "content": "Hello, how can I help?"},
-        {"role": "user", "content": "Port CC visuals."},
+        {"role": "user", "content": "Port upstream visuals."},
         {"role": "assistant", "content": "On it."},
         # Anthropic-style block list input
         {"role": "user", "content": [{"type": "text", "text": "thanks!"}]},
@@ -149,7 +149,7 @@ def test_render_session_preview_tail_and_empty() -> None:
     assert "01HZX-demo" in out
     assert "5 messages" in out
     # Only the last 3 are previewed.
-    assert "Port CC visuals." in out
+    assert "Port upstream visuals." in out
     assert "On it." in out
     assert "thanks!" in out
     # Earlier messages trimmed out.

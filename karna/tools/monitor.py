@@ -8,8 +8,6 @@ Integrates with the unified :class:`~karna.tools.task_registry.TaskRegistry`
 so that monitor events are surfaced as notifications into the active
 conversation between agent turns.
 
-Ported from cc-src LocalShellSpawnTask / monitor patterns with
-attribution to the Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations

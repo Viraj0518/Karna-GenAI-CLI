@@ -4,8 +4,7 @@ Validates tool arguments before execution to block dangerous
 operations: destructive shell commands, access to sensitive file
 paths, and requests to private network addresses.
 
-Ported from cc-src BashTool security patterns with attribution
-to the Anthropic Claude Code codebase.
+to the upstream reference agent.
 
 CANONICAL SOURCE OF TRUTH: ``_SENSITIVE_PATHS`` (defined below) is the
 single source of truth for sensitive-path detection across Karna.

@@ -873,7 +873,6 @@ dedup_threshold = 0.60
 index_file = "MEMORY.md"
 """
 
-
 @app.command()
 def init(
     provider: str = typer.Option(None, help="Default provider"),

@@ -1,6 +1,6 @@
-"""Port of Claude Code's diff / file-edit visuals to Rich renderables.
+"""Port of upstream reference's diff / file-edit visuals to Rich renderables.
 
-Source components (paths relative to CC repo root ``/c/cc-src/src/components/``):
+Source components (paths relative to upstream repo root ``the upstream project/components/``):
 
 * ``StructuredDiff.tsx``            -> :func:`render_structured_diff` (hunk render)
 * ``StructuredDiffList.tsx``        -> list dispatch in :func:`render_structured_diff`
@@ -20,19 +20,19 @@ Source components (paths relative to CC repo root ``/c/cc-src/src/components/``)
 * ``FilePathLink.tsx``              -> :func:`render_file_path_link`
                                         (``pathToFileURL`` -> OSC-8 via Rich)
 
-**Nellie skin deltas** (everything else mirrors CC 1:1):
+**Nellie skin deltas** (everything else mirrors upstream 1:1):
 
-* CC's theme-aware ``diffAdded`` / ``diffRemoved`` / ``diffAddedWord`` /
+* upstream's theme-aware ``diffAdded`` / ``diffRemoved`` / ``diffAddedWord`` /
   ``diffRemovedWord`` / ``diffAddedDimmed`` / ``diffRemovedDimmed`` tokens are
   sourced from ``karna.tui.design_tokens.SEMANTIC`` where an equivalent exists
   (``accent.success`` / ``accent.danger`` / ``text.tertiary``), and fall back
-  to the exact RGB triples from CC's dark theme (``utils/theme.ts`` lines
+  to the exact RGB triples from upstream's dark theme (``utils/theme.ts`` lines
   141-146) when a skin token is missing.
 * The "tool result" branch glyph is Nellie's ``⎿`` from
   :data:`karna.tui.hermes_display.NELLIE_TOOL_RESULT_GLYPH`, which matches
-  CC's ``L/ellipsis-between-hunks`` visual.
+  upstream's ``L/ellipsis-between-hunks`` visual.
 * Brand accent is Nellie's ``#3C73BD`` (pulled via ``accent.brand``) for the
-  file-path header, matching the spot CC uses its theme's ``subtle`` token.
+  file-path header, matching the spot upstream uses its theme's ``subtle`` token.
 
 Library-only module: callers render with a ``rich.console.Console`` — this
 file imports nothing from ``hermes_repl``.
@@ -51,20 +51,20 @@ from rich.panel import Panel
 from rich.text import Text
 
 # --------------------------------------------------------------------------- #
-#  Colour resolution — follows CC's token names, falls back to Nellie tokens,
-#  and finally to the RGB values baked into CC's dark theme (utils/theme.ts).
+#  Colour resolution — follows upstream's token names, falls back to Nellie tokens,
+#  and finally to the RGB values baked into upstream's dark theme (utils/theme.ts).
 # --------------------------------------------------------------------------- #
 
 
 def _resolve_palette() -> dict[str, str]:
-    """Return a mapping of CC token names to Rich colour strings.
+    """Return a mapping of upstream token names to Rich colour strings.
 
     Prefers Nellie's :data:`karna.tui.design_tokens.SEMANTIC` when the
     equivalent token exists; otherwise uses the literal RGB triples copied
-    out of CC's dark theme (``utils/theme.ts``).
+    out of upstream's dark theme (``utils/theme.ts``).
     """
     palette = {
-        # CC dark theme (utils/theme.ts:141-146)
+        # upstream dark theme (utils/theme.ts:141-146)
         "diffAdded": "rgb(105,219,124)",  # line bg for added lines
         "diffRemoved": "rgb(255,168,180)",  # line bg for removed lines
         "diffAddedDimmed": "rgb(199,225,203)",
@@ -72,7 +72,7 @@ def _resolve_palette() -> dict[str, str]:
         "diffAddedWord": "rgb(47,157,68)",  # word-level highlight
         "diffRemovedWord": "rgb(209,69,75)",
         # Chrome
-        "subtle": "grey50",  # CC uses theme 'subtle' for headers
+        "subtle": "grey50",  # upstream uses theme 'subtle' for headers
         "brand": "#3C73BD",  # Nellie brand override
         "error": "red",
         "dim": "grey58",
@@ -81,10 +81,10 @@ def _resolve_palette() -> dict[str, str]:
         from karna.tui.design_tokens import SEMANTIC  # lazy so tests without Nellie can stub it
     except Exception:  # pragma: no cover
         return palette
-    # Map CC tokens onto Nellie tokens where an equivalent exists. CC's line
+    # Map upstream tokens onto Nellie tokens where an equivalent exists. upstream's line
     # colours are backgrounds on white text; Nellie's dark-first palette uses
     # accent.success / accent.danger as foreground colours, so we use them as
-    # foreground on the added/removed lines (matches CC's "ansi:green" /
+    # foreground on the added/removed lines (matches upstream's "ansi:green" /
     # "ansi:red" light-mode branch in utils/theme.ts:223-224).
     palette["diffAdded"] = SEMANTIC.get("accent.success", palette["diffAdded"])
     palette["diffRemoved"] = SEMANTIC.get("accent.danger", palette["diffRemoved"])
@@ -100,7 +100,7 @@ def _resolve_palette() -> dict[str, str]:
 _PALETTE = _resolve_palette()
 
 
-# Nellie's tool-result branch glyph; matches CC's visual break between hunks.
+# Nellie's tool-result branch glyph; matches upstream's visual break between hunks.
 try:
     from karna.tui.hermes_display import NELLIE_TOOL_RESULT_GLYPH
 except Exception:  # pragma: no cover
@@ -108,7 +108,7 @@ except Exception:  # pragma: no cover
 
 
 # --------------------------------------------------------------------------- #
-#  Structured diff — mirrors CC's StructuredDiff + StructuredDiffFallback
+#  Structured diff — mirrors upstream's StructuredDiff + StructuredDiffFallback
 # --------------------------------------------------------------------------- #
 
 
@@ -122,11 +122,11 @@ def _build_hunks(
     *,
     context: int = 3,
 ) -> list[dict]:
-    """Return a list of hunks shaped like CC's ``StructuredPatchHunk``.
+    """Return a list of hunks shaped like upstream's ``StructuredPatchHunk``.
 
     We invoke :func:`difflib.unified_diff` and chunk on ``@@`` markers so the
     per-hunk rendering (with line-number gutter, ``+``/``-``/`` `` prefixes)
-    matches CC's ``StructuredDiffFallback`` one for one.
+    matches upstream's ``StructuredDiffFallback`` one for one.
     """
     diff = list(
         difflib.unified_diff(
@@ -170,7 +170,7 @@ def _build_hunks(
 def _render_hunk(hunk: dict, palette: dict[str, str], *, dim: bool) -> Text:
     """Render a single hunk — line-number gutter + prefix + payload.
 
-    CC (``StructuredDiffFallback.tsx``) right-aligns the line number in a
+    upstream (``StructuredDiffFallback.tsx``) right-aligns the line number in a
     gutter sized to ``max(oldStart+oldLines, newStart+newLines).toString().length``
     followed by the marker ("+", "-", " "). We mirror that exactly; Rich
     handles the width via ``str.rjust``.
@@ -189,7 +189,7 @@ def _render_hunk(hunk: dict, palette: dict[str, str], *, dim: bool) -> Text:
     body = Text()
     for raw in hunk["lines"]:
         if not raw:
-            # Occasional empty trailing line from difflib; skip like CC does.
+            # Occasional empty trailing line from difflib; skip like upstream does.
             continue
         marker = raw[:1]
         payload = raw[1:]
@@ -217,14 +217,14 @@ def render_structured_diff(
     *,
     path: str | None = None,
 ) -> RenderableType:
-    """Render a CC-style structured diff for ``old -> new``.
+    """Render a upstream-style structured diff for ``old -> new``.
 
     Mirrors ``StructuredDiffList`` + ``StructuredDiff`` + ``Fallback``:
 
-    * File-path header in the brand colour (CC's ``subtle`` → Nellie brand).
+    * File-path header in the brand colour (upstream's ``subtle`` → Nellie brand).
     * One section per hunk with a line-number gutter, ``+``/``-``/`` `` prefix,
       and coloured payload (green additions, red deletions, dim context).
-    * Between hunks CC renders ``...`` as a dim separator; we render
+    * Between hunks upstream renders ``...`` as a dim separator; we render
       ``⎿ ...`` so it blends with Nellie's tool-result branch glyph.
     """
     palette = _PALETTE
@@ -244,7 +244,7 @@ def render_structured_diff(
     for idx, hunk in enumerate(hunks):
         if idx > 0:
             pieces.append(Text(f"{NELLIE_TOOL_RESULT_GLYPH} ...", style=f"dim {palette['dim']}"))
-        # CC shows the hunk header (``@@ -a,b +c,d @@``) in a dimmer colour;
+        # upstream shows the hunk header (``@@ -a,b +c,d @@``) in a dimmer colour;
         # we match by rendering in ``palette['subtle']`` with ``dim``.
         pieces.append(Text(hunk["header"], style=f"dim {palette['subtle']}"))
         pieces.append(_render_hunk(hunk, palette, dim=False))
@@ -267,10 +267,10 @@ def render_file_edit_accepted(
     path: str,
     diff_renderable: RenderableType,
 ) -> RenderableType:
-    """Wrap an accepted edit in CC's "Added N lines, removed M lines" framing.
+    """Wrap an accepted edit in upstream's "Added N lines, removed M lines" framing.
 
     Mirrors ``FileEditToolUpdatedMessage.tsx`` (dashed top/bottom border via
-    :class:`rich.panel.Panel` — CC uses ``borderStyle="dashed"`` with left
+    :class:`rich.panel.Panel` — upstream uses ``borderStyle="dashed"`` with left
     and right borders suppressed; Rich doesn't support partial borders so we
     approximate with the default box and dim the border colour).
     """
@@ -293,7 +293,7 @@ def render_file_edit_rejected(
     """Render "User rejected update to <path>" plus the WOULD-have-applied diff.
 
     Mirrors ``FileEditToolUseRejectedMessage.tsx`` — the header line reads
-    ``User rejected update to <bold path>`` in CC's ``subtle`` colour, and
+    ``User rejected update to <bold path>`` in upstream's ``subtle`` colour, and
     the diff below is rendered with ``dim=true``. We faithfully dim both.
     """
     palette = _PALETTE
@@ -325,7 +325,7 @@ def render_file_edit_rejected(
 
 
 def render_tool_error(tool_name: str, error_msg: str) -> RenderableType:
-    """CC's ``FallbackToolUseErrorMessage`` visual.
+    """upstream's ``FallbackToolUseErrorMessage`` visual.
 
     Source strips ``<error>`` tags and ``<tool_use_error>`` wrappers, then
     prefixes with "Error: " if absent. We preserve the stripping/prefixing
@@ -333,7 +333,7 @@ def render_tool_error(tool_name: str, error_msg: str) -> RenderableType:
     """
     palette = _PALETTE
     trimmed = (error_msg or "").strip()
-    # Strip the XML tags CC filters out (utils/messages.extractTag is a no-op
+    # Strip the XML tags upstream filters out (utils/messages.extractTag is a no-op
     # when the tag is absent, so stripping is always safe).
     for tag in ("<error>", "</error>", "<tool_use_error>", "</tool_use_error>"):
         trimmed = trimmed.replace(tag, "")
@@ -351,11 +351,11 @@ def render_tool_error(tool_name: str, error_msg: str) -> RenderableType:
 
 
 def render_tool_rejected(tool_name: str, reason: str) -> RenderableType:
-    """CC's ``FallbackToolUseRejectedMessage`` visual.
+    """upstream's ``FallbackToolUseRejectedMessage`` visual.
 
     Source renders ``<InterruptedByUser />`` which prints
     "Interrupted by user" in the theme's ``secondaryText`` colour. We
-    combine with ``reason`` (CC doesn't accept a reason; we extend it as
+    combine with ``reason`` (upstream doesn't accept a reason; we extend it as
     the task spec requires).
     """
     palette = _PALETTE
@@ -370,7 +370,7 @@ def render_tool_rejected(tool_name: str, reason: str) -> RenderableType:
 
 
 # --------------------------------------------------------------------------- #
-#  File-path link — OSC-8 hyperlink, like CC's FilePathLink
+#  File-path link — OSC-8 hyperlink, like upstream's FilePathLink
 # --------------------------------------------------------------------------- #
 
 

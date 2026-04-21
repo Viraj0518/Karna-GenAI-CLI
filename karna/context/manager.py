@@ -8,7 +8,7 @@ Responsible for:
 
 Called before every provider call in the agent loop.
 
-Adapted from cc-src ``context.ts``.  See NOTICES.md for attribution.
+Adapted from upstream ``context.ts``.  See NOTICES.md for attribution.
 """
 
 from __future__ import annotations

@@ -3,8 +3,6 @@
 Every concrete tool must define ``name``, ``description``,
 ``parameters`` (JSON Schema dict), and implement ``execute()``.
 
-Ported from cc-src/src/Tool.ts with attribution to the Anthropic
-Claude Code codebase.
 """
 
 from __future__ import annotations
@@ -28,7 +26,7 @@ class BaseTool(ABC):
 
     name: str = ""
     description: str = ""
-    # Verbatim Claude Code tool prompt when available (see
+    # Verbatim upstream reference tool prompt when available (see
     # ``karna/prompts/cc_tool_prompts.py``). Takes precedence over
     # ``description`` for the model-facing surfaces: API tool schemas
     # (OpenAI / Anthropic) and the system-prompt tool-docs section.

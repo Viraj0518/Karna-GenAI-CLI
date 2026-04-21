@@ -1,6 +1,6 @@
 """MCP server wrapper — exposes Nellie's agent loop over JSON-RPC/stdio.
 
-External MCP clients (Claude Code, Cursor, another Nellie via
+External MCP clients (upstream reference, Cursor, another Nellie via
 ``karna.tools.mcp``) can invoke ``nellie_agent(prompt, model?)`` as an
 MCP tool and receive the agent's final text reply. Under the hood the
 call drives the same ``agent_loop`` used by the interactive REPL, with

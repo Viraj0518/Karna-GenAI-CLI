@@ -4,7 +4,7 @@ Hooks are user-defined callbacks (Python callables or external shell
 commands) that fire at well-known points in Karna's lifecycle.  They
 can observe, modify, or block actions.
 
-Adapted from cc-src hook architecture (``utils/hooks.ts``,
+Adapted from upstream hook architecture (``utils/hooks.ts``,
 ``types/hooks.ts``) with a simpler, Python-native design.
 See NOTICES.md for attribution.
 """

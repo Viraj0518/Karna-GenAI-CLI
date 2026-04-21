@@ -1,4 +1,4 @@
-"""Tests for ``karna.tui.cc_components.chat`` — the CC-ported chat renderers.
+"""Tests for ``karna.tui.cc_components.chat`` — the upstream-ported chat renderers.
 
 Covers role dispatch, per-renderer output snapshots, timestamp formatting,
 interrupt handling, the actions-menu shape, the message-selector cursor,
@@ -234,7 +234,7 @@ def test_message_selector_handles_empty_input():
 
 
 def test_message_selector_max_visible_constant():
-    assert MAX_VISIBLE_MESSAGES == 7  # matches CC's MessageSelector
+    assert MAX_VISIBLE_MESSAGES == 7  # matches upstream's MessageSelector
 
 
 # -------------------------------------------------------------------- #

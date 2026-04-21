@@ -377,7 +377,7 @@ Context assembly for every provider call.
 | 1 | `{root}/KARNA.md` | Project-level Karna instructions (highest) |
 | 2 | `{root}/.karna/KARNA.md` | Alternate project location |
 | 3 | `~/.karna/KARNA.md` | Global personal preferences |
-| 5 | `CLAUDE.md` | Claude Code compatibility |
+| 5 | `CLAUDE.md` | Nellie compatibility |
 | 6 | `.karna/project.toml` | TOML-format project config |
 | 7 | `.cursorrules` | Cursor compatibility |
 | 8 | `.github/copilot-instructions.md` | Copilot compatibility |
