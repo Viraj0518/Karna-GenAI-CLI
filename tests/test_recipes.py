@@ -17,7 +17,6 @@ from karna.recipes.loader import (
 )
 from karna.recipes.runner import _render_template
 
-
 # ============================================================== #
 #  Loader
 # ============================================================== #
@@ -41,9 +40,7 @@ def test_loader_rejects_missing_required():
 
 def test_loader_rejects_unknown_fields():
     with pytest.raises(RecipeLoadError, match="unknown fields"):
-        load_recipe_from_dict(
-            {"name": "x", "instructions": "y", "secret_option": True}
-        )
+        load_recipe_from_dict({"name": "x", "instructions": "y", "secret_option": True})
 
 
 def test_loader_rejects_non_dict_root():
@@ -52,15 +49,17 @@ def test_loader_rejects_non_dict_root():
 
 
 def test_parameters_parse():
-    r = load_recipe_from_dict({
-        "name": "x",
-        "instructions": "y",
-        "parameters": [
-            {"name": "ticket", "type": "string", "required": True},
-            {"name": "prio", "default": "normal"},
-            {"name": "n", "type": "integer", "default": 5},
-        ],
-    })
+    r = load_recipe_from_dict(
+        {
+            "name": "x",
+            "instructions": "y",
+            "parameters": [
+                {"name": "ticket", "type": "string", "required": True},
+                {"name": "prio", "default": "normal"},
+                {"name": "n", "type": "integer", "default": 5},
+            ],
+        }
+    )
     assert len(r.parameters) == 3
     assert r.parameters[0].required is True
     assert r.parameters[1].type == "string"
@@ -69,31 +68,36 @@ def test_parameters_parse():
 
 def test_unsupported_parameter_type_rejected():
     with pytest.raises(RecipeLoadError, match="unsupported type"):
-        load_recipe_from_dict({
-            "name": "x",
-            "instructions": "y",
-            "parameters": [{"name": "p", "type": "widget"}],
-        })
+        load_recipe_from_dict(
+            {
+                "name": "x",
+                "instructions": "y",
+                "parameters": [{"name": "p", "type": "widget"}],
+            }
+        )
 
 
 def test_extensions_normalise_both_forms():
-    r = load_recipe_from_dict({
-        "name": "x",
-        "instructions": "y",
-        "extensions": ["db", {"name": "bash"}, "web_fetch"],
-    })
+    r = load_recipe_from_dict(
+        {
+            "name": "x",
+            "instructions": "y",
+            "extensions": ["db", {"name": "bash"}, "web_fetch"],
+        }
+    )
     assert r.extensions == ["db", "bash", "web_fetch"]
 
 
 def test_sub_recipes_parse():
-    r = load_recipe_from_dict({
-        "name": "parent",
-        "instructions": "y",
-        "sub_recipes": [
-            {"name": "research", "recipe": "research.yaml",
-             "inputs": {"query": "{{ topic }}"}},
-        ],
-    })
+    r = load_recipe_from_dict(
+        {
+            "name": "parent",
+            "instructions": "y",
+            "sub_recipes": [
+                {"name": "research", "recipe": "research.yaml", "inputs": {"query": "{{ topic }}"}},
+            ],
+        }
+    )
     assert len(r.sub_recipes) == 1
     sr = r.sub_recipes[0]
     assert isinstance(sr, SubRecipeRef)
@@ -105,11 +109,7 @@ def test_sub_recipes_parse():
 def test_load_from_yaml_file(tmp_path):
     path = tmp_path / "r.yaml"
     path.write_text(
-        "name: yaml_test\n"
-        "instructions: hello {{ who }}\n"
-        "parameters:\n"
-        "  - name: who\n"
-        "    default: world\n",
+        "name: yaml_test\ninstructions: hello {{ who }}\nparameters:\n  - name: who\n    default: world\n",
         encoding="utf-8",
     )
     r = load_recipe(path)

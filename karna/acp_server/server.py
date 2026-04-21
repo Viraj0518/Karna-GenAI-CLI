@@ -170,9 +170,7 @@ async def _drive_prompt(
                     "tool_call",
                     id=tc.id,
                     name=tc.name,
-                    arguments=tc.arguments
-                    if isinstance(tc.arguments, dict)
-                    else str(tc.arguments)[:1000],
+                    arguments=tc.arguments if isinstance(tc.arguments, dict) else str(tc.arguments)[:1000],
                 )
             elif et == "tool_result" and event.tool_result:
                 tr = event.tool_result
@@ -212,9 +210,7 @@ async def _drive_prompt(
 # ----------------------------------------------------------------------- #
 
 
-async def _handle_request(
-    message: dict[str, Any], write_notification
-) -> dict[str, Any] | None:
+async def _handle_request(message: dict[str, Any], write_notification) -> dict[str, Any] | None:
     method = message.get("method")
     req_id = message.get("id")
     params = message.get("params") or {}
@@ -284,11 +280,7 @@ async def _handle_request(
         max_iters = int(params.get("max_iterations") or 25)
 
         # Run the agent loop as a task so session/cancel can kill it.
-        task = asyncio.create_task(
-            _drive_prompt(
-                session, prompt_text, write_notification, max_iterations=max_iters
-            )
-        )
+        task = asyncio.create_task(_drive_prompt(session, prompt_text, write_notification, max_iterations=max_iters))
         session.active_task = task
         try:
             result = await task
@@ -359,9 +351,7 @@ async def _serve_stdio() -> None:
             response = await _handle_request(message, write)
         except Exception as exc:  # noqa: BLE001
             logger.exception("ACP dispatch error")
-            response = _make_error(
-                message.get("id"), -32603, f"Internal error: {exc}"
-            )
+            response = _make_error(message.get("id"), -32603, f"Internal error: {exc}")
         if response is not None:
             write(response)
 

@@ -24,9 +24,7 @@ from karna.recipes.model import Recipe
 from karna.tools import _TOOL_PATHS  # type: ignore[attr-defined]
 
 
-def _instantiate_tools_for_recipe(
-    recipe: Recipe, workspace: str | None
-) -> list:
+def _instantiate_tools_for_recipe(recipe: Recipe, workspace: str | None) -> list:
     """Instantiate only the tools the recipe's extensions list allows.
 
     Empty extensions list = all tools allowed (parity with Goose's
@@ -84,14 +82,52 @@ async def run_recipe(
     *,
     workspace: str | None = None,
     system_extension: str | None = None,
+    recipe_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Execute a recipe end-to-end.
 
     Returns ``{text, halt, errors, events_count, rendered_instructions}``.
+
+    Parameters
+    ----------
+    recipe_path
+        Path to the recipe YAML file (used for resolving relative
+        sub-recipe paths). If None, sub-recipes with relative paths
+        resolve against cwd.
     """
     params = params or {}
     resolved = recipe.resolve_parameters(params)
-    rendered = _render_template(recipe.instructions, resolved)
+
+    # --- Sub-recipe execution (before main instructions) ---
+    # Sub-recipes run first so their outputs can be referenced in the
+    # parent's instructions template as {{ sub.<name> }}.
+    sub_results: dict[str, str] = {}
+    if recipe.sub_recipes:
+        from karna.recipes.sub import run_all_sub_recipes
+
+        config = load_config()
+        model_spec = recipe.model or f"{config.active_provider}:{config.active_model}"
+        provider_name, model_name = resolve_model(model_spec)
+        sub_provider = get_provider(provider_name)
+        sub_provider.model = model_name
+        sub_tools = _instantiate_tools_for_recipe(recipe, workspace)
+
+        rp = Path(recipe_path) if recipe_path else None
+        sub_results = await run_all_sub_recipes(
+            recipe,
+            resolved,
+            sub_provider,
+            sub_tools,
+            recipe_path=rp,
+            workspace=workspace,
+        )
+
+    # Merge sub-recipe results into the template context
+    template_context = dict(resolved)
+    if sub_results:
+        template_context["sub"] = sub_results
+
+    rendered = _render_template(recipe.instructions, template_context)
 
     config = load_config()
     model_spec = recipe.model or f"{config.active_provider}:{config.active_model}"

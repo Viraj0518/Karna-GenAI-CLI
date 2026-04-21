@@ -453,11 +453,15 @@ def history_delete(
 def run_recipe_cli(
     recipe: str = typer.Option(..., "--recipe", "-r", help="Path to a recipe YAML file"),
     param: list[str] = typer.Option(
-        [], "--param", "-p",
+        [],
+        "--param",
+        "-p",
         help="key=value recipe parameter (repeatable)",
     ),
     workspace: str = typer.Option(
-        "", "--workspace", "-w",
+        "",
+        "--workspace",
+        "-w",
         help="Directory the recipe's tools should scope to (bash cwd + write/edit allowed_roots)",
     ),
 ) -> None:
@@ -514,6 +518,22 @@ def serve(
     from karna.rest_server import serve as _serve
 
     _serve(host=host, port=port)
+
+
+@app.command("web")
+def web(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
+    port: int = typer.Option(3030, "--port", help="Bind port"),
+) -> None:
+    """Launch the web UI — opens browser automatically.
+
+    Serves a browser-based interface with session management, live
+    transcript streaming, recipe browsing, and memory management.
+    Requires the ``webui`` optional extra: ``pip install 'karna[webui]'``.
+    """
+    from karna.web.app import serve_web
+
+    serve_web(host=host, port=port)
 
 
 # --------------------------------------------------------------------------- #

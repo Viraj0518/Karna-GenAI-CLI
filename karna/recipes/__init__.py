@@ -40,12 +40,26 @@ from __future__ import annotations
 from karna.recipes.loader import load_recipe, load_recipe_from_dict
 from karna.recipes.model import Recipe, RecipeParameter, SubRecipeRef
 from karna.recipes.runner import run_recipe
+from karna.recipes.sub import (
+    MaxDepthExceededError,
+    SubRecipeError,
+    SubRecipeNotFoundError,
+    SubRecipeParameterError,
+    run_all_sub_recipes,
+    run_sub_recipe,
+)
 
 __all__ = [
+    "MaxDepthExceededError",
     "Recipe",
     "RecipeParameter",
+    "SubRecipeError",
+    "SubRecipeNotFoundError",
+    "SubRecipeParameterError",
     "SubRecipeRef",
     "load_recipe",
     "load_recipe_from_dict",
+    "run_all_sub_recipes",
     "run_recipe",
+    "run_sub_recipe",
 ]
