@@ -83,11 +83,13 @@ class StreamEvent(BaseModel):
         "tool_call_start",
         "tool_call_delta",
         "tool_call_end",
+        "tool_result",
         "done",
         "error",
     ]
     text: str | None = None
     tool_call: ToolCall | None = None
+    tool_result: "ToolResult | None" = None
     usage: "Usage | None" = None
     error: str | None = None
 

@@ -696,6 +696,14 @@ async def agent_loop(
         # Execute tool calls — parallel when safe, sequential otherwise
         tool_results = await _execute_tool_calls(pending_tool_calls, tool_map)
 
+        # Surface each tool's output as a ``tool_result`` StreamEvent so
+        # downstream consumers (MCP server event trace, future TUI
+        # render) can show results inline Claude-Code-style. Previously
+        # results were silently appended to the conversation and
+        # readers had to infer success from disk state.
+        for tr in tool_results:
+            yield StreamEvent(type="tool_result", tool_result=tr)
+
         # Append tool result message
         conversation.messages.append(
             Message(

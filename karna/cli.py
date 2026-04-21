@@ -601,6 +601,21 @@ def mcp_remove(
         raise typer.Exit(code=1)
 
 
+@mcp_app.command("serve")
+def mcp_serve() -> None:
+    """Run Nellie as an MCP server over stdio.
+
+    Exposes a single ``nellie_agent`` tool that spawns a full agent-loop
+    turn and returns its reply. Connect from any MCP client with a
+    server config like::
+
+        {"command": "nellie", "args": ["mcp", "serve"]}
+    """
+    from karna.mcp_server import serve
+
+    serve()
+
+
 @mcp_app.command("test")
 def mcp_test(
     name: str = typer.Argument(..., help="Server name to test"),
