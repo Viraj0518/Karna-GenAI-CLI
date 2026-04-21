@@ -263,8 +263,23 @@ class TUIOutputWriter:
             self._append(text.rstrip("\n"))
             self._invalidate()
 
+    # Visible-window cap. The deque holds up to _MAX_OUTPUT_LINES chunks
+    # for history, but every prompt_toolkit repaint calls get_text() to
+    # rebuild the full pane content. Joining thousands of ANSI-laden
+    # chunks on every 500ms status-bar tick + every writer.append meant
+    # the render couldn't keep up past ~3 turns — new content landed in
+    # the deque but the pane froze on stale rows. Cap what the pane
+    # renders to the most recent VISIBLE_CHUNKS (still plenty of
+    # scrollback for any in-session viewer).
+    _VISIBLE_CHUNKS = 400
+
     def get_text(self) -> str:
-        """Return all accumulated output as a single ANSI string."""
+        """Return the most recent rendered chunks as a single ANSI string."""
+        if len(self._lines) > self._VISIBLE_CHUNKS:
+            # deque slicing via islice
+            import itertools
+            start = len(self._lines) - self._VISIBLE_CHUNKS
+            return "\n".join(itertools.islice(self._lines, start, None))
         return "\n".join(self._lines)
 
     def _invalidate(self) -> None:
@@ -1347,13 +1362,23 @@ async def run_repl(
 
     writer.set_invalidate(_invalidate_and_autoscroll)
 
-    # Periodic status bar refresh (face ticker, duration timer, context bar)
+    # Periodic status bar refresh (face ticker, duration timer, context bar).
+    # NOTE: route through _invalidate_and_autoscroll, NOT bare app.invalidate().
+    # The status-bar tick fires every 500ms and each tick repaints the output
+    # pane too. If we paint without first pinning ``vertical_scroll`` to the
+    # bottom, the viewport gets stranded at the position the user last had
+    # (or an intermediate position), and content appended during a turn
+    # silently disappears below the fold. After ~3 interactions the output
+    # pane has enough content to exceed the viewport, and new replies stop
+    # being visible — this is exactly the symptom Viraj reported after
+    # commit baea586. ``_invalidate_and_autoscroll`` already respects
+    # ``state.output_scroll_locked``, so manual scroll-up still works.
     async def _refresh_status_bar() -> None:
         while True:
             await asyncio.sleep(0.5)
             try:
                 if app.is_running:
-                    app.invalidate()
+                    _invalidate_and_autoscroll()
             except Exception:  # noqa: BLE001
                 break
 
