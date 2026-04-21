@@ -117,6 +117,12 @@ jobs:
       - name: Electron shell structure
         run: python -m pytest tests/test_electron_shell.py -v
 
+      - name: CLI surface audit (all 23 subcommands, no mojibake)
+        # Regression guard for the Rich em-dash → Windows cp1252 `�`
+        # class of bug. Runs every `nellie <sub> --help` + list commands
+        # and asserts clean exits + zero mojibake bytes.
+        run: python -m pytest tests/test_cli_surface.py -v
+
   stress-free-model:
     name: 100-turn stress (gpt-oss-120b free)
     runs-on: ubuntu-latest
