@@ -35,6 +35,7 @@ from karna.config import load_config
 from karna.models import Conversation, Message
 from karna.prompts import build_system_prompt
 from karna.providers import get_provider, resolve_model
+from karna.security.prompt_injection import detect_prompt_injection
 from karna.tools import _TOOL_PATHS  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
@@ -157,9 +158,27 @@ async def _run_nellie_agent(
       ``include_events``; always collected so the server can decide
       whether to return it.
     - ``halt`` describes why the loop ended: ``done`` | ``error`` |
-      ``empty_reply`` | ``max_iterations``. Prevents the "10-minute
-      silent success" failure mode.
+      ``empty_reply`` | ``max_iterations`` | ``injection_detected``.
+      Prevents the "10-minute silent success" failure mode.
     """
+    # B2: prompt-injection pre-flight. Scan the incoming prompt *before*
+    # spinning up providers / tools. If we match a known injection pattern,
+    # refuse + surface the pattern names so the caller can log / escalate.
+    injection_hits = detect_prompt_injection(prompt)
+    if injection_hits:
+        return {
+            "text": "",
+            "errors": [
+                f"Refused: prompt-injection patterns matched: {', '.join(injection_hits)}. "
+                f"If this was a false positive, strip the flagged phrasing and retry."
+            ],
+            "events": [
+                {"kind": "halt", "reason": "injection_detected",
+                 "patterns": injection_hits},
+            ],
+            "halt": "injection_detected",
+        }
+
     config = load_config()
 
     model_spec = model or f"{config.active_provider}:{config.active_model}"
@@ -432,7 +451,7 @@ async def _handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
         halt = result["halt"]
         text = result["text"]
         errors = result["errors"]
-        is_error = halt in ("error", "max_iterations", "empty_reply")
+        is_error = halt in ("error", "max_iterations", "empty_reply", "injection_detected")
 
         # Claude-Code-style transcript is the primary content block
         # when events are requested. Shows tool calls + their results
