@@ -31,7 +31,9 @@ db = ["psycopg2-binary>=2.9", "pymysql>=1.1"]
 docs = ["pdfplumber>=0.10", "python-docx>=1.0", "python-pptx>=0.6", "openpyxl>=3.1"]
 browser = ["playwright>=1.40"]
 rag = ["chromadb>=0.4"]
-all = ["karna[tokens,web,vertex,bedrock,cron,db,docs,browser,rag]"]
+rest = ["fastapi>=0.110", "uvicorn[standard]>=0.30"]
+recipes = ["pyyaml>=6.0", "jinja2>=3.1"]
+all = ["karna[tokens,web,vertex,bedrock,cron,db,docs,browser,rag,rest,recipes]"]
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=0.23",
