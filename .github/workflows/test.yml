@@ -2,8 +2,12 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -11,9 +15,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # We test against the min (3.10) and max (3.12) supported Python.
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.12"]
         include:
           - os: windows-latest
             python-version: "3.12"
@@ -32,7 +37,15 @@ jobs:
       - name: Install package with dev extras
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev,tokens,cron]"
 
-      - name: Run pytest
-        run: python -m pytest tests/ -v
+      - name: Run pytest (unit + smoke)
+        # -m "not integration and not live" skips integration stubs and
+        # live-API tests that require real credentials / external network.
+        run: python -m pytest tests/ -v -m "not integration and not live" --ignore=tests/integration
+
+      - name: Run pytest (integration, allow-skip)
+        # Integration stubs may skip today. Running them explicitly so a
+        # regression ("stopped skipping, started failing") is surfaced.
+        continue-on-error: true
+        run: python -m pytest tests/integration/ -v

@@ -50,6 +50,13 @@ select = ["E", "F", "I", "W"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (may require external services)",
+    "live: marks tests that require real API keys or live network access",
+    "network: marks tests that require network access (skipped in sandboxed CI)",
+    "slow: marks tests as slow-running",
+]
 
 [tool.setuptools.packages.find]
 include = ["karna*"]
