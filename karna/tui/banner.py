@@ -107,7 +107,15 @@ def print_banner(
 
     Public signature is unchanged; only the visual output differs.
     """
-    model_label = f"{config.active_provider}/{config.active_model}"
+    # Match the status-bar de-dup logic so the banner doesn't show
+    # "openrouter/openrouter/auto" when the stored model already includes
+    # the provider prefix (OpenRouter stores "<org>/<model>", which Karna
+    # sometimes re-saves as "openrouter/openrouter/<org>/<model>").
+    _m = config.active_model or ""
+    if _m.startswith(f"{config.active_provider}/"):
+        model_label = _m
+    else:
+        model_label = f"{config.active_provider}/{_m}"
     tool_count = len(tool_names)
 
     brand = SEMANTIC.get("accent.brand", "#3C73BD")
@@ -124,24 +132,31 @@ def print_banner(
         cwd = Path(".")
     workspace = _workspace_label(cwd)
 
-    # ── Header line: diamond + wordmark + version ...dot + status ────────
-    header = Text()
-    header.append("  ")
-    header.append(f"{_DIAMOND} ", style=brand)
-    header.append("nellie", style=f"bold {cyan}")
-    header.append(f"  v{__version__}", style=f"dim {t_tertiary}")
-    # right-side status, pushed toward the edge by the Rule width below.
-    status = Text()
-    status.append(f"{_DOT} ready  ", style=success)
+    # ── ASCII art banner ──────────────────────────────────────────────────
+    # Gradient: cyan (#87CEEB) → brand blue (#3C73BD) top to bottom
+    art_lines = [
+        r"  ███╗   ██╗███████╗██╗     ██╗     ██╗███████╗",
+        r"  ████╗  ██║██╔════╝██║     ██║     ██║██╔════╝",
+        r"  ██╔██╗ ██║█████╗  ██║     ██║     ██║█████╗  ",
+        r"  ██║╚██╗██║██╔══╝  ██║     ██║     ██║██╔══╝  ",
+        r"  ██║ ╚████║███████╗███████╗███████╗██║███████╗",
+        r"  ╚═╝  ╚═══╝╚══════╝╚══════╝╚══════╝╚═╝╚══════╝",
+    ]
+    # Apply gradient from cyan to brand blue across lines
+    grad_colors = [cyan, cyan, "#5A8FCC", "#5A8FCC", brand, brand]
+    console.print()
+    for line, color in zip(art_lines, grad_colors):
+        console.print(Text(line, style=f"bold {color}"))
 
-    # Build a two-part line that fills console width: left grows, right is
-    # right-aligned. Rich ``Text`` doesn't natively right-align in a line
-    # so we pad manually using the console width.
+    # ── Version + status on same line after art ─────────────────────────
     width = max(console.size.width, 60)
-    used = len(header.plain) + len(status.plain)
-    pad = max(width - used, 2)
+    ver_text = f"  v{__version__}"
+    status_text = f"{_DOT} ready  "
+    header = Text()
+    header.append(ver_text, style=f"dim {t_tertiary}")
+    pad = max(width - len(ver_text) - len(status_text), 2)
     header.append(" " * pad)
-    header.append_text(status)
+    header.append(status_text, style=success)
 
     # ── Status row: model - tools - workspace ────────────────────────────
     info = Text("  ")
@@ -159,12 +174,25 @@ def print_banner(
     hint.append("  -  ", style=t_tertiary)
     hint.append("karna's AI assistant", style=f"italic {t_tertiary}")
 
+    # ── Fortune / daily message ─────────────────────────────────────────
+    try:
+        from karna.tui.fortunes import pick_fortune
+
+        fortune = pick_fortune()
+    except Exception:  # pragma: no cover - defensive
+        fortune = None
+
     # ── Emit with generous vertical breathing room ───────────────────────
     console.print()
     console.print(header)
     console.print(Rule(style=divider))
     console.print(info)
     console.print()
+    if fortune:
+        fortune_text = Text("  ")
+        fortune_text.append("\U0001f52e ", style=f"dim {t_tertiary}")
+        fortune_text.append(fortune, style=f"italic dim {t_tertiary}")
+        console.print(fortune_text)
     console.print(hint)
     console.print()
 

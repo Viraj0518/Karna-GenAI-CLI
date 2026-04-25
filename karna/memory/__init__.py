@@ -1,6 +1,6 @@
 """Auto-persistent memory system (4 typed entries, MEMORY.md index).
 
-Ported from Claude Code's memdir architecture (cc-src).
+Ported from upstream reference's memdir architecture (upstream).
 """
 
 from karna.memory.manager import MemoryManager

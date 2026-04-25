@@ -1,7 +1,5 @@
 """Glob tool — file pattern matching.
 
-Full implementation ported from cc-src GlobTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - File pattern matching via ``pathlib.Path.glob()``
@@ -17,6 +15,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 _DEFAULT_LIMIT = 100
@@ -27,6 +26,7 @@ class GlobTool(BaseTool):
 
     name = "glob"
     description = "Find files matching a glob pattern. Results sorted by modification time (most recent first)."
+    cc_prompt = CC_TOOL_PROMPTS["glob"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

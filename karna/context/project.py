@@ -10,10 +10,10 @@ any project that already has AI-assistant configuration.
 2. ``{project_root}/.karna/KARNA.md`` — project-level alternate location
 3. ``~/.karna/KARNA.md``             — global default
 
-Project-level KARNA.md overrides global.  Both are injected if present.
+Global KARNA.md is used only if no project-level KARNA.md is found.
 CLAUDE.md and .cursorrules are loaded with lower priority for compatibility.
 
-Adapted from cc-src ``utils/claudemd.ts``.  See NOTICES.md.
+Adapted from upstream ``utils/claudemd.ts``.  See NOTICES.md.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ _SEARCH_FILES: list[tuple[str, str, int]] = [
     # (relative_path, label, priority)  — lower number = higher priority
     ("KARNA.md", "karna project instructions", 1),
     (".karna/KARNA.md", "karna project instructions (.karna/)", 2),
-    ("CLAUDE.md", "project instructions (Claude Code compatible)", 5),
+    ("CLAUDE.md", "project instructions (upstream reference compatible)", 5),
     (".karna/project.toml", "karna project config", 6),
     (".cursorrules", "project instructions (Cursor compatible)", 7),
     (".github/copilot-instructions.md", "project instructions (Copilot compatible)", 8),
@@ -45,6 +45,10 @@ _SEARCH_FILES: list[tuple[str, str, int]] = [
 
 # Global KARNA.md location — always checked as a fallback
 _GLOBAL_KARNA_MD = Path.home() / ".karna" / "KARNA.md"
+
+# The global ~/.karna/ directory — files under this path should NOT be
+# picked up by the ancestor walk (they are loaded separately as a fallback).
+_GLOBAL_KARNA_DIR = Path.home() / ".karna"
 
 
 class ProjectContext:
@@ -58,6 +62,12 @@ class ProjectContext:
         2. Global ``~/.karna/KARNA.md`` as fallback (priority 3)
         3. Compatibility files (CLAUDE.md, .cursorrules) at lower priority
 
+        Files under ``~/.karna/`` are never treated as project-level
+        context — they are loaded exclusively via the global fallback
+        path below.  This prevents ``~/.karna/KARNA.md`` from being
+        mis-detected as a project file when the ancestor walk reaches
+        ``$HOME``.
+
         Returns combined content from all discovered files (closest to
         *cwd* wins when a filename appears at multiple levels), or
         ``None`` if nothing was found.
@@ -67,6 +77,9 @@ class ProjectContext:
         # Track which filenames we've already seen so a closer copy
         # shadows one further up the tree.
         seen_filenames: set[str] = set()
+
+        # Resolve the global karna dir once for comparison.
+        global_karna_dir = _GLOBAL_KARNA_DIR.resolve()
 
         # Walk up from cwd to filesystem root.
         dirs: list[Path] = []
@@ -86,6 +99,16 @@ class ProjectContext:
                 candidate = d / rel_path
                 if not candidate.is_file():
                     continue
+                # Skip files that live under ~/.karna/ — those are
+                # global, not project-level, and are loaded separately.
+                try:
+                    resolved = candidate.resolve()
+                    if resolved == global_karna_dir / resolved.name or str(resolved).startswith(
+                        str(global_karna_dir) + "/"
+                    ):
+                        continue
+                except OSError:
+                    pass
                 seen_filenames.add(rel_path)
                 try:
                     if rel_path.endswith(".toml"):

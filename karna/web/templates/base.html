@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nellie{% endblock %} - Karna AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">
+                <span class="brand-icon">N</span>
+                <span class="brand-text">Nellie</span>
+            </a>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link {% block nav_sessions %}{% endblock %}">Sessions</a>
+            <a href="/recipes" class="nav-link {% block nav_recipes %}{% endblock %}">Recipes</a>
+            <a href="/memory" class="nav-link {% block nav_memory %}{% endblock %}">Memory</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <span>Nellie v0.1.3</span>
+        <span class="footer-sep">|</span>
+        <span>Karna AI Agent Harness</span>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

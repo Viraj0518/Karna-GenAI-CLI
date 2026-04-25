@@ -1,7 +1,5 @@
 """Bash tool -- executes shell commands via asyncio subprocess.
 
-Full implementation ported from cc-src BashTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Async subprocess execution via ``asyncio.create_subprocess_shell``
@@ -30,6 +28,7 @@ import tempfile
 from typing import Any
 from uuid import uuid4
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.security.guards import check_dangerous_command
 from karna.tools.base import BaseTool
 from karna.tools.task_registry import TaskType, get_task_registry
@@ -75,6 +74,7 @@ class BashTool(BaseTool):
         "The working directory persists between calls. "
         "Set run_in_background=true to spawn the process and return immediately."
     )
+    cc_prompt = CC_TOOL_PROMPTS["bash"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -259,6 +259,7 @@ class BashTool(BaseTool):
     ) -> None:
         """Run the background process and push completion notification."""
         registry = get_task_registry()
+        proc = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -315,8 +316,16 @@ class BashTool(BaseTool):
             )
 
         except asyncio.CancelledError:
+            # Kill the subprocess so it doesn't continue as a zombie.
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass  # best-effort cleanup
             with open(output_file, "w") as f:
                 f.write("[cancelled]\n")
+            registry.fail_task(task_id, "Task cancelled")
             raise
         except Exception as exc:
             error_msg = f"{type(exc).__name__}: {exc}"

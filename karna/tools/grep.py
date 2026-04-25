@@ -1,7 +1,5 @@
 """Grep tool — regex content search across files.
 
-Full implementation ported from cc-src GrepTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Uses ``rg`` (ripgrep) when available, falls back to ``grep -rn``
@@ -17,6 +15,7 @@ import os
 import shutil
 from typing import Any
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 _DEFAULT_HEAD_LIMIT = 250
@@ -35,6 +34,7 @@ class GrepTool(BaseTool):
 
     name = "grep"
     description = "Search for a regex pattern across files. Uses ripgrep if available, otherwise grep -rn."
+    cc_prompt = CC_TOOL_PROMPTS["grep"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

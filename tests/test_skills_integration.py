@@ -232,7 +232,8 @@ class TestSkillsSlashCommand:
 
         assert "skills" in COMMANDS
 
-    def test_skills_lists_loaded_skills(self, skill_manager):
+    @pytest.mark.asyncio
+    async def test_skills_lists_loaded_skills(self, skill_manager):
         from io import StringIO
 
         from rich.console import Console
@@ -246,7 +247,7 @@ class TestSkillsSlashCommand:
 
         conversation = Conversation()
 
-        handle_slash_command(
+        await handle_slash_command(
             "/skills",
             console,
             config,
@@ -257,7 +258,8 @@ class TestSkillsSlashCommand:
         assert "commit" in output
         assert "review" in output
 
-    def test_skills_enable(self, skill_manager):
+    @pytest.mark.asyncio
+    async def test_skills_enable(self, skill_manager):
         from io import StringIO
 
         from rich.console import Console
@@ -275,7 +277,7 @@ class TestSkillsSlashCommand:
 
         conversation = Conversation()
 
-        handle_slash_command(
+        await handle_slash_command(
             "/skills enable commit",
             console,
             config,
@@ -286,7 +288,8 @@ class TestSkillsSlashCommand:
         assert "enabled" in output.lower() or "Enabled" in output
         assert skill_manager.get_skill_by_name("commit").enabled
 
-    def test_skills_disable(self, skill_manager):
+    @pytest.mark.asyncio
+    async def test_skills_disable(self, skill_manager):
         from io import StringIO
 
         from rich.console import Console
@@ -300,7 +303,7 @@ class TestSkillsSlashCommand:
 
         conversation = Conversation()
 
-        handle_slash_command(
+        await handle_slash_command(
             "/skills disable review",
             console,
             config,
@@ -311,7 +314,8 @@ class TestSkillsSlashCommand:
         assert "disabled" in output.lower() or "Disabled" in output
         assert not skill_manager.get_skill_by_name("review").enabled
 
-    def test_skills_enable_unknown(self, skill_manager):
+    @pytest.mark.asyncio
+    async def test_skills_enable_unknown(self, skill_manager):
         from io import StringIO
 
         from rich.console import Console
@@ -325,7 +329,7 @@ class TestSkillsSlashCommand:
 
         conversation = Conversation()
 
-        handle_slash_command(
+        await handle_slash_command(
             "/skills enable nonexistent",
             console,
             config,

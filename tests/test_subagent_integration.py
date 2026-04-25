@@ -485,10 +485,15 @@ async def test_worktree_preserved_with_changes(tmp_path, monkeypatch):
     _make_git_repo(repo)
     monkeypatch.chdir(repo)
 
+    # We need a reference to the agent so the provider can write into the worktree.
+    agent_ref: list[SubAgent] = []
+
     class _FileWriter(_DoneProvider):
         async def complete(self, messages, tools=None, **kw):
-            # Write a file in cwd (the worktree)
-            Path("new_file.txt").write_text("subagent was here")
+            # Write a file in the worktree (not process cwd — os.chdir is no
+            # longer used for concurrency safety).
+            wt = Path(agent_ref[0].worktree_path)
+            (wt / "new_file.txt").write_text("subagent was here")
             return Message(role="assistant", content="wrote file")
 
     provider = _FileWriter()
@@ -499,6 +504,7 @@ async def test_worktree_preserved_with_changes(tmp_path, monkeypatch):
         system_prompt="test",
         isolation="worktree",
     )
+    agent_ref.append(agent)
 
     await agent.run("write a file")
 
@@ -666,9 +672,14 @@ async def test_result_persistence_includes_worktree_info(tmp_path, monkeypatch):
     _make_git_repo(repo)
     monkeypatch.chdir(repo)
 
+    # We need a reference to the agent so the provider can write into the worktree.
+    persist_agent_ref: list[SubAgent] = []
+
     class _FileWriter(_DoneProvider):
         async def complete(self, messages, tools=None, **kw):
-            Path("output.txt").write_text("data")
+            # Write into the worktree (not process cwd — os.chdir no longer used).
+            wt = Path(persist_agent_ref[0].worktree_path)
+            (wt / "output.txt").write_text("data")
             return Message(role="assistant", content="wrote output")
 
     manager = SubAgentManager()
@@ -679,6 +690,7 @@ async def test_result_persistence_includes_worktree_info(tmp_path, monkeypatch):
         system_prompt="test",
         isolation="worktree",
     )
+    persist_agent_ref.append(agent)
 
     await agent.run("write")
 
@@ -847,9 +859,14 @@ async def test_notification_includes_worktree_when_preserved(tmp_path, monkeypat
     _make_git_repo(repo)
     monkeypatch.chdir(repo)
 
+    # Need agent reference so provider can write into the worktree
+    notify_agent_ref: list[SubAgent] = []
+
     class _FileWriter(_DoneProvider):
         async def complete(self, messages, tools=None, **kw):
-            Path("output.txt").write_text("data")
+            # Write into the worktree (not process cwd)
+            wt = Path(notify_agent_ref[0].worktree_path)
+            (wt / "output.txt").write_text("data")
             return Message(role="assistant", content="wrote it")
 
     manager = SubAgentManager()
@@ -860,6 +877,7 @@ async def test_notification_includes_worktree_when_preserved(tmp_path, monkeypat
         system_prompt="test",
         isolation="worktree",
     )
+    notify_agent_ref.append(agent)
 
     await agent.run("write file")
 

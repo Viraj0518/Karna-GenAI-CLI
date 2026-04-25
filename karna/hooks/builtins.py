@@ -7,7 +7,7 @@ disabled in config.  They cover:
 - Git dirty-tree warning on session start
 - Auto-save memory after assistant responses (stub)
 
-Adapted from cc-src hook patterns.  See NOTICES.md for attribution.
+Adapted from upstream hook patterns.  See NOTICES.md for attribution.
 """
 
 from __future__ import annotations
@@ -104,17 +104,24 @@ async def git_dirty_warning_hook(**kwargs: Any) -> HookResult:
 # Module-level extractor instance — persists across hook invocations so
 # the rate limiter and dedup state survive the full session.
 _extractor_instance: Any = None
+_extractor_lock = asyncio.Lock()
 
 
-def _get_extractor() -> Any:
-    """Lazy-init the MemoryExtractor singleton."""
+async def _get_extractor() -> Any:
+    """Lazy-init the MemoryExtractor singleton (concurrency-safe)."""
     global _extractor_instance
-    if _extractor_instance is None:
-        from karna.memory import MemoryManager
-        from karna.memory.extractor import MemoryExtractor
+    if _extractor_instance is not None:
+        return _extractor_instance
+    async with _extractor_lock:
+        # Double-check after acquiring the lock
+        if _extractor_instance is None:
+            from karna.config import load_config
+            from karna.memory import MemoryManager
+            from karna.memory.extractor import MemoryExtractor
 
-        mm = MemoryManager()
-        _extractor_instance = MemoryExtractor(memory_manager=mm)
+            memory_config = load_config().memory
+            mm = MemoryManager(memory_config=memory_config)
+            _extractor_instance = MemoryExtractor(memory_manager=mm, memory_config=memory_config)
     return _extractor_instance
 
 
@@ -140,7 +147,7 @@ async def auto_save_memory_hook(
         return HookResult()
 
     try:
-        extractor = _get_extractor()
+        extractor = await _get_extractor()
         saved = extractor.extract_and_save(
             user_message=user_message,
             assistant_response=response,

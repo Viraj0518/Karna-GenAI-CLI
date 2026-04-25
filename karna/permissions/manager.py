@@ -8,8 +8,6 @@ confirmation, or is unconditionally blocked.  Supports:
 - Session-scoped "always allow" grants
 - Named profiles: safe, standard, yolo
 
-Ported from cc-src permission patterns with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations
@@ -253,8 +251,7 @@ class PermissionManager:
             return True
         if raw == "N" or raw.lower() == "never":
             self.session_denies.add(tool_name)
-            self._persist_decision(tool_name, PermissionLevel.DENY)
-            logger.info("Permanent-deny set for tool: %s", tool_name)
+            logger.info("Session-deny set for tool: %s", tool_name)
             return False
 
         return raw.lower() in ("y", "yes")

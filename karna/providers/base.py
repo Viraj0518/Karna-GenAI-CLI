@@ -65,8 +65,30 @@ from karna.providers._retry import (
 from karna.providers._retry import (
     jittered_backoff as _shared_jittered_backoff,
 )
+from karna.security.guards import scrub_secrets
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_error_text(exc: BaseException) -> str:
+    """Return an exception's textual form with secrets scrubbed.
+
+    Provider errors (HTTPStatusError, RequestError, etc.) can carry
+    response bodies that echo back ``Authorization: Bearer sk-…`` or
+    other credential material when the remote API returns a 4xx/5xx
+    with a descriptive error payload. Any provider code that logs
+    exceptions or re-raises with a message MUST route through this
+    helper rather than stringify the exception directly.
+    """
+    try:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            body = exc.response.text or ""
+            status = exc.response.status_code
+            return scrub_secrets(f"HTTP {status}: {body[:2000]}")
+    except Exception:  # noqa: BLE001 — best-effort scrub must never propagate
+        pass
+    return scrub_secrets(str(exc))
+
 
 CREDENTIALS_DIR = Path.home() / ".karna" / "credentials"
 
@@ -107,6 +129,116 @@ def _parse_retry_after(response: httpx.Response) -> float | None:
         return max(float(raw), 0.5)
     except (TypeError, ValueError):
         return None
+
+
+# Shared across every provider so no caller silently hits a 4K output cap
+# when their model supports 128K. Caller-specified ``requested`` wins (but
+# still clamped to what the model actually accepts); otherwise we pick a
+# generous-but-not-wasteful default rather than always reserving the full
+# cap. Port of OpenClaw's ``resolveAnthropicVertexMaxTokens`` with the same
+# 32K soft ceiling it uses for un-requested generations.
+_DEFAULT_SOFT_CEILING = 32_000
+_FALLBACK_WHEN_UNKNOWN = 4_096
+
+
+def resolve_max_tokens(
+    requested: int | None,
+    model_max: int | None,
+    *,
+    fallback: int = _FALLBACK_WHEN_UNKNOWN,
+    soft_ceiling: int = _DEFAULT_SOFT_CEILING,
+) -> int:
+    """Resolve the effective ``max_tokens`` for an API call.
+
+    - If the caller passed ``requested``, clamp it to ``model_max`` and return.
+    - Otherwise, if we know the model's cap, default to
+      ``min(model_max, soft_ceiling)`` so big-context models like Opus-4
+      (128K output) don't waste the full budget on small turns.
+    - If we know neither, return ``fallback``.
+    """
+    req = int(requested) if requested and requested > 0 else None
+    mmax = int(model_max) if model_max and model_max > 0 else None
+    if req is not None:
+        return min(req, mmax) if mmax is not None else req
+    if mmax is not None:
+        return min(mmax, soft_ceiling)
+    return fallback
+
+
+def lookup_model_max_output(provider: str, model: str) -> int | None:
+    """Consult the canonical registry (beta's ``canonical_models.json``) for
+    a model's authoritative max_output cap.
+
+    Returns ``None`` when the registry isn't loaded yet (pre-PR #49) OR the
+    model isn't catalogued — callers should fall back to their local
+    per-family table in either case. Single entry point here keeps the
+    fallback story consistent across all 7 providers.
+
+    Lookup strategy (first hit wins):
+      1. Exact match on ``provider:model`` via ``model_capabilities``.
+      2. Strip trailing date suffix (``-YYYYMMDD``) and retry — wire model
+         IDs like ``claude-opus-4-20250514`` collapse to the registry's
+         short form ``claude-opus-4``.
+      3. Longest-prefix match against the registry's entries for this
+         provider — catches ``claude-opus-4-7-1m`` → ``claude-opus-4-7``.
+    """
+    try:
+        # Lazy imports to avoid circular-import at module load.
+        from karna.providers import canonical_models, model_capabilities  # type: ignore[attr-defined]
+    except ImportError:
+        return None
+
+    def _extract_cap(caps: dict | None) -> int | None:
+        if not caps:
+            return None
+        raw = caps.get("max_output")
+        if raw is None or not isinstance(raw, (int, float)) or raw <= 0:
+            return None
+        return int(raw)
+
+    # 1. Exact match.
+    spec = f"{provider}:{model}" if ":" not in model else model
+    cap = _extract_cap(model_capabilities(spec))
+    if cap is not None:
+        return cap
+
+    # 2. Strip trailing ``-YYYYMMDD`` wire suffix.
+    import re as _re
+
+    stripped = _re.sub(r"-\d{8}$", "", model)
+    if stripped != model:
+        cap = _extract_cap(model_capabilities(f"{provider}:{stripped}"))
+        if cap is not None:
+            return cap
+
+    # 3. Longest-prefix match. Registry is ~1,359 entries so this is
+    #    cheap, but we filter by provider first to shrink the scan.
+    try:
+        entries = canonical_models()
+    except Exception:  # noqa: BLE001
+        return None
+    best_len = 0
+    best_cap: int | None = None
+    model_lower = model.lower()
+    provider_lower = provider.lower()
+    for m in entries:
+        mid = m.get("id", "")
+        if not mid:
+            continue
+        # Match ``anthropic/claude-*`` entries for provider=anthropic
+        if "/" in mid:
+            mprov, mname = mid.split("/", 1)
+            if mprov.lower() != provider_lower:
+                continue
+            candidate = mname.lower()
+        else:
+            candidate = mid.lower()
+        if model_lower.startswith(candidate) and len(candidate) > best_len:
+            raw = m.get("max_output")
+            if raw and isinstance(raw, (int, float)) and raw > 0:
+                best_len = len(candidate)
+                best_cap = int(raw)
+    return best_cap
 
 
 class BaseProvider(ABC):

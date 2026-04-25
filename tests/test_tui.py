@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
 from karna.config import KarnaConfig
@@ -65,16 +66,18 @@ def test_slash_commands_registered() -> None:
         "plan",
         "do",
         "tasks",
+        "comms",
     }
     assert expected == set(COMMANDS.keys())
 
 
-def test_help_lists_commands() -> None:
+@pytest.mark.asyncio
+async def test_help_lists_commands() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=100)
     config = KarnaConfig()
     conversation = Conversation()
-    handle_slash_command("/help", console, config, conversation)
+    await handle_slash_command("/help", console, config, conversation)
     output = buf.getvalue()
     # Should mention most commands
     assert "/model" in output
@@ -83,86 +86,93 @@ def test_help_lists_commands() -> None:
     assert "/tools" in output
 
 
-def test_unknown_command_shows_error() -> None:
+@pytest.mark.asyncio
+async def test_unknown_command_shows_error() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     config = KarnaConfig()
     conversation = Conversation()
-    handle_slash_command("/notarealcommand", console, config, conversation)
+    await handle_slash_command("/notarealcommand", console, config, conversation)
     output = buf.getvalue()
     assert "unknown command" in output.lower()
 
 
-def test_model_switch() -> None:
+@pytest.mark.asyncio
+async def test_model_switch() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     config = KarnaConfig(active_provider="openrouter", active_model="old-model")
     conversation = Conversation(provider="openrouter", model="old-model")
-    handle_slash_command("/model anthropic:claude-3-opus", console, config, conversation)
+    await handle_slash_command("/model anthropic:claude-3-opus", console, config, conversation)
     assert config.active_provider == "anthropic"
     assert config.active_model == "claude-3-opus"
     assert conversation.provider == "anthropic"
     assert "Switched" in buf.getvalue()
 
 
-def test_clear_resets_conversation() -> None:
+@pytest.mark.asyncio
+async def test_clear_resets_conversation() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     config = KarnaConfig()
     conversation = Conversation(messages=[Message(role="user", content="hi")])
     assert len(conversation.messages) == 1
-    handle_slash_command("/clear", console, config, conversation)
+    await handle_slash_command("/clear", console, config, conversation)
     assert len(conversation.messages) == 0
 
 
-def test_exit_raises_system_exit() -> None:
+@pytest.mark.asyncio
+async def test_exit_raises_system_exit() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     config = KarnaConfig()
     conversation = Conversation()
     try:
-        handle_slash_command("/exit", console, config, conversation)
+        await handle_slash_command("/exit", console, config, conversation)
         assert False, "Should have raised SystemExit"
     except SystemExit:
         pass
 
 
-def test_cost_shows_session_totals() -> None:
+@pytest.mark.asyncio
+async def test_cost_shows_session_totals() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     config = KarnaConfig()
     conversation = Conversation()
     cost = SessionCost(prompt_tokens=100, completion_tokens=50, total_usd=0.0025)
-    handle_slash_command("/cost", console, config, conversation, session_cost=cost)
+    await handle_slash_command("/cost", console, config, conversation, session_cost=cost)
     output = buf.getvalue()
     assert "100" in output
     assert "50" in output
 
 
-def test_tools_lists_tool_names() -> None:
+@pytest.mark.asyncio
+async def test_tools_lists_tool_names() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     config = KarnaConfig()
     conversation = Conversation()
-    handle_slash_command("/tools", console, config, conversation, tool_names=["bash", "read"])
+    await handle_slash_command("/tools", console, config, conversation, tool_names=["bash", "read"])
     output = buf.getvalue()
     assert "bash" in output
     assert "read" in output
 
 
-def test_system_shows_and_sets_prompt() -> None:
+@pytest.mark.asyncio
+async def test_system_shows_and_sets_prompt() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=100)
     config = KarnaConfig(system_prompt="You are helpful.")
     conversation = Conversation()
     # Show current
-    handle_slash_command("/system", console, config, conversation)
+    await handle_slash_command("/system", console, config, conversation)
     assert "You are helpful." in buf.getvalue()
 
     # Set new
     buf2 = StringIO()
     console2 = Console(file=buf2, force_terminal=True, width=100)
-    handle_slash_command("/system Be concise.", console2, config, conversation)
+    await handle_slash_command("/system Be concise.", console2, config, conversation)
     assert config.system_prompt == "Be concise."
 
 
@@ -203,5 +213,8 @@ def test_renderer_handles_tool_call() -> None:
     renderer.handle(StreamEvent(kind=EventKind.TOOL_RESULT, data={"content": "file.txt\n", "is_error": False}))
     renderer.finish()
     output = buf.getvalue()
-    assert "bash" in output
-    assert "file.txt" in output
+    # Claude-Code-style: `● Bash(ls)` header + `  ⎿ ` result branch.
+    assert "\u25cf " in output, "missing Claude-Code bullet glyph"
+    assert "Bash" in output, "tool name should be CamelCased"
+    assert "ls" in output
+    assert "\u23bf" in output, "missing Claude-Code result L-branch glyph"

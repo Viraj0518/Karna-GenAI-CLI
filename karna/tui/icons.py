@@ -102,7 +102,7 @@ _GLYPHS: Dict[str, tuple[str, str]] = {
     # Roles — ASCII fallbacks use widely-supported Unicode block chars
     "user": ("\uf007", "\u25b8"),  # person → ▸ (black right-pointing small triangle)
     "assistant": ("\uf544", "\u25c6"),  # robot → ◆ (black diamond, brand mark)
-    "thinking": ("\uf0eb", "\u25cb"),  # lightbulb → ○ (white circle)
+    "thinking": ("\u2726", "\u2726"),  # ✦ black four-pointed star — matches upstream reference
     "sparkle": ("\uf890", "\u2726"),  # sparkle → ✦ (widely supported star)
     # Status
     "success": ("\uf00c", "\u2713"),  # check → ✓

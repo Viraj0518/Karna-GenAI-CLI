@@ -4,7 +4,7 @@ Contains Pydantic models for messages, tool interactions, conversations,
 streaming events, usage tracking, and the ``Provider`` protocol that
 every backend must satisfy.
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 
@@ -79,14 +79,17 @@ class StreamEvent(BaseModel):
 
     type: Literal[
         "text",
+        "thinking",
         "tool_call_start",
         "tool_call_delta",
         "tool_call_end",
+        "tool_result",
         "done",
         "error",
     ]
     text: str | None = None
     tool_call: ToolCall | None = None
+    tool_result: "ToolResult | None" = None
     usage: "Usage | None" = None
     error: str | None = None
 
@@ -122,6 +125,11 @@ class ModelInfo(BaseModel):
     name: str = ""
     provider: str = ""
     context_window: int | None = None
+    # Authoritative max-output cap for this model. Providers clamp a
+    # caller's requested max_tokens to this value (OpenClaw pattern) so
+    # callers don't silently hit the wire-level limit. None means
+    # unknown — provider should fall back to a conservative default.
+    max_output_tokens: int | None = None
     pricing: dict[str, Any] | None = None
 
 

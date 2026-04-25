@@ -25,7 +25,7 @@ Strategy
 Secret scrubbing happens **before** the provider call, not after, so
 leaked credentials never leave the host.
 
-Portions adapted from cc-src ``autoCompact.ts`` and hermes-agent
+Portions adapted from upstream ``autoCompact.ts`` and hermes-agent
 ``trajectory_compressor.py``. See NOTICES.md.
 """
 
@@ -129,11 +129,15 @@ async def auto_compact(
     summary_budget: int = 800,
     head_turns_to_keep: int = 2,
     tail_turns_to_keep: int = 8,
+    force: bool = False,
 ) -> Conversation:
     """Compact ``conversation`` when it exceeds ``budget_tokens``.
 
     See module docstring for the algorithm. Returns the (possibly
     unchanged) conversation.
+
+    When *force* is True the trigger-threshold check is skipped so
+    compaction always runs regardless of current token usage.
 
     Raises ``CompactionError`` if three consecutive summariser calls
     fail — callers should surface this to the user rather than retry.
@@ -143,7 +147,7 @@ async def auto_compact(
 
     used = _conv_tokens(conversation.messages, model)
     threshold = int(budget_tokens * _COMPACT_TRIGGER_FRACTION)
-    if used <= threshold:
+    if not force and used <= threshold:
         return conversation
 
     messages = conversation.messages
@@ -244,7 +248,15 @@ class Compactor:
         self,
         conversation: Conversation,
         context_window: int,
+        *,
+        force: bool = False,
     ) -> Conversation:
+        """Compact the conversation if it exceeds the threshold budget.
+
+        When *force* is True, the compaction always runs regardless of
+        whether usage exceeds the threshold. This is used by ``/compact``
+        where the user explicitly requests compaction.
+        """
         budget = int(context_window * self.threshold)
         try:
             result = await auto_compact(
@@ -252,6 +264,7 @@ class Compactor:
                 self.provider,
                 model="",
                 budget_tokens=budget,
+                force=force,
             )
             self.consecutive_failures = 0
             return result

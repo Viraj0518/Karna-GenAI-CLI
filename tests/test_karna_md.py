@@ -139,12 +139,12 @@ class TestCompatibility:
     """CLAUDE.md and .cursorrules should be detected and loaded."""
 
     def test_claude_md_loaded(self, tmp_path: Path) -> None:
-        (tmp_path / "CLAUDE.md").write_text("# Claude\nUse Claude Code conventions.\n")
+        (tmp_path / "CLAUDE.md").write_text("# Claude\nUse upstream reference conventions.\n")
         with patch("karna.context.project._GLOBAL_KARNA_MD", tmp_path / "nonexistent"):
             ctx = ProjectContext()
             result = ctx.detect(tmp_path)
             assert result is not None
-            assert "Claude Code conventions" in result
+            assert "upstream reference conventions" in result
 
     def test_cursorrules_loaded(self, tmp_path: Path) -> None:
         (tmp_path / ".cursorrules").write_text("Always format with prettier.\n")

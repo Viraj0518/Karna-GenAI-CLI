@@ -148,9 +148,9 @@ async def test_spawn_subagent_worktree_creates_and_cleans(tmp_path, monkeypatch)
     assert observed["children"], "worktree dir should exist during subagent run"
     created = observed["children"][0]
     assert created.name.startswith("karna-worktree-")
-    # And cwd was the worktree during the run
-    assert observed["cwd"].resolve() == created.resolve()
-    # After return: cwd restored and worktree cleaned up
+    # Process cwd should NOT have been changed (concurrency-safe: no os.chdir)
+    assert observed["cwd"].resolve() == repo.resolve()
+    # After return: cwd unchanged and worktree cleaned up
     assert Path(os.getcwd()).resolve() == repo.resolve()
     assert not created.exists(), f"worktree {created} should have been removed"
 
@@ -219,14 +219,17 @@ async def test_spawn_subagent_concurrent_no_collision(tmp_path, monkeypatch):
 
     worktree_base = tmp_path / "wts"
 
-    # Each concurrent call must observe its own unique worktree path.
-    seen_paths: list[Path] = []
+    # Each concurrent call must create its own unique worktree.
+    # Since we no longer call os.chdir() (concurrency-safe), we verify
+    # via worktree_base listing instead.
+    seen_worktrees: list[list[Path]] = []
     lock = asyncio.Lock()
 
     class _Recorder(_DoneProvider):
         async def complete(self, messages, tools=None, **kw):
             async with lock:
-                seen_paths.append(Path(os.getcwd()))
+                children = sorted(worktree_base.iterdir()) if worktree_base.exists() else []
+                seen_worktrees.append(children)
             # Small yield so both coroutines overlap inside the context.
             await asyncio.sleep(0.05)
             return Message(role="assistant", content="ok")
@@ -254,9 +257,14 @@ async def test_spawn_subagent_concurrent_no_collision(tmp_path, monkeypatch):
     )
 
     assert results == ["ok", "ok"]
-    # Two distinct worktree cwds observed
-    assert len(seen_paths) == 2
-    assert seen_paths[0].resolve() != seen_paths[1].resolve(), f"concurrent spawns collided on path: {seen_paths}"
+    # Two recordings — at least one should see 2 distinct worktree dirs
+    all_dirs = set()
+    for children in seen_worktrees:
+        for d in children:
+            all_dirs.add(d.resolve())
+    assert len(all_dirs) == 2, f"expected 2 distinct worktrees, got {all_dirs}"
+    # Process cwd was never changed (concurrency safety)
+    assert Path(os.getcwd()).resolve() == repo.resolve()
     # Both worktrees cleaned up
     leftover = list(worktree_base.iterdir()) if worktree_base.exists() else []
     assert leftover == [], f"expected cleanup, found {leftover}"

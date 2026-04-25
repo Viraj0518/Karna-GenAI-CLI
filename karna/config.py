@@ -41,6 +41,57 @@ class ConfigError(RuntimeError):
     """
 
 
+class MemoryConfig(BaseModel):
+    """Configuration for the persistent memory system.
+
+    Serialised as a ``[memory]`` section in ``config.toml``.
+    """
+
+    directory: str = Field(
+        default="~/.karna/memory",
+        description="Root directory for memory files (supports ~ expansion)",
+    )
+    types: list[str] = Field(
+        default=["user", "feedback", "project", "reference"],
+        description="Allowed memory types (built-in + custom)",
+    )
+    auto_extract: bool = Field(
+        default=True,
+        description="Automatically extract memories from conversation turns",
+    )
+    rate_limit_turns: int = Field(
+        default=5,
+        ge=0,
+        description="Minimum turns between automatic memory saves",
+    )
+    dedup_threshold: float = Field(
+        default=0.60,
+        ge=0.0,
+        le=1.0,
+        description="Word-overlap ratio above which a candidate is considered a duplicate",
+    )
+    index_file: str = Field(
+        default="MEMORY.md",
+        description="Name of the index file inside the memory directory",
+    )
+
+
+# Built-in memory types — always present regardless of config.
+_BUILTIN_MEMORY_TYPES: tuple[str, ...] = ("user", "feedback", "project", "reference")
+
+
+class AgentConfig(BaseModel):
+    """Configuration for the agent identity.
+
+    Serialised as an ``[agent]`` section in ``config.toml``.
+    """
+
+    name: str = Field(
+        default="default",
+        description="Name of this agent instance (used for inter-agent comms)",
+    )
+
+
 class KarnaConfig(BaseModel):
     """Top-level configuration persisted to ``~/.karna/config.toml``."""
 
@@ -65,6 +116,14 @@ class KarnaConfig(BaseModel):
         default=10000,
         ge=1,
         description="Reasoning/thinking token budget requested from the provider when thinking is on",
+    )
+    memory: MemoryConfig = Field(
+        default_factory=MemoryConfig,
+        description="Persistent memory system configuration",
+    )
+    agent: AgentConfig = Field(
+        default_factory=AgentConfig,
+        description="Agent identity configuration",
     )
 
 

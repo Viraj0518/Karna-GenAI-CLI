@@ -189,11 +189,18 @@ def _build_commands() -> dict[str, SlashCommand]:
             category="advanced",
             icon=ic_running,
         ),
+        SlashCommand(
+            "comms",
+            "/comms [check|read|send|reply]",
+            "Inter-agent messaging inbox",
+            category="advanced",
+            icon=ic_running,
+        ),
         # ── Context (continued) ────────────────────────────────────────
         SlashCommand(
             "memory",
-            "/memory [search|show|forget] [args]",
-            "View, search, show, or forget memories",
+            "/memory [search|show|forget|types] [args]",
+            "View, search, show, forget, or list memory types",
             category="context",
             icon=ic_history,
         ),
@@ -368,15 +375,13 @@ def _cmd_exit(**_kw) -> None:
     raise SystemExit(0)
 
 
-def _cmd_compact(
+async def _cmd_compact(
     console: Console,
     conversation: Conversation,
     config: KarnaConfig,
     **_kw,
 ) -> None:
     """Manually trigger conversation compaction."""
-    import asyncio
-
     from karna.compaction.compactor import Compactor, _conv_tokens
     from karna.providers import get_provider, resolve_model
 
@@ -399,21 +404,15 @@ def _cmd_compact(
         provider = get_provider(provider_name)
         provider.model = model_name
 
-        compactor = Compactor(provider, threshold=0.0)  # threshold=0 forces compaction
+        # Use force=True to bypass threshold — the user explicitly asked
+        # for compaction so it should always run.
+        compactor = Compactor(provider, threshold=1.0)
 
         # Default context window (generous)
         context_window = 200_000
 
-        # Run the compaction
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(
-                compactor.compact(conversation, context_window),
-                loop,
-            )
-            future.result(timeout=60)
-        else:
-            asyncio.run(compactor.compact(conversation, context_window))
+        # Await directly — handle_slash_command is now async.
+        await compactor.compact(conversation, context_window, force=True)
 
     except Exception as exc:
         console.print(f"[red]Compaction failed: {type(exc).__name__}: {exc}[/red]")
@@ -549,20 +548,13 @@ def _cmd_sessions(console: Console, session_db: "SessionDB | None" = None, **_kw
     console.print(table)
 
 
-def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
+async def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | None:
     """Read clipboard and return content to be injected as user message."""
-    import asyncio
-
     from karna.tools.clipboard import ClipboardTool
 
     tool = ClipboardTool()
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(tool.execute(action="read"), loop)
-            result = future.result(timeout=10)
-        else:
-            result = asyncio.run(tool.execute(action="read"))
+        result = await tool.execute(action="read")
     except Exception as exc:
         console.print(f"[red]Failed to read clipboard: {exc}[/red]")
         return None
@@ -578,10 +570,8 @@ def _cmd_paste(console: Console, conversation: Conversation, **_kw) -> str | Non
     return result
 
 
-def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
+async def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
     """Copy the last assistant response to clipboard."""
-    import asyncio
-
     from karna.tools.clipboard import ClipboardTool
 
     last_assistant = None
@@ -596,12 +586,7 @@ def _cmd_copy(console: Console, conversation: Conversation, **_kw) -> None:
 
     tool = ClipboardTool()
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(tool.execute(action="write", content=last_assistant), loop)
-            result = future.result(timeout=10)
-        else:
-            result = asyncio.run(tool.execute(action="write", content=last_assistant))
+        result = await tool.execute(action="write", content=last_assistant)
     except Exception as exc:
         console.print(f"[red]Failed to copy to clipboard: {exc}[/red]")
         return
@@ -695,10 +680,8 @@ def _cmd_do(console: Console, conversation: Conversation, **_kw) -> str | None:
     return f"__DO__{plan}"
 
 
-def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
+async def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
     """``/tasks`` — list or stop background tasks."""
-    import asyncio
-
     from karna.tools.task_registry import TaskStatus, get_task_registry
 
     registry = get_task_registry()
@@ -717,12 +700,7 @@ def _cmd_tasks(console: Console, args: str, **_kw) -> str | None:
             console.print(f"[bright_black]Task {task_id} is not running (status: {entry.status.value})[/bright_black]")
             return None
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(registry.stop(task_id), loop)
-                stopped = future.result(timeout=10)
-            else:
-                stopped = asyncio.run(registry.stop(task_id))
+            stopped = await registry.stop(task_id)
         except Exception as exc:
             console.print(f"[red]Failed to stop task: {exc}[/red]")
             return None
@@ -781,16 +759,37 @@ def _cmd_memory(console: Console, args: str, **_kw) -> None:  # type: ignore[no-
         /memory show <n>   — display full content of a memory by name
         /memory forget <n> — delete a memory by name
     """
+    from karna.config import load_config
     from karna.memory import MemoryManager
     from karna.memory.manager import _memory_age_text
 
-    mm = MemoryManager()
+    mm = MemoryManager(memory_config=load_config().memory)
     cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
     border = SEMANTIC.get("border.accent", "#3C73BD")
 
     parts = args.strip().split(None, 1) if args.strip() else []
     subcmd = parts[0].lower() if parts else ""
     subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "types":
+        from karna.config import _BUILTIN_MEMORY_TYPES, load_config
+
+        cfg = load_config()
+        mem_cfg = cfg.memory
+        table = Table(
+            show_header=True,
+            header_style=f"bold {cyan}",
+            border_style=border,
+            expand=False,
+            title="Memory Types",
+        )
+        table.add_column("Type", style="white")
+        table.add_column("Origin", style="bright_black")
+        for t in mem_cfg.types:
+            origin = "built-in" if t in _BUILTIN_MEMORY_TYPES else "custom"
+            table.add_row(t, origin)
+        console.print(table)
+        return
 
     if subcmd == "search":
         if not subargs:
@@ -932,6 +931,110 @@ def _fuzzy_match(partial: str) -> str | None:
 #  Dispatcher
 # --------------------------------------------------------------------------- #
 
+
+def _cmd_comms(console: Console, config: KarnaConfig, args: str, **_kw) -> None:
+    """``/comms`` -- check, read, send, or reply to inter-agent messages."""
+    from karna.comms.inbox import AgentInbox
+
+    agent_name = config.agent.name
+    inbox = AgentInbox(agent_name)
+    cyan = SEMANTIC.get("accent.cyan", "#87CEEB")
+    border = SEMANTIC.get("border.accent", "#3C73BD")
+
+    parts = args.strip().split(None, 1) if args.strip() else []
+    subcmd = parts[0].lower() if parts else ""
+    subargs = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "send":
+        send_parts = subargs.split(None, 1) if subargs else []
+        if len(send_parts) < 2:
+            console.print("[red]Usage: /comms send <agent> <subject>: <body>[/red]")
+            return
+        to_agent = send_parts[0]
+        rest = send_parts[1]
+        if ":" in rest:
+            subject, _, body = rest.partition(":")
+            subject = subject.strip()
+            body = body.strip()
+        else:
+            subject = rest
+            body = ""
+        if not body:
+            console.print("[red]Usage: /comms send <agent> <subject>: <body>[/red]")
+            return
+        msg = inbox.send(to_agent, subject, body)
+        console.print(f"[green]Sent message {msg.id} to {to_agent}: {subject}[/green]")
+        return
+
+    if subcmd == "read":
+        if not subargs:
+            console.print("[red]Usage: /comms read <message-id>[/red]")
+            return
+        msg = inbox.read_message(subargs)
+        if msg is None:
+            console.print(f"[red]Message not found: {subargs}[/red]")
+            return
+        nl = chr(10)
+        detail = (
+            f"[bright_black]From:[/] {msg.from_agent}"
+            + nl
+            + f"[bright_black]To:[/] {msg.to_agent}"
+            + nl
+            + f"[bright_black]Subject:[/] {msg.subject}"
+            + nl
+            + f"[bright_black]Time:[/] {msg.timestamp.isoformat()}"
+            + nl
+            + f"[bright_black]Reply to:[/] {msg.in_reply_to or chr(45)}"
+            + nl
+            + nl
+            + f"{msg.body}"
+        )
+        console.print(
+            Panel(
+                detail,
+                title=f"[bold {cyan}]Message {msg.id}[/]",
+                border_style=border,
+                expand=False,
+            )
+        )
+        return
+
+    if subcmd == "reply":
+        reply_parts = subargs.split(None, 1) if subargs else []
+        if len(reply_parts) < 2:
+            console.print("[red]Usage: /comms reply <message-id> <body>[/red]")
+            return
+        msg_id = reply_parts[0]
+        body = reply_parts[1]
+        original = inbox.read_message(msg_id)
+        if original is None:
+            console.print(f"[red]Message not found: {msg_id}[/red]")
+            return
+        reply_msg = inbox.reply(original, body)
+        console.print(f"[green]Reply {reply_msg.id} sent to {reply_msg.to_agent}[/green]")
+        return
+
+    # Default: check inbox (list unread)
+    messages = inbox.check()
+    if not messages:
+        console.print(f"[bright_black]No unread messages for {agent_name}.[/bright_black]")
+        return
+    table = Table(
+        show_header=True,
+        header_style=f"bold {cyan}",
+        border_style=border,
+        expand=False,
+        title=f"Inbox ({agent_name})",
+    )
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("From", style="white")
+    table.add_column("Subject", style="white", max_width=40)
+    table.add_column("Time", style="bright_black")
+    for msg in messages:
+        table.add_row(msg.id, msg.from_agent, msg.subject, msg.timestamp.strftime("%Y-%m-%d %H:%M"))
+    console.print(table)
+
+
 _HANDLERS: dict[str, Callable[..., None]] = {
     "help": _cmd_help,
     "model": _cmd_model,
@@ -953,10 +1056,11 @@ _HANDLERS: dict[str, Callable[..., None]] = {
     "plan": _cmd_plan,
     "do": _cmd_do,
     "tasks": _cmd_tasks,
+    "comms": _cmd_comms,
 }
 
 
-def handle_slash_command(
+async def handle_slash_command(
     raw_input: str,
     console: Console,
     config: KarnaConfig,
@@ -971,6 +1075,10 @@ def handle_slash_command(
 
     *raw_input* is the full user string including the leading ``/``.
 
+    This is an async function so that handlers that need to await
+    coroutines (e.g. ``/compact``, ``/tasks stop``, ``/paste``,
+    ``/copy``) can do so without deadlocking the event loop.
+
     Returns a string if the command produces text to inject as a user
     message (e.g. ``/paste``), otherwise ``None``.
 
@@ -983,6 +1091,9 @@ def handle_slash_command(
     The sentinels are prefixed with double underscores so they cannot
     collide with any plausible clipboard paste content.
     """
+    import asyncio
+    import inspect
+
     stripped = raw_input.strip().lstrip("/")
     parts = stripped.split(None, 1)
     cmd_name = parts[0].lower() if parts else ""
@@ -1009,6 +1120,10 @@ def handle_slash_command(
         cost_tracker=cost_tracker,
         skill_manager=skill_manager,
     )
+    # Await if the handler is a coroutine (async handlers like
+    # _cmd_compact, _cmd_tasks, _cmd_paste, _cmd_copy).
+    if asyncio.iscoroutine(result) or inspect.isawaitable(result):
+        result = await result
     return result
 
 

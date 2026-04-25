@@ -1,4 +1,4 @@
-"""Typed Memdir -- Claude Code-style persistent memory directory.
+"""Typed Memdir -- upstream reference-style persistent memory directory.
 
 Complementary to :mod:`karna.memory.manager` but exposes a more
 Claude-Code-faithful API surface:

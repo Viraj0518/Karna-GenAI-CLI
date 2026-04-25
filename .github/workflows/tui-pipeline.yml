@@ -1,0 +1,150 @@
+name: tui-pipeline
+
+# Dedicated TUI + demo-surface regression gate.  Runs on every push to
+# dev/main and every PR.  Separate from ``ci.yml`` / ``test.yml`` so a
+# slow LLM provider test never masks a fast TUI regression — this one
+# fails in seconds when the render contract breaks.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+concurrency:
+  group: tui-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  headless-tui:
+    name: headless TUI regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Headless TUI integration tests
+        # tests/test_tui_integration.py locks down the REPL queue-vs-fresh-turn
+        # contract, the writer deque-cap invariant, and every closure-scoped
+        # identifier the status bar pokes at runtime. Blank-pane regressions
+        # surface here, not in a user's pane.
+        run: python -m pytest tests/test_tui_integration.py -v
+
+      - name: REPL import guards
+        # The d257690 TUI polish shipped without importing BRAILLE_FRAMES,
+        # crashing every launch. This test asserts every symbol the
+        # _status_bar_text closure resolves is module-level importable.
+        run: python -m pytest tests/test_repl_imports.py -v
+
+      - name: TUI renderer tests
+        run: python -m pytest tests/test_tui.py -v
+
+      - name: PTY-driven TUI harness
+        # tests/test_tui_pty.py spawns the real `nellie` binary via
+        # ptyprocess (POSIX) or pywinpty (win), sends keystrokes, asserts
+        # the banner/help/queue-panel render as expected. Catches every
+        # regression that a synthetic event stream can't (e.g. the
+        # BRAILLE_FRAMES import crash was a closure-only path that slipped
+        # past unit tests for days).
+        run: |
+          python -m pip install ptyprocess>=0.7 pexpect>=4.9
+          python -m pytest tests/test_tui_pty.py -v
+
+      - name: TUI screenshot smoke (synthetic events → ANSI)
+        # tools/tui_screenshot.py drives OutputRenderer with scripted
+        # events for all 5 turn scenarios (greeting/planning/research/
+        # brainstorm/tool). If any scenario crashes or emits no output,
+        # this step fails. Non-zero exit == regression.
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python tools/tui_screenshot.py greeting  | head -5
+          python tools/tui_screenshot.py planning  | head -5
+          python tools/tui_screenshot.py research  | head -5
+          python tools/tui_screenshot.py brainstorm | head -5
+          python tools/tui_screenshot.py tool      | head -5
+
+  provider-contract:
+    name: provider max_tokens contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: resolve_max_tokens contract
+        # OpenClaw-parity: 13 assertions covering clamp, soft ceiling,
+        # fallback, zero/negative guards, canonical-registry lookup with
+        # date-suffix stripping and prefix fallback.
+        run: python -m pytest tests/test_max_tokens_resolver.py -v
+
+  demo-surfaces:
+    name: demo surfaces boot (REST / ACP / Recipes / MCP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,rest,recipes]"
+      - name: REST + WebSocket
+        run: python -m pytest tests/test_rest_server.py tests/test_websocket.py -v
+      - name: ACP server
+        run: python -m pytest tests/test_acp_server.py -v
+      - name: Recipes engine
+        run: python -m pytest tests/test_recipes.py -v
+      - name: MCP server wrappers
+        run: python -m pytest tests/test_mcp_server.py -v
+      - name: Telemetry (opt-in)
+        run: python -m pytest tests/test_telemetry.py -v
+      - name: Electron shell structure
+        run: python -m pytest tests/test_electron_shell.py -v
+
+      - name: CLI surface audit (all 23 subcommands, no mojibake)
+        # Regression guard for the Rich em-dash → Windows cp1252 `�`
+        # class of bug. Runs every `nellie <sub> --help` + list commands
+        # and asserts clean exits + zero mojibake bytes.
+        run: python -m pytest tests/test_cli_surface.py -v
+
+  stress-free-model:
+    name: 100-turn stress (gpt-oss-120b free)
+    runs-on: ubuntu-latest
+    # Only run on PRs to main (landing from dev) + nightly-ish on dev —
+    # not every commit. Free model, but 100 requests takes ~6min + uses
+    # OpenRouter's rate limit budget.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: 100-turn real-provider drive
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::notice::OPENROUTER_API_KEY not configured; skipping live stress."
+            exit 0
+          fi
+          python tools/stress_100.py openrouter:openai/gpt-oss-120b:free

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
 from karna.config import KarnaConfig
@@ -58,10 +59,11 @@ def test_do_usage_is_argless() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_loop_returns_sentinel_with_goal() -> None:
+@pytest.mark.asyncio
+async def test_loop_returns_sentinel_with_goal() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
-    result = handle_slash_command(
+    result = await handle_slash_command(
         "/loop refactor auth and get tests green",
         console,
         KarnaConfig(),
@@ -72,20 +74,22 @@ def test_loop_returns_sentinel_with_goal() -> None:
     assert result[len("__LOOP__") :] == "refactor auth and get tests green"
 
 
-def test_loop_without_arg_errors_cleanly() -> None:
+@pytest.mark.asyncio
+async def test_loop_without_arg_errors_cleanly() -> None:
     # Disable colour so ANSI escapes don't fragment substrings.
     console = Console(file=StringIO(), force_terminal=False, no_color=True, width=80)
     buf = console.file  # type: ignore[assignment]
-    result = handle_slash_command("/loop", console, KarnaConfig(), Conversation())
+    result = await handle_slash_command("/loop", console, KarnaConfig(), Conversation())
     assert result is None
     out = buf.getvalue().lower()  # type: ignore[attr-defined]
     assert "usage" in out and "loop" in out
 
 
-def test_loop_with_only_whitespace_arg_errors_cleanly() -> None:
+@pytest.mark.asyncio
+async def test_loop_with_only_whitespace_arg_errors_cleanly() -> None:
     console = Console(file=StringIO(), force_terminal=False, no_color=True, width=80)
     buf = console.file  # type: ignore[assignment]
-    result = handle_slash_command("/loop    ", console, KarnaConfig(), Conversation())
+    result = await handle_slash_command("/loop    ", console, KarnaConfig(), Conversation())
     assert result is None
     assert "usage" in buf.getvalue().lower()  # type: ignore[attr-defined]
 
@@ -95,10 +99,11 @@ def test_loop_with_only_whitespace_arg_errors_cleanly() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_plan_returns_sentinel_with_goal() -> None:
+@pytest.mark.asyncio
+async def test_plan_returns_sentinel_with_goal() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
-    result = handle_slash_command(
+    result = await handle_slash_command(
         "/plan add a new endpoint to the user API",
         console,
         KarnaConfig(),
@@ -109,10 +114,11 @@ def test_plan_returns_sentinel_with_goal() -> None:
     assert result[len("__PLAN__") :] == "add a new endpoint to the user API"
 
 
-def test_plan_without_arg_errors_cleanly() -> None:
+@pytest.mark.asyncio
+async def test_plan_without_arg_errors_cleanly() -> None:
     console = Console(file=StringIO(), force_terminal=False, no_color=True, width=80)
     buf = console.file  # type: ignore[assignment]
-    result = handle_slash_command("/plan", console, KarnaConfig(), Conversation())
+    result = await handle_slash_command("/plan", console, KarnaConfig(), Conversation())
     assert result is None
     out = buf.getvalue().lower()  # type: ignore[attr-defined]
     assert "usage" in out and "plan" in out
@@ -123,25 +129,27 @@ def test_plan_without_arg_errors_cleanly() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_do_without_stored_plan_returns_none() -> None:
+@pytest.mark.asyncio
+async def test_do_without_stored_plan_returns_none() -> None:
     console = Console(file=StringIO(), force_terminal=False, no_color=True, width=80)
     buf = console.file  # type: ignore[assignment]
     conv = Conversation()
     # Make sure there's no lingering plan from another test.
     clear_last_plan(conv)
-    result = handle_slash_command("/do", console, KarnaConfig(), conv)
+    result = await handle_slash_command("/do", console, KarnaConfig(), conv)
     assert result is None
     assert "no plan" in buf.getvalue().lower()  # type: ignore[attr-defined]
 
 
-def test_do_returns_sentinel_when_plan_stored() -> None:
+@pytest.mark.asyncio
+async def test_do_returns_sentinel_when_plan_stored() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=True, width=80)
     conv = Conversation()
     _store_last_plan(conv, "1. do X\n2. do Y\n3. done")
     assert get_last_plan(conv) == "1. do X\n2. do Y\n3. done"
 
-    result = handle_slash_command("/do", console, KarnaConfig(), conv)
+    result = await handle_slash_command("/do", console, KarnaConfig(), conv)
     assert isinstance(result, str)
     assert result.startswith("__DO__")
     assert result[len("__DO__") :] == "1. do X\n2. do Y\n3. done"

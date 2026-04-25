@@ -79,8 +79,19 @@ def is_safe_path(
         If provided, the resolved path must be under one of these roots.
         If ``None``, defaults to ``[Path.cwd()]``.
     """
+    raw = os.path.expanduser(str(path))
+    # Windows + Git Bash emit ``/c/Users/...`` style paths for the C:
+    # drive. Python's pathlib treats the leading ``/c`` as a directory
+    # name (resolves to ``C:\c\Users\...``) which breaks every
+    # allowed_roots containment check when the agent hands back
+    # bash-shaped paths. Normalise ``/<letter>/<rest>`` → ``<letter>:/<rest>``
+    # on Windows before resolving.
+    if os.name == "nt":
+        m = re.match(r"^[/\\]([a-zA-Z])[/\\](.*)$", raw)
+        if m:
+            raw = f"{m.group(1).upper()}:/{m.group(2)}"
     try:
-        resolved = Path(os.path.expanduser(str(path))).resolve()
+        resolved = Path(raw).resolve()
     except (ValueError, OSError):
         return False
 

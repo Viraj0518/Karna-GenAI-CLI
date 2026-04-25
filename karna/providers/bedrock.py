@@ -27,7 +27,7 @@ import os
 from typing import Any, AsyncIterator, Iterator
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, resolve_max_tokens
 
 _BOTO3_IMPORT_ERROR = (
     "The 'boto3' package is required for the Bedrock provider. "
@@ -145,6 +145,7 @@ class BedrockProvider(BaseProvider):
         *,
         thinking: bool = False,
         thinking_budget: int | None = None,
+        model_max_tokens: int | None = None,
     ) -> dict[str, Any]:
         # Bedrock Claude uses the Messages API shape with
         # ``anthropic_version`` instead of a server-side version header.
@@ -178,7 +179,10 @@ class BedrockProvider(BaseProvider):
         payload: dict[str, Any] = {
             "anthropic_version": "bedrock-2023-05-31",
             "messages": anth_messages,
-            "max_tokens": max_tokens or 4096,
+            # Use the shared resolver so a caller asking for 64K on Opus-4
+            # isn't silently capped at 4K, and un-requested calls get the
+            # full model headroom up to the 32K soft ceiling.
+            "max_tokens": resolve_max_tokens(max_tokens, model_max_tokens),
         }
         if system_prompt:
             payload["system"] = system_prompt
@@ -268,6 +272,7 @@ class BedrockProvider(BaseProvider):
                 temperature,
                 thinking=thinking,
                 thinking_budget=thinking_budget,
+                model_max_tokens=self._get_model_max_tokens(),
             )
         if _is_llama_model(self.model):
             # Llama/Titan don't expose thinking knobs on Bedrock — silently ignore.
@@ -281,9 +286,23 @@ class BedrockProvider(BaseProvider):
             system_prompt,
             max_tokens,
             temperature,
+            model_max_tokens=self._get_model_max_tokens(),
             thinking=thinking,
             thinking_budget=thinking_budget,
         )
+
+    def _get_model_max_tokens(self) -> int | None:
+        """Look up the model's max output; falls back to the Anthropic
+        provider's prefix table for Claude models on Bedrock."""
+        try:
+            from karna.providers.anthropic import _get_max_output_tokens
+        except ImportError:
+            return None
+        if _is_anthropic_model(self.model):
+            return _get_max_output_tokens(self.model)
+        # Llama/Titan have their own caps; the resolver will fall back to
+        # the conservative default when this returns None.
+        return None
 
     # ------------------------------------------------------------------ #
     #  Response parsing
@@ -444,10 +463,11 @@ class BedrockProvider(BaseProvider):
             if delta.get("type") == "text_delta":
                 yield StreamEvent(type="text", text=delta.get("text", ""))
             elif delta.get("type") in ("thinking_delta", "signature_delta"):
-                # Surface reasoning tokens as text (no dedicated event kind).
+                # Surface reasoning tokens as a dedicated "thinking" event
+                # so the TUI can stream them live with distinct styling.
                 txt = delta.get("thinking") or delta.get("text") or ""
                 if txt:
-                    yield StreamEvent(type="text", text=txt)
+                    yield StreamEvent(type="thinking", text=txt)
         elif ctype == "message_start":
             u = chunk.get("message", {}).get("usage", {})
             cumulative.input_tokens = u.get("input_tokens", cumulative.input_tokens)

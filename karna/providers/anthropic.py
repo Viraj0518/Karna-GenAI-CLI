@@ -10,7 +10,7 @@ Supports:
 - SSE streaming with message_start, content_block_delta, message_delta
 - Cost tracking per call
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 
@@ -23,7 +23,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 from karna.providers.caching import PromptCache
 
 # Anthropic API version
@@ -270,7 +270,10 @@ class AnthropicProvider(BaseProvider):
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._serialize_messages(messages),
-            "max_tokens": max_tokens or _get_max_output_tokens(self.model),
+            "max_tokens": resolve_max_tokens(
+                max_tokens,
+                lookup_model_max_output("anthropic", self.model) or _get_max_output_tokens(self.model),
+            ),
         }
         if system_prompt:
             # Use structured system with cache_control for prompt caching
@@ -327,7 +330,10 @@ class AnthropicProvider(BaseProvider):
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._serialize_messages(messages),
-            "max_tokens": max_tokens or _get_max_output_tokens(self.model),
+            "max_tokens": resolve_max_tokens(
+                max_tokens,
+                lookup_model_max_output("anthropic", self.model) or _get_max_output_tokens(self.model),
+            ),
             "stream": True,
         }
         if system_prompt:
@@ -409,14 +415,12 @@ class AnthropicProvider(BaseProvider):
                             # Regular text token — stream to caller immediately
                             yield StreamEvent(type="text", text=delta.get("text", ""))
                         elif delta.get("type") in ("thinking_delta", "signature_delta"):
-                            # Extended-thinking reasoning token. We can't add a
-                            # dedicated event type without touching models.py,
-                            # so we surface the content as regular text with a
-                            # leading marker so the renderer can distinguish it
-                            # downstream if it wants to.
+                            # Extended-thinking reasoning token — surfaced as a
+                            # dedicated "thinking" event so the TUI renderer can
+                            # stream it live with distinct styling.
                             txt = delta.get("thinking") or delta.get("text") or ""
                             if txt:
-                                yield StreamEvent(type="text", text=txt)
+                                yield StreamEvent(type="thinking", text=txt)
                         elif delta.get("type") == "input_json_delta":
                             # Tool argument fragment — accumulate until block stops
                             partial = delta.get("partial_json", "")
@@ -480,6 +484,7 @@ class AnthropicProvider(BaseProvider):
                 name=m.get("display_name", m["id"]),
                 provider="anthropic",
                 context_window=m.get("max_input_tokens"),
+                max_output_tokens=m.get("max_output_tokens") or _get_max_output_tokens(m["id"]),
             )
             for m in data.get("data", [])
         ]

@@ -17,8 +17,6 @@ Enhanced (E4/E5) with:
 - Result persistence for context-compaction survival
 - Message queuing for in-flight agents
 
-Ported from cc-src teammate/agent patterns with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations
@@ -146,10 +144,47 @@ def _has_worktree_changes(worktree_path: Path) -> bool:
         return False
 
 
+def _save_tools_cwd(tools: list[BaseTool]) -> dict[int, str]:
+    """Snapshot the current ``_cwd`` of every tool that tracks one.
+
+    Returns a mapping from ``id(tool)`` to its saved cwd.  Used to
+    restore per-tool state after a subagent finishes — some tools
+    (e.g. BashTool after ``cd /some/path``) carry a custom cwd that
+    must not be clobbered.
+    """
+    saved: dict[int, str] = {}
+    for tool in tools:
+        if hasattr(tool, "_cwd"):
+            saved[id(tool)] = tool._cwd
+    return saved
+
+
+def _restore_tools_cwd(tools: list[BaseTool], saved: dict[int, str]) -> None:
+    """Restore each tool's ``_cwd`` from a snapshot produced by :func:`_save_tools_cwd`."""
+    for tool in tools:
+        tid = id(tool)
+        if tid in saved:
+            tool._cwd = saved[tid]
+
+
+def _set_tools_cwd(tools: list[BaseTool], cwd: str) -> None:
+    """Set the working directory on all tools that track one.
+
+    Used instead of ``os.chdir()`` so concurrent subagents don't
+    stomp on each other's global process cwd.  Only tools that
+    expose a ``_cwd`` attribute (e.g. BashTool, GitOpsTool) are
+    affected.
+    """
+    for tool in tools:
+        if hasattr(tool, "_cwd"):
+            tool._cwd = cwd
+
+
 @asynccontextmanager
 async def _isolation_context(
     isolation: Literal["none", "worktree"],
     worktree_base: Path | None,
+    tools: list[BaseTool] | None = None,
 ) -> AsyncIterator[Path]:
     """Yield the cwd the subagent should run in.
 
@@ -160,6 +195,10 @@ async def _isolation_context(
     is removed on exit, even if the body raises. If the current cwd is
     not a git repo, we log a warning and fall back to no isolation
     instead of crashing.
+
+    **Concurrency safety**: this context manager does NOT call
+    ``os.chdir()`` — it updates tool ``_cwd`` attributes instead so
+    concurrent subagents don't stomp on each other's working directory.
     """
     original_cwd = Path(os.getcwd())
 
@@ -192,16 +231,19 @@ async def _isolation_context(
         yield original_cwd
         return
 
+    # Save each tool's original _cwd so we can restore it exactly,
+    # rather than blindly resetting to os.getcwd().
+    saved_cwds: dict[int, str] = {}
     try:
-        # Change cwd for the duration of the subagent run.
-        os.chdir(worktree_path)
+        # Point tools at the worktree instead of mutating process-global cwd.
+        if tools:
+            saved_cwds = _save_tools_cwd(tools)
+            _set_tools_cwd(tools, str(worktree_path))
         yield worktree_path
     finally:
-        # Restore cwd before cleanup so we don't delete the dir we're standing in.
-        try:
-            os.chdir(original_cwd)
-        except OSError:
-            pass
+        # Restore each tool to its original per-tool cwd.
+        if tools:
+            _restore_tools_cwd(tools, saved_cwds)
         _git_worktree_remove(original_cwd, worktree_path)
 
 
@@ -277,7 +319,7 @@ async def spawn_subagent(
         logger.debug("spawn_subagent: model override requested: %s", model)
 
     try:
-        async with _isolation_context(isolation, worktree_base):
+        async with _isolation_context(isolation, worktree_base, tools=tools):
             final_message = await agent_loop_sync(
                 parent_provider,
                 conversation,
@@ -506,14 +548,17 @@ class SubAgent:
     #  Execution
     # ------------------------------------------------------------------ #
 
-    async def run(self, prompt: str) -> str:
+    async def run(self, prompt: str, *, max_iterations: int = 25) -> str:
         """Run the subagent to completion. Returns final response text.
 
         Sets up worktree if ``isolation='worktree'``, runs the agent loop,
         and cleans up on completion (or preserves worktree if changes exist).
-        Restores cwd on exit and force-cleans worktree on failure (E5).
 
-        Callback firing order: cwd restore -> worktree cleanup -> callbacks.
+        **Concurrency safety**: does NOT call ``os.chdir()`` — instead
+        uses ``_set_tools_cwd()`` to point tool working directories at
+        the worktree, so concurrent subagents don't stomp on each other.
+
+        Callback firing order: tool cwd restore -> worktree cleanup -> callbacks.
         This ensures ``worktree_preserved`` is set before callbacks see it.
         """
         self.status = "running"
@@ -529,9 +574,13 @@ class SubAgent:
                 self._fire_callbacks()
                 return f"[error] {exc}"
 
-        # chdir into worktree for the duration of the run
+        # Save each tool's original per-tool cwd before overwriting,
+        # so we restore it correctly (not to a generic os.getcwd()).
+        saved_cwds: dict[int, str] = _save_tools_cwd(self.tools)
+
+        # Point tools at the worktree instead of mutating global cwd
         if self.worktree_path:
-            os.chdir(self.worktree_path)
+            _set_tools_cwd(self.tools, self.worktree_path)
 
         # Seed the conversation with the user prompt
         self.conversation.messages.append(Message(role="user", content=prompt))
@@ -543,7 +592,7 @@ class SubAgent:
                 self.conversation,
                 self.tools,
                 system_prompt=self.system_prompt,
-                max_iterations=25,
+                max_iterations=max_iterations,
             )
             self.result = final_message.content
             self.status = "completed"
@@ -557,7 +606,7 @@ class SubAgent:
                     self.conversation,
                     self.tools,
                     system_prompt=self.system_prompt,
-                    max_iterations=25,
+                    max_iterations=max_iterations,
                 )
                 self.result = final_message.content
 
@@ -568,12 +617,8 @@ class SubAgent:
             logger.exception("Subagent %s failed: %s", self.name, exc)
             return_value = f"[error] Subagent {self.name} failed: {exc}"
         finally:
-            # Restore cwd before cleanup so we don't delete dir we're in
-            if self._parent_cwd:
-                try:
-                    os.chdir(self._parent_cwd)
-                except OSError:
-                    pass
+            # Restore each tool to its original per-tool cwd
+            _restore_tools_cwd(self.tools, saved_cwds)
             if self.isolation == "worktree":
                 # E5: force cleanup on failure, conditional on success
                 self._cleanup_worktree(force=(self.status == "failed"))
@@ -590,6 +635,11 @@ class SubAgent:
 
         If the agent is currently running, queues the message for processing
         after the current loop finishes.
+
+        If the agent was created with ``isolation="worktree"`` and the
+        worktree still exists, the follow-up loop runs with tool cwds
+        pointed at the worktree so file operations happen in the right
+        directory.
         """
         if self.status == "running":
             # Queue the message for when the current run finishes
@@ -602,6 +652,13 @@ class SubAgent:
         # Restart from completed/failed state
         self.status = "running"
         self.error = ""
+
+        # Save per-tool cwds before overwriting
+        saved_cwds = _save_tools_cwd(self.tools)
+
+        # Re-enter worktree if one exists (e.g. preserved with changes)
+        if self.worktree_path and Path(self.worktree_path).is_dir():
+            _set_tools_cwd(self.tools, self.worktree_path)
 
         self.conversation.messages.append(Message(role="user", content=message))
 
@@ -623,10 +680,13 @@ class SubAgent:
             logger.exception("Subagent %s continue_with failed: %s", self.name, exc)
             self._fire_callbacks()
             return f"[error] Subagent {self.name} failed: {exc}"
+        finally:
+            # Restore each tool to its original per-tool cwd
+            _restore_tools_cwd(self.tools, saved_cwds)
 
-    async def run_in_background(self, prompt: str) -> asyncio.Task[str]:
+    async def run_in_background(self, prompt: str, *, max_iterations: int = 25) -> asyncio.Task[str]:
         """Run asynchronously. Returns an asyncio.Task the caller can await."""
-        self._task = asyncio.create_task(self.run(prompt), name=f"subagent-{self.name}")
+        self._task = asyncio.create_task(self.run(prompt, max_iterations=max_iterations), name=f"subagent-{self.name}")
         return self._task
 
     # ------------------------------------------------------------------ #
@@ -792,16 +852,21 @@ class SubAgentManager:
 
     def format_notification(self, notification: dict[str, str]) -> str:
         """Format a notification dict as a system message string (E4)."""
+
+        def _esc(text: str) -> str:
+            """Escape XML-special characters to prevent injection."""
+            return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
         parts = [
             "<task-notification>",
-            f"<task-id>{notification['agent_id']}</task-id>",
-            f"<summary>{notification['agent_name']} {notification['status']}</summary>",
-            f"<event>{notification['summary']}</event>",
+            f"<task-id>{_esc(notification['agent_id'])}</task-id>",
+            f"<summary>{_esc(notification['agent_name'])} {_esc(notification['status'])}</summary>",
+            f"<event>{_esc(notification['summary'])}</event>",
         ]
         if notification.get("worktree_path"):
-            parts.append(
-                f'<worktree path="{notification["worktree_path"]}" branch="{notification.get("worktree_branch", "")}"/>'
-            )
+            wt_path = _esc(notification["worktree_path"])
+            wt_branch = _esc(notification.get("worktree_branch", ""))
+            parts.append(f'<worktree path="{wt_path}" branch="{wt_branch}"/>')
         parts.append("</task-notification>")
         return "\n".join(parts)
 

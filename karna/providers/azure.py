@@ -17,7 +17,7 @@ Or environment variables:
 - ``$AZURE_OPENAI_API_VERSION``
 - ``$AZURE_OPENAI_DEPLOYMENT``
 
-Portions adapted from cc-src (Claude Code) and hermes-agent (MIT).
+Portions adapted from upstream (upstream reference) and hermes-agent (MIT).
 See NOTICES.md for attribution.
 """
 
@@ -30,12 +30,29 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage, estimate_cost
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 
 DEFAULT_API_VERSION = "2024-06-01"
 
 
 class AzureOpenAIProvider(BaseProvider):
+    def _max_output(self) -> int | None:
+        """Canonical registry wins (treat the Azure deployment as GPT).
+        Falls back to OpenAIProvider's family table."""
+        cap = lookup_model_max_output("openai", self.model)
+        if cap is not None:
+            return cap
+        from karna.providers.openai import OpenAIProvider
+
+        ml = self.model.lower() if self.model else ""
+        best = None
+        best_len = 0
+        for key, val in OpenAIProvider._OUTPUT_LIMITS.items():
+            if ml.startswith(key) and len(key) > best_len:
+                best_len = len(key)
+                best = val
+        return best
+
     """Azure OpenAI chat-completions provider."""
 
     name = "azure"
@@ -182,8 +199,9 @@ class AzureOpenAIProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Azure deployments inherit the underlying GPT model's cap; reuse
+        # OpenAIProvider's family table via the shared resolver.
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking)
@@ -227,8 +245,9 @@ class AzureOpenAIProvider(BaseProvider):
         }
         if tools:
             payload["tools"] = tools
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        # Azure deployments inherit the underlying GPT model's cap; reuse
+        # OpenAIProvider's family table via the shared resolver.
+        payload["max_tokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             payload["temperature"] = temperature
         self._apply_thinking(payload, thinking=thinking)

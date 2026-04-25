@@ -9,7 +9,7 @@ Scans user messages for patterns that indicate information worth persisting:
 Uses regex + keyword matching (no LLM calls) to keep per-turn cost at zero.
 Deduplicates against existing memories and rate-limits saves.
 
-Adapted from cc-src memoryScan.ts patterns.  See NOTICES.md for attribution.
+Adapted from upstream memoryScan.ts patterns.  See NOTICES.md for attribution.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from karna.config import MemoryConfig
     from karna.memory.manager import MemoryManager
     from karna.memory.types import MemoryEntry
 
@@ -142,17 +143,31 @@ class MemoryExtractor:
     ----------
     memory_manager : MemoryManager
         The manager instance for searching existing memories and saving new ones.
-    min_turns_between_saves : int
-        Minimum number of turns between automatic saves to avoid spam.
+    memory_config : MemoryConfig, optional
+        Memory configuration from ``config.toml``.  When provided,
+        ``rate_limit_turns``, ``dedup_threshold``, ``auto_extract``, and
+        ``types`` are read from config instead of using defaults.
     """
 
     memory_manager: "MemoryManager"
+    memory_config: "MemoryConfig | None" = None
     _rate_limiter: _RateLimiter = field(default_factory=lambda: _RateLimiter())
     _last_save_time: float = 0.0
 
     def __post_init__(self) -> None:
-        if not hasattr(self, "_rate_limiter") or self._rate_limiter is None:
-            self._rate_limiter = _RateLimiter()
+        if self.memory_config is not None:
+            self._rate_limiter = _RateLimiter(
+                min_turns_between_saves=self.memory_config.rate_limit_turns,
+            )
+            self._auto_extract = self.memory_config.auto_extract
+            self._dedup_threshold = self.memory_config.dedup_threshold
+            self._allowed_types: list[str] = list(self.memory_config.types)
+        else:
+            if not hasattr(self, "_rate_limiter") or self._rate_limiter is None:
+                self._rate_limiter = _RateLimiter()
+            self._auto_extract = True
+            self._dedup_threshold = 0.6
+            self._allowed_types = ["user", "feedback", "project", "reference"]
 
     # ------------------------------------------------------------------ #
     #  Public API
@@ -177,6 +192,9 @@ class MemoryExtractor:
         list[MemoryEntry]
             List of newly saved memory entries (may be empty).
         """
+        if not self._auto_extract:
+            return []
+
         self._rate_limiter.tick()
 
         if not self._rate_limiter.can_save():
@@ -294,7 +312,8 @@ class MemoryExtractor:
                 )
                 break
 
-        return candidates
+        # Filter out candidates whose type is not in the allowed types list.
+        return [c for c in candidates if c.type in self._allowed_types]
 
     # ------------------------------------------------------------------ #
     #  Deduplication
@@ -312,7 +331,7 @@ class MemoryExtractor:
             for entry in existing[:5]:  # Check top 5 matches
                 # Simple similarity: if the existing memory content overlaps
                 # significantly with the candidate content, skip it
-                if self._is_similar(candidate.content, entry.content):
+                if self._is_similar(candidate.content, entry.content, self._dedup_threshold):
                     is_dup = True
                     logger.debug(
                         "Dedup: skipping '%s' — similar to existing '%s'",

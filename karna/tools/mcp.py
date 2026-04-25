@@ -96,7 +96,7 @@ class MCPServerConnection:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "karna", "version": "0.1.0"},
+                "clientInfo": {"name": "karna", "version": "0.1.3"},
             },
         )
         logger.info("MCP server %s initialized: %s", self.name, init_result.get("serverInfo", {}))

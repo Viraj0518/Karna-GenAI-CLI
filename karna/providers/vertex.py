@@ -30,7 +30,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from karna.models import Message, ModelInfo, StreamEvent, ToolCall, Usage
-from karna.providers.base import BaseProvider
+from karna.providers.base import BaseProvider, lookup_model_max_output, resolve_max_tokens
 
 _GOOGLE_AUTH_IMPORT_ERROR = (
     "The 'google-auth' package is required for the Vertex AI provider. "
@@ -239,6 +239,30 @@ class VertexProvider(BaseProvider):
         lowered = self.model.lower()
         return "gemini-2.5" in lowered or "gemini-3" in lowered
 
+    # Per-family output caps for Vertex Gemini.
+    _VERTEX_OUTPUT_LIMITS: dict[str, int] = {
+        "gemini-3": 65_536,  # speculative — Gemini 3 will likely match Claude
+        "gemini-2.5-pro": 65_536,
+        "gemini-2.5-flash": 65_536,
+        "gemini-2.0-flash": 8_192,
+        "gemini-1.5-pro": 8_192,
+        "gemini-1.5-flash": 8_192,
+    }
+
+    def _max_output(self) -> int | None:
+        """Canonical registry wins; falls back to the prefix table."""
+        cap = lookup_model_max_output("vertex", self.model)
+        if cap is not None:
+            return cap
+        ml = self.model.lower() if self.model else ""
+        best_key = ""
+        best_val: int | None = None
+        for key, val in self._VERTEX_OUTPUT_LIMITS.items():
+            if ml.startswith(key) and len(key) > len(best_key):
+                best_key = key
+                best_val = val
+        return best_val
+
     def _build_payload(
         self,
         messages: list[Message],
@@ -265,8 +289,10 @@ class VertexProvider(BaseProvider):
         if tools:
             payload["tools"] = self._serialize_tools(tools)
         gen_config: dict[str, Any] = {}
-        if max_tokens is not None:
-            gen_config["maxOutputTokens"] = max_tokens
+        # Gemini 1.5/2.0 family: pro = 8192, flash = 8192; 1.5-pro-latest = 8192.
+        # Always send a resolved value so the caller gets their requested
+        # budget clamped to the family cap.
+        gen_config["maxOutputTokens"] = resolve_max_tokens(max_tokens, self._max_output())
         if temperature is not None:
             gen_config["temperature"] = temperature
         if thinking and self._supports_thinking():

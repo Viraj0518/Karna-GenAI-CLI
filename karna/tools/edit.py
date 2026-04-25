@@ -1,7 +1,5 @@
 """Edit tool -- performs exact string replacements in files.
 
-Full implementation ported from cc-src FileEditTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - ``old_string`` / ``new_string`` exact replacement
@@ -18,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.security.guards import is_safe_path
 from karna.tools.base import BaseTool
 
@@ -38,6 +37,7 @@ class EditTool(BaseTool):
     description = (
         "Replace an exact string in a file with new content. old_string must be unique unless replace_all is true."
     )
+    cc_prompt = CC_TOOL_PROMPTS["edit"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

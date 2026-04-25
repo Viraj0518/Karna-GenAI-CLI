@@ -1,0 +1,65 @@
+name: web-ui-pipeline
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual-regression:
+    name: Playwright visual regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install karna + web-test extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[rest,webui,web-test]"
+          python -m pip install pytest pytest-timeout
+
+      - name: Install Chromium for Playwright
+        run: python -m playwright install chromium --with-deps
+
+      - name: Run web UI visual regression
+        env:
+          PLAYWRIGHT_HEADLESS: "1"
+        run: python -m pytest tests/test_web_ui_visual.py -v
+
+      - name: Run web UI interaction tests
+        if: always()
+        env:
+          PLAYWRIGHT_HEADLESS: "1"
+        run: python -m pytest tests/test_web_ui_interactions.py -v
+
+      - name: Upload visual-audit screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ui-screenshots
+          path: _web_screenshots/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload interaction screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ui-interactions
+          path: _web_interactions/
+          if-no-files-found: warn
+          retention-days: 14

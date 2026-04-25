@@ -40,7 +40,6 @@ investigate. Output a clear step-by-step plan. End with:
 "Plan ready. Approve with /do or revise with /plan again."
 """
 
-
 # --------------------------------------------------------------------------- #
 #  Tool allow-list
 # --------------------------------------------------------------------------- #

@@ -7,4 +7,4 @@ All data stays on the local machine. The only network requests are:
 3. MCP connections (only to user-configured MCP servers)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.3"

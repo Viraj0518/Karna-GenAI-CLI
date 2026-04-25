@@ -1,0 +1,34 @@
+
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[2;38;2;60;115;189m✦ [0m[2;38;2;60;115;189mThinking…[0m[2m  (esc to interrupt)[0m
+[3;35m✦ [0m[3;35mreasoning [0m[2m(esc to interrupt)[0m
+[2;3;35mUser wants to refactor auth. Need to split the plan into design, implementation, tests, rollout.[0m
+
+[2;36m◆ [0m[2;36mnellie[0m
+Here's the plan for the auth refactor:                                                              
+[1m1. Design[0m                                                                                           
+
+[1m • [0mMove token verification out of [1;36;40mmiddleware.py[0m into a dedicated [1;36;40mauth/verifier.py[0m module.           
+[1m • [0mDecide between [1mJWT[0m (stateless) and [1msession cookies[0m (stateful) — I'd recommend JWT for our        
+[1m   [0mhorizontal-scaling story.                                                                        
+[1m • [0mDefine a [1;36;40mPrincipal[0m dataclass so downstream code stops reaching into raw dicts.                   
+
+[1m2. Implementation[0m                                                                                   
+
+[36m 1 [0mExtract [1;36;40mverify_token()[0m into [1;36;40mauth/verifier.py[0m (pure function, no Flask deps).                     
+[36m 2 [0mReplace [1;36;40mrequest.user[0m with [1;36;40mg.principal[0m populated by a [1;36;40mbefore_request[0m hook.                        
+[36m 3 [0mDeprecate the old helpers with a one-cycle warning period.                                       
+
+[1m3. Tests[0m                                                                                            
+
+[1m • [0mAdd unit tests for [1;36;40mverify_token()[0m against the 8 existing JWT fixtures.                           
+[1m • [0mMigrate the integration tests that currently mock [1;36;40mrequest.user[0m.                                  
+
+[1m4. Rollout[0m                                                                                          
+
+[1m • [0mFeature-flag the new middleware behind [1;36;40mAUTH_V2_ENABLED[0m.                                          
+[1m • [0mBurn in on staging for 48h before flipping production.                                           
+
+Want me to start on step 1?                                                                         
+[38;2;95;100;114m  2,340 in / 226 out · $0.0140[0m

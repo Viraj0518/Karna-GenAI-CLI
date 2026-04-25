@@ -132,6 +132,7 @@ class TaskRegistry:
                 task_id=task_id,
                 description=entry.description,
                 event_text=final_event,
+                task_type=entry.type,
             )
             self.queue_notification(notification)
         logger.info("Task completed: %s", task_id)
@@ -147,6 +148,7 @@ class TaskRegistry:
             task_id=task_id,
             description=entry.description,
             event_text=f"[error] {error}",
+            task_type=entry.type,
         )
         self.queue_notification(notification)
         logger.info("Task failed: %s — %s", task_id, error)
@@ -168,6 +170,32 @@ class TaskRegistry:
         entry.events.append("[cancelled]")
         logger.info("Task stopped: %s", task_id)
         return True
+
+    async def shutdown(self) -> None:
+        """Cancel every running task and await its teardown.
+
+        Required in tests (and any long-lived host) before tearing down
+        the asyncio event loop — otherwise orphan background ``asyncio.Task``s
+        keep references to the loop's subprocess transports, which on the
+        Windows Proactor loop blocks the next event loop from reaping
+        subprocess pipes. Symptom: the NEXT test that spawns a subprocess
+        hangs forever.
+        """
+        running = [
+            entry
+            for entry in self._tasks.values()
+            if entry.status == TaskStatus.RUNNING and entry._asyncio_task is not None and not entry._asyncio_task.done()
+        ]
+        for entry in running:
+            assert entry._asyncio_task is not None
+            entry._asyncio_task.cancel()
+        for entry in running:
+            assert entry._asyncio_task is not None
+            try:
+                await entry._asyncio_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            entry.status = TaskStatus.CANCELLED
 
     def get_pending_notifications(self) -> list[str]:
         """Drain all pending notifications (non-blocking).
@@ -205,16 +233,23 @@ def format_task_notification(
     task_id: str,
     description: str,
     event_text: str,
+    task_type: TaskType | None = None,
 ) -> str:
     """Format a task event as an XML notification block.
 
     This format is injected into the conversation as a system message
     so the LLM can see background task updates.
+
+    When *task_type* is provided the summary uses the actual type label
+    (e.g. "Monitor", "Bash", "Subagent") instead of a hard-coded
+    "Monitor event" string.
     """
+    type_label = task_type.value.capitalize() if task_type is not None else "Task"
+    summary = f'{type_label} event: "{description}"'
     return (
         f"<task-notification>\n"
         f"<task-id>{task_id}</task-id>\n"
-        f'<summary>Monitor event: "{description}"</summary>\n'
+        f"<summary>{summary}</summary>\n"
         f"<event>{event_text}</event>\n"
         f"</task-notification>"
     )

@@ -1,0 +1,6 @@
+{% for msg in session.messages %}
+<div class="message message-{{ msg.role }}">
+    <div class="message-role">{{ msg.role }}</div>
+    <div class="message-content">{% if msg.role == "assistant" and msg.content.startswith("<thinking>") %}<em class="thinking">{{ msg.content }}</em>{% else %}{{ msg.content }}{% endif %}</div>
+</div>
+{% endfor %}

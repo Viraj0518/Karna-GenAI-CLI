@@ -1,6 +1,28 @@
 # Phase 4 Design Document -- Advanced Features
 
-**Status:** Draft
+> **SUPERSEDED — 2026-04-20 [alpha].** This document is a historical design
+> record. Most of the features it proposes have since shipped (often with
+> different interfaces than the designs below). See
+> [docs/CODEBASE_MAP.md](CODEBASE_MAP.md) for the current state and
+> [docs/DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for the architecture
+> walkthrough. Mapping from the sections below to what actually landed:
+>
+> | Section | Current implementation |
+> |---|---|
+> | 1. Autonomous Loop Mode | [karna/agents/autonomous.py](../karna/agents/autonomous.py) + `/loop` slash command ([karna/tui/slash.py](../karna/tui/slash.py)) |
+> | 2. Multi-Model Verification | Mixture-of-agents — see `tests/test_moa.py` and the MOA references in [karna/agents/](../karna/agents/) |
+> | 3. Cost-Aware Auto-Routing | Not yet implemented; still the design of record |
+> | 4. Fork / Replay | Session fork — see `tests/test_fork_session.py` |
+> | 5. Collaborative Multi-Agent | [karna/agents/subagent.py](../karna/agents/subagent.py) + [karna/tools/task.py](../karna/tools/task.py) (FSM + worktree isolation); parallel dispatch in [karna/agents/parallel.py](../karna/agents/parallel.py) |
+> | 6. Full Compaction with LLM Summarization | [karna/compaction/compactor.py](../karna/compaction/compactor.py) (threshold, circuit breaker, preserved tail) |
+> | 7. Web Frontend (Next.js 15) | Not yet implemented; `web/` is the tracking directory |
+> | 8. Gateway -- Telegram | Not yet implemented; still the design of record |
+>
+> Interface names and field shapes in the design below are **not** current —
+> refer to the code. Sections 3, 7, and 8 are still unimplemented and can
+> still be treated as the design of record for those features.
+
+**Status:** Draft (historical)
 **Author:** gamma (Claude)
 **Date:** 2026-04-17
 **Branch:** `claude/gamma-scaffold`
@@ -12,10 +34,10 @@ open questions -- not implementation.
 
 Reference implementations studied:
 
-- `cc-src/src/Task.ts` -- task lifecycle FSM (`pending -> running -> completed|failed|killed`)
-- `cc-src/src/coordinator/coordinatorMode.ts` -- coordinator/worker split, subagent spawning
-- `cc-src/src/services/compact/` -- auto-compaction triggers, LLM-summarized compaction, prompt caching
-- `cc-src/src/services/autoDream/autoDream.ts` -- background forked agents with time-gates and lock files
+- `upstream/src/Task.ts` -- task lifecycle FSM (`pending -> running -> completed|failed|killed`)
+- `upstream/src/coordinator/coordinatorMode.ts` -- coordinator/worker split, subagent spawning
+- `upstream/src/services/compact/` -- auto-compaction triggers, LLM-summarized compaction, prompt caching
+- `upstream/src/services/autoDream/autoDream.ts` -- background forked agents with time-gates and lock files
 
 ---
 
@@ -123,7 +145,7 @@ nellie loop --stop <loop_id>
 nellie loop --status <loop_id>
 ```
 
-### cc-src Pattern Reference
+### upstream Pattern Reference
 
 The `autoDream.ts` system uses a similar gate/lock/fork pattern:
 time-gate -> session-gate -> acquire lock -> run forked agent -> release lock.
@@ -474,7 +496,7 @@ async def merge(source_branch: str, target_branch: str) -> str:
 ### Concept
 
 Named subagents with isolated contexts, running in parallel.  Ported from
-the cc-src coordinator/worker pattern (`coordinatorMode.ts`, `Task.ts`).
+the upstream coordinator/worker pattern (`coordinatorMode.ts`, `Task.ts`).
 
 ```
 nellie spawn reviewer --model anthropic/claude-sonnet-4-6 "review PR #42"
@@ -544,13 +566,13 @@ class SubAgentManager:
         ...
 ```
 
-### Task Lifecycle (from cc-src Task.ts)
+### Task Lifecycle (from upstream Task.ts)
 
-cc-src defines a strict FSM: `pending -> running -> completed | failed | killed`.
+upstream defines a strict FSM: `pending -> running -> completed | failed | killed`.
 We adopt the same states with `isTerminalTaskStatus()` used to guard against
 message injection into dead agents.
 
-Each task gets a unique ID with a type prefix (matching cc-src's
+Each task gets a unique ID with a type prefix (matching upstream's
 `generateTaskId`): `a-<8 alphanumeric>` for agent tasks.
 
 ### Coordinator Pattern
@@ -564,7 +586,7 @@ from `coordinatorMode.ts`):
 - Worker results arrive as structured notifications (XML-tagged messages)
 - The coordinator synthesizes results and communicates with the user
 
-Key principle from cc-src: **"Workers can't see your conversation."** Every
+Key principle from upstream: **"Workers can't see your conversation."** Every
 spawn prompt must be self-contained with file paths, line numbers, and clear
 success criteria.
 
@@ -583,7 +605,7 @@ the worktree's changes.
 ### Communication
 
 Subagent results are delivered to the parent conversation as structured
-messages (matching the cc-src `<task-notification>` format):
+messages (matching the upstream `<task-notification>` format):
 
 ```xml
 <task-notification>
@@ -601,14 +623,14 @@ messages (matching the cc-src `<task-notification>` format):
 ### Open Questions
 
 1. **Context sharing:** Should subagents share the parent's memory/CLAUDE.md?
-   cc-src gives workers access to project context but not conversation history.
+   upstream gives workers access to project context but not conversation history.
 2. **Recursion depth:** Should subagents be able to spawn their own subagents?
-   If so, what's the max depth?  cc-src limits to one level.
+   If so, what's the max depth?  upstream limits to one level.
 3. **Resource limits:** How do we prevent a runaway subagent from consuming
    the entire budget?  Per-agent token limits?
-4. **Scratchpad:** cc-src has a scratchpad directory for cross-worker knowledge
+4. **Scratchpad:** upstream has a scratchpad directory for cross-worker knowledge
    sharing.  Should we adopt this pattern?
-5. **Concurrency model:** cc-src runs workers as forked agents sharing the
+5. **Concurrency model:** upstream runs workers as forked agents sharing the
    process.  Should we use asyncio tasks, subprocesses, or both?
 
 ---
@@ -618,7 +640,7 @@ messages (matching the cc-src `<task-notification>` format):
 ### Concept
 
 When context hits a threshold, the oldest messages are summarized by the
-model and replaced with a compact summary.  Ported from cc-src's
+model and replaced with a compact summary.  Ported from upstream's
 `services/compact/` system.
 
 ### Architecture
@@ -638,7 +660,7 @@ model and replaced with a compact summary.  Ported from cc-src's
      Continue agent_loop with compacted context
 ```
 
-### Trigger Logic (from cc-src autoCompact.ts)
+### Trigger Logic (from upstream autoCompact.ts)
 
 ```python
 AUTOCOMPACT_BUFFER_TOKENS = 13_000
@@ -657,12 +679,12 @@ async def should_auto_compact(
     return token_count >= threshold
 ```
 
-cc-src fires compaction at ~93% of effective context window.  We adopt the
+upstream fires compaction at ~93% of effective context window.  We adopt the
 same threshold.
 
 ### Compaction Prompt
 
-Adapted from cc-src `compact/prompt.ts`.  The summarizer is instructed to
+Adapted from upstream `compact/prompt.ts`.  The summarizer is instructed to
 produce:
 
 1. **Primary request and intent** -- what the user asked for
@@ -690,7 +712,7 @@ is a scratchpad (stripped before injection); only the summary survives.
 
 ### Circuit Breaker
 
-cc-src limits consecutive autocompact failures to 3, then stops trying for
+upstream limits consecutive autocompact failures to 3, then stops trying for
 the rest of the session.  This prevents runaway API calls when context is
 irrecoverably over the limit.
 
@@ -710,15 +732,15 @@ class CompactTracker:
 
 ### Open Questions
 
-1. **Partial compaction:** cc-src supports partial compaction (summarize only
+1. **Partial compaction:** upstream supports partial compaction (summarize only
    messages before/after a pivot).  Do we need this on day one, or is full
    compaction sufficient?
-2. **Session memory compaction:** cc-src tries session-memory compaction
+2. **Session memory compaction:** upstream tries session-memory compaction
    (prune messages without LLM) before falling back to LLM summarization.
    Should we implement the cheaper path first?
-3. **Transcript preservation:** cc-src writes a full transcript to disk before
+3. **Transcript preservation:** upstream writes a full transcript to disk before
    compacting so users can review pre-compaction content.  Essential for us too.
-4. **Tool stripping:** During compaction, cc-src strips images and
+4. **Tool stripping:** During compaction, upstream strips images and
    re-injectable attachments.  We should strip large tool results (file reads,
    bash output) before sending to the summarizer.
 

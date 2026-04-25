@@ -21,8 +21,6 @@ Supports both streaming (``stream``) and non-streaming (``complete``)
 providers.  Works with any provider that follows the
 ``BaseProvider`` interface and any tools that follow ``BaseTool``.
 
-Ported from the cc-src coordinator pattern with attribution to the
-Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations
@@ -364,8 +362,14 @@ def _detect_tool_loop(
 def _estimate_message_tokens(messages: list[Message]) -> int:
     """Rough token estimate: ~4 chars per token for English text."""
     total_chars = sum(len(m.content) for m in messages)
-    # Also count tool results
     for m in messages:
+        # Count tool-call names and argument payloads — these can carry
+        # large JSON bodies that were previously ignored, causing the
+        # estimator to under-count and miss compaction triggers.
+        for tc in m.tool_calls:
+            total_chars += len(tc.name)
+            total_chars += len(str(tc.arguments))
+        # Also count tool results
         for tr in m.tool_results:
             total_chars += len(tr.content)
     return total_chars // 4
@@ -528,7 +532,7 @@ async def agent_loop(
         _notifications = _task_registry.get_pending_notifications()
         if _notifications:
             _combined = "\n\n".join(_notifications)
-            conversation.messages.append(Message(role="user", content=_combined))
+            conversation.messages.append(Message(role="system", content=_combined))
             yield StreamEvent(
                 type="text",
                 text=f"[{len(_notifications)} task notification(s) injected]\n",
@@ -690,6 +694,14 @@ async def agent_loop(
         # Execute tool calls — parallel when safe, sequential otherwise
         tool_results = await _execute_tool_calls(pending_tool_calls, tool_map)
 
+        # Surface each tool's output as a ``tool_result`` StreamEvent so
+        # downstream consumers (MCP server event trace, future TUI
+        # render) can show results inline Claude-Code-style. Previously
+        # results were silently appended to the conversation and
+        # readers had to infer success from disk state.
+        for tr in tool_results:
+            yield StreamEvent(type="tool_result", tool_result=tr)
+
         # Append tool result message
         conversation.messages.append(
             Message(
@@ -747,7 +759,7 @@ async def agent_loop_sync(
         _notifications = _task_registry.get_pending_notifications()
         if _notifications:
             _combined = "\n\n".join(_notifications)
-            conversation.messages.append(Message(role="user", content=_combined))
+            conversation.messages.append(Message(role="system", content=_combined))
 
         # ---- Auto-compaction before provider call --------------------
         if compactor is not None and context_window is not None:

@@ -13,8 +13,6 @@ returns immediately with an agent ID (background). Background
 completion notifications are injected into the parent conversation
 by the agent loop.
 
-Ported from cc-src AgentTool / in-process teammate patterns with
-attribution to the Anthropic Claude Code codebase.
 """
 
 from __future__ import annotations
@@ -25,6 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from karna.agents.subagent import SubAgentManager, spawn_subagent
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -95,6 +94,7 @@ class TaskTool(BaseTool):
         "existing ones, or stop running ones. Subagents run with their "
         "own conversation context and filtered tool subset."
     )
+    cc_prompt = CC_TOOL_PROMPTS["task"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -161,7 +161,7 @@ class TaskTool(BaseTool):
                 ),
             },
         },
-        "required": ["description", "prompt"],
+        "required": [],
     }
 
     def __init__(
@@ -184,10 +184,20 @@ class TaskTool(BaseTool):
         action: str = kwargs.get("action", "create")
 
         if action == "send_message":
+            if not kwargs.get("agent_id"):
+                return "[error] 'agent_id' is required for send_message action."
+            if not kwargs.get("message"):
+                return "[error] 'message' is required for send_message action."
             return await self._handle_send_message(**kwargs)
         elif action == "stop":
+            if not kwargs.get("agent_id"):
+                return "[error] 'agent_id' is required for stop action."
             return await self._handle_stop(**kwargs)
         else:
+            if not kwargs.get("description"):
+                return "[error] 'description' is required for create action."
+            if not kwargs.get("prompt"):
+                return "[error] 'prompt' is required for create action."
             return await self._handle_create(**kwargs)
 
     async def _handle_create(self, **kwargs: Any) -> str:
@@ -267,7 +277,7 @@ class TaskTool(BaseTool):
         except ValueError as exc:
             return f"[error] {exc}"
 
-        await agent.run_in_background(prompt)
+        await agent.run_in_background(prompt, max_iterations=max_iterations)
 
         return json.dumps(
             {

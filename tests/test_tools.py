@@ -426,4 +426,8 @@ class TestRegistry:
             "monitor",
             "notebook",
             "task",
+            "comms",
+            "db",
+            "browser",
+            "document",
         }

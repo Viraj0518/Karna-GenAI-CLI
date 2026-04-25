@@ -1,7 +1,5 @@
 """Read tool -- reads file contents from disk with line numbers.
 
-Full implementation ported from cc-src FileReadTool with attribution to
-the Anthropic Claude Code codebase.
 
 Features:
 - Line-numbered output (``cat -n`` style)
@@ -18,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from karna.prompts.cc_tool_prompts import CC_TOOL_PROMPTS
 from karna.security.guards import is_safe_path
 from karna.tools.base import BaseTool
 
@@ -112,6 +111,7 @@ class ReadTool(BaseTool):
         "Supports offset + limit for partial reads. "
         "Binary files are detected and skipped."
     )
+    cc_prompt = CC_TOOL_PROMPTS["read"]
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
