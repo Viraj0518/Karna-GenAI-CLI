@@ -66,10 +66,10 @@ class TokenCounter:
 
         tiktoken requires its BPE files to be downloaded on first use.  In
         sandboxed / offline environments (CI without network, air-gapped
-        deployments) that download will raise a ``requests.ConnectionError``
-        or similar.  Rather than crashing we catch any exception here and
-        return ``None``, which causes ``count()`` to fall back to the
-        ``len // 4`` estimator.
+        deployments) that download will raise an ``OSError``, ``IOError``,
+        or similar I/O-related exception.  Rather than crashing we catch
+        those errors here and return ``None``, which causes ``count()`` to
+        fall back to the ``len // 4`` estimator.
         """
         global _tiktoken_available
 
@@ -79,7 +79,7 @@ class TokenCounter:
         if enc_name not in cls._encoders:
             try:
                 cls._encoders[enc_name] = tiktoken.get_encoding(enc_name)
-            except Exception as exc:  # noqa: BLE001 — network/IO failure
+            except (OSError, IOError, ValueError, RuntimeError) as exc:
                 logger.debug(
                     "tiktoken encoder '%s' unavailable (%s) — falling back to len//4",
                     enc_name,

@@ -467,8 +467,9 @@ class TestCompactSlashCommand:
             asyncio.get_event_loop().run_until_complete(result)
 
         rendered = output.getvalue()
-        # Should indicate nothing to compact or conversation too short
-        assert "Not enough" in rendered or "compact" in rendered.lower() or len(rendered) >= 0
+        # handle_slash_command is a no-op when conversation is too short;
+        # rendered output may or may not contain a message — just confirm no crash
+        assert isinstance(rendered, str)
 
 
 # ======================================================================= #

@@ -20,7 +20,7 @@ Test categories:
 
 from __future__ import annotations
 
-import os
+import subprocess
 from io import StringIO
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -252,11 +252,24 @@ class TestToolExecution:
     async def test_git_tool(self, tmp_path: Path) -> None:
         from karna.tools.git_ops import GitTool
 
-        os.system(
-            f"cd {tmp_path} && git init -q && git config user.email 'test@test.com' && git config user.name 'Test'"
+        subprocess.run(
+            ["git", "init", "-q"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=tmp_path,
+            check=True,
         )
         (tmp_path / "file.txt").write_text("hello")
-        os.system(f"cd {tmp_path} && git add . && git commit -q -m 'init'")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
 
         tool = GitTool()
         tool._cwd = str(tmp_path)  # type: ignore[attr-defined]
@@ -690,7 +703,7 @@ class TestCLISurface:
             assert result.exit_code == 0, result.output
             assert "saved openrouter credential" in result.output.lower()
 
-    def test_tools_list_subcommand(self) -> None:
+    def test_auth_list_subcommand(self) -> None:
         """The auth list command should work without crashing."""
         from typer.testing import CliRunner
 
