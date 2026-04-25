@@ -61,14 +61,35 @@ class TokenCounter:
     _encoders: dict[str, Any] = {}
 
     @classmethod
-    def _get_tiktoken_encoder(cls, model: str) -> Any:
-        """Return a cached tiktoken encoder for *model*."""
+    def _get_tiktoken_encoder(cls, model: str) -> Any | None:
+        """Return a cached tiktoken encoder for *model*, or None on failure.
+
+        tiktoken requires its BPE files to be downloaded on first use.  In
+        sandboxed / offline environments (CI without network, air-gapped
+        deployments) that download will raise a ``requests.ConnectionError``
+        or similar.  Rather than crashing we catch any exception here and
+        return ``None``, which causes ``count()`` to fall back to the
+        ``len // 4`` estimator.
+        """
+        global _tiktoken_available
+
         import tiktoken
 
         enc_name = _encoding_for_model(model)
         if enc_name not in cls._encoders:
-            cls._encoders[enc_name] = tiktoken.get_encoding(enc_name)
-        return cls._encoders[enc_name]
+            try:
+                cls._encoders[enc_name] = tiktoken.get_encoding(enc_name)
+            except Exception as exc:  # noqa: BLE001 — network/IO failure
+                logger.debug(
+                    "tiktoken encoder '%s' unavailable (%s) — falling back to len//4",
+                    enc_name,
+                    exc,
+                )
+                # Mark tiktoken as unavailable so future calls skip straight
+                # to the fallback without re-attempting the download.
+                _tiktoken_available = False
+                return None
+        return cls._encoders.get(enc_name)
 
     @classmethod
     def count(cls, text: str, model: str = "") -> int:
@@ -81,7 +102,8 @@ class TokenCounter:
             return 0
         if _has_tiktoken():
             enc = cls._get_tiktoken_encoder(model)
-            return len(enc.encode(text))
+            if enc is not None:
+                return len(enc.encode(text))
         return len(text) // 4  # fallback
 
     @classmethod

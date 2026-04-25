@@ -154,7 +154,10 @@ class BashTool(BaseTool):
                 )
             except asyncio.TimeoutError:
                 proc.kill()
-                await proc.wait()
+                # Do NOT await proc.communicate()/wait() here — on Python 3.12
+                # the pipe drain can deadlock with the open PIPE transports.
+                # SIGKILL guarantees the process is dead; the OS reclaims
+                # the pipe buffers once the transport GCs.
                 return f"[error] Command timed out after {timeout}s"
 
             stdout = stdout_bytes.decode("utf-8", errors="replace")
@@ -275,7 +278,10 @@ class BashTool(BaseTool):
                 )
             except asyncio.TimeoutError:
                 proc.kill()
-                await proc.wait()
+                # Do NOT await proc.communicate()/wait() here — on Python 3.12
+                # the pipe drain can deadlock with the open PIPE transports.
+                # SIGKILL guarantees the process is dead; the OS reclaims
+                # the pipe buffers once the transport GCs.
                 error_msg = f"Command timed out after {timeout}s"
                 # Write to output file
                 with open(output_file, "w") as f:

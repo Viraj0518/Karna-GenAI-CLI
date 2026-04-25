@@ -14,6 +14,7 @@ import asyncio
 import os
 
 import pytest
+import pytest_asyncio
 
 from karna.tools.bash import BashTool
 from karna.tools.task_registry import (
@@ -24,11 +25,18 @@ from karna.tools.task_registry import (
 )
 
 
-@pytest.fixture(autouse=True)
-def _reset_registry():
-    """Reset the global task registry before each test."""
+@pytest_asyncio.fixture(autouse=True, loop_scope="function")
+async def _reset_registry():
+    """Reset the global task registry around each test.
+
+    Before-teardown: cancel any background ``asyncio.Task``s and await
+    their termination. If we skip this, orphan tasks keep pipes open on
+    the Windows Proactor loop and the next test that spawns a subprocess
+    hangs forever.
+    """
     reset_task_registry()
     yield
+    await get_task_registry().shutdown()
     reset_task_registry()
 
 

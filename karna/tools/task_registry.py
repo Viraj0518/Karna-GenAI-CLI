@@ -169,6 +169,31 @@ class TaskRegistry:
         logger.info("Task stopped: %s", task_id)
         return True
 
+    async def shutdown(self) -> None:
+        """Cancel every running task and await its teardown.
+
+        Required before tearing down the asyncio event loop — otherwise orphan
+        background ``asyncio.Task``s keep references to the loop's subprocess
+        transports, which on the Windows Proactor loop blocks the next event
+        loop from reaping subprocess pipes. Symptom: the NEXT test that spawns
+        a subprocess hangs forever.
+        """
+        running = [
+            entry
+            for entry in self._tasks.values()
+            if entry.status == TaskStatus.RUNNING and entry._asyncio_task is not None and not entry._asyncio_task.done()
+        ]
+        for entry in running:
+            assert entry._asyncio_task is not None
+            entry._asyncio_task.cancel()
+        for entry in running:
+            assert entry._asyncio_task is not None
+            try:
+                await entry._asyncio_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            entry.status = TaskStatus.CANCELLED
+
     def get_pending_notifications(self) -> list[str]:
         """Drain all pending notifications (non-blocking).
 

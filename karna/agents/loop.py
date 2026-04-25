@@ -362,10 +362,20 @@ def _detect_tool_loop(
 
 
 def _estimate_message_tokens(messages: list[Message]) -> int:
-    """Rough token estimate: ~4 chars per token for English text."""
+    """Rough token estimate: ~4 chars per token for English text.
+
+    Counts message content, tool-call names/arguments, and tool results.
+    No network access required — this is a fast heuristic, not an exact count.
+    """
     total_chars = sum(len(m.content) for m in messages)
-    # Also count tool results
     for m in messages:
+        # Count tool-call names and argument payloads — these can carry
+        # large JSON bodies that were previously ignored, causing the
+        # estimator to under-count and miss compaction triggers.
+        for tc in m.tool_calls:
+            total_chars += len(tc.name)
+            total_chars += len(str(tc.arguments))
+        # Also count tool results
         for tr in m.tool_results:
             total_chars += len(tr.content)
     return total_chars // 4
