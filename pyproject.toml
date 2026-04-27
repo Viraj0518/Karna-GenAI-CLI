@@ -38,7 +38,7 @@ web-test = ["playwright>=1.40"]
 # PTY-driven TUI harness (tools/tui_pty_driver.py + tests/test_tui_pty.py).
 # Split by platform so installs don't break on the wrong OS.
 pty = [
-    "pywinpty>=2.0; sys_platform == 'win32'",
+    "pywinpty>=3.0.3; sys_platform == 'win32'",
     "ptyprocess>=0.7; sys_platform != 'win32'",
 ]
 all = ["karna[tokens,web,vertex,bedrock,cron,db,docs,browser,rag,rest,recipes,webui]"]
@@ -48,7 +48,7 @@ dev = [
     "pytest-timeout>=2.3",
     "ruff>=0.4",
     "pre-commit>=4.5.1",
-    "pywinpty>=2.0; sys_platform == 'win32'",
+    "pywinpty>=3.0.3; sys_platform == 'win32'",
     "ptyprocess>=0.7; sys_platform != 'win32'",
 ]
 
