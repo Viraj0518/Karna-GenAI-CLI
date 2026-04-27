@@ -33,7 +33,7 @@ browser = ["playwright>=1.40"]
 rag = ["chromadb>=0.4"]
 rest = ["fastapi>=0.110", "uvicorn[standard]>=0.30"]
 recipes = ["pyyaml>=6.0", "jinja2>=3.1"]
-webui = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.6"]
+webui = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-multipart>=0.0.26"]
 web-test = ["playwright>=1.40"]
 # PTY-driven TUI harness (tools/tui_pty_driver.py + tests/test_tui_pty.py).
 # Split by platform so installs don't break on the wrong OS.
